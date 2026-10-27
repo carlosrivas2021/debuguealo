@@ -1,23 +1,27 @@
 import asyncio
+import json
 import platform
 import sys
+from contextlib import aclosing
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from debugpilot import __version__
 from debugpilot.core.engine import DebugPilotEngine
-from debugpilot.core.exceptions import ConfigurationError
+from debugpilot.core.exceptions import ConfigurationError, DockerError
 from debugpilot.core.models import CheckStatus, DiagnosticCheck
 from debugpilot.docker.diagnostics import DockerDiagnostics, endpoint_description
+from debugpilot.docker.service import DockerService
 from debugpilot.storage.config import load_settings
 
 app = typer.Typer(
     no_args_is_help=True,
-    help="Local Docker debugging toolkit. Foundation preview: doctor and version are available.",
+    help="Local Docker debugging toolkit. Inspect containers, logs, and environment health.",
     pretty_exceptions_enable=False,
 )
 console = Console(markup=False)
@@ -65,3 +69,84 @@ def doctor(
     console.print(table)
     if any(check.status == CheckStatus.ERROR for check in checks):
         raise typer.Exit(1)
+
+
+def _docker_engine(config: Path | None) -> DebugPilotEngine:
+    settings = load_settings(config)
+    return DebugPilotEngine(settings, docker=DockerService(settings))
+
+
+def _run_docker(operation):
+    try:
+        return asyncio.run(operation())
+    except (DockerError, ConfigurationError) as error:
+        console.print(f"Error: {error}", style="red")
+        raise typer.Exit(1) from None
+    except ValueError:
+        console.print("Invalid Docker input or configuration.", style="red")
+        raise typer.Exit(2) from None
+    except KeyboardInterrupt:
+        raise typer.Exit(130) from None
+
+
+@app.command()
+def containers(
+    config: Annotated[Path | None, typer.Option(help="Optional TOML configuration path.")] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Include all metadata as JSON.")
+    ] = False,
+) -> None:
+    """List running and stopped local containers, including Compose metadata."""
+
+    async def discover():
+        async with _docker_engine(config) as engine:
+            return await engine.list_containers()
+
+    inventory = _run_docker(discover)
+    if json_output:
+        typer.echo(json.dumps([item.model_dump(mode="json") for item in inventory]))
+        return
+    table = Table("ID", "Name", "Image", "State", "Compose", "Created", "Ports")
+    for item in inventory:
+        ports = ", ".join(
+            f"{port.host_ip or '*'}:{port.public_port or '-'}->{port.private_port}/{port.protocol}"
+            for port in item.ports
+        )
+        compose = "/".join(filter(None, (item.compose_project, item.compose_service)))
+        table.add_row(
+            item.id[:12],
+            item.name,
+            item.image,
+            item.state,
+            compose,
+            item.created_at.isoformat(),
+            ports,
+        )
+    console.print(table)
+    if not inventory:
+        console.print("No containers found.")
+
+
+@app.command()
+def logs(
+    container: Annotated[str, typer.Argument(help="Container name or ID.")],
+    follow: Annotated[
+        bool, typer.Option("--follow", "-f", help="Follow new logs; Ctrl+C to stop.")
+    ] = False,
+    tail: Annotated[
+        int, typer.Option(min=0, max=10_000, help="Historical lines to request.")
+    ] = 100,
+    config: Annotated[Path | None, typer.Option(help="Optional TOML configuration path.")] = None,
+) -> None:
+    """Read bounded history or follow live logs without changing a container."""
+
+    async def consume():
+        async with _docker_engine(config) as engine:
+            async with aclosing(engine.stream_logs(container, tail=tail, follow=follow)) as entries:
+                async for entry in entries:
+                    suffix = " [truncated]" if entry.truncated else ""
+                    console.print(
+                        Text(f"{entry.timestamp or '-'} [{entry.stream}] {entry.text}{suffix}")
+                    )
+
+    _run_docker(consume)

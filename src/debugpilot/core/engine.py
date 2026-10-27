@@ -1,12 +1,13 @@
 import asyncio
 from collections.abc import Callable, Coroutine
+from contextlib import aclosing
 from enum import StrEnum
 from typing import Any, Self
 
 from debugpilot.core.events import Event, EventBus
 from debugpilot.core.exceptions import LifecycleError
-from debugpilot.core.models import DiagnosticCheck
-from debugpilot.core.protocols import DiagnosticsProvider
+from debugpilot.core.models import ContainerInfo, DiagnosticCheck
+from debugpilot.core.protocols import DiagnosticsProvider, DockerProvider
 from debugpilot.storage.config import Settings
 
 
@@ -24,11 +25,17 @@ class DebugPilotEngine:
     coroutines on rejected operations. A closed engine cannot be restarted.
     """
 
-    def __init__(self, settings: Settings, diagnostics: DiagnosticsProvider | None = None):
+    def __init__(
+        self,
+        settings: Settings,
+        diagnostics: DiagnosticsProvider | None = None,
+        docker: DockerProvider | None = None,
+    ):
         self.settings = settings
         self.events = EventBus(settings.event_queue_size)
         self.state = EngineState.NEW
         self._diagnostics = diagnostics
+        self._docker = docker
         self._tasks: set[asyncio.Task[Any]] = set()
         self._closing: asyncio.Task[None] | None = None
 
@@ -54,6 +61,46 @@ class DebugPilotEngine:
         if self._diagnostics is None:
             raise LifecycleError("No diagnostics provider has been configured.")
         return await self.spawn(self._diagnostics.inspect)
+
+    async def list_containers(self) -> list[ContainerInfo]:
+        if self._docker is None:
+            raise LifecycleError("No Docker provider has been configured.")
+        return await self.spawn(self._docker.list_containers)
+
+    async def stream_logs(self, container: str, *, tail: int = 100, follow: bool = False):
+        if self._docker is None:
+            raise LifecycleError("No Docker provider has been configured.")
+        queue: asyncio.Queue = asyncio.Queue(maxsize=128)
+        end = object()
+
+        async def produce():
+            try:
+                try:
+                    async with aclosing(
+                        self._docker.stream_logs(container, tail=tail, follow=follow)
+                    ) as source:
+                        async for entry in source:
+                            await queue.put(entry)
+                except Exception as error:
+                    await queue.put(error)
+                await queue.put(end)
+            finally:
+                # Normal EOF preserves every record. Only cancellation may discard
+                # one queued record to wake a consumer during engine shutdown.
+                if asyncio.current_task().cancelling():
+                    if queue.full():
+                        queue.get_nowait()
+                    queue.put_nowait(end)
+
+        task = self.spawn(produce)
+        try:
+            while (entry := await queue.get()) is not end:
+                if isinstance(entry, Exception):
+                    raise entry
+                yield entry
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     async def _drain(self) -> None:
         try:
