@@ -1,5 +1,5 @@
-# DebugPilot configuration and lifecycle core
+# DebugPilot local diagnostics
 
-Install with `uv sync`. The headless library provides strict TOML settings, bounded events and owned-task cleanup. CLI and Docker workers are not included yet; dependency locking follows in its own unit.
+Install with `uv sync`; run `uv run debugpilot version`, `uv run debugpilot doctor` and `uv run pytest`. CLI defaults to help; no TUI is implemented yet.
 
-Run `uv run pytest`. Core usage: import `Settings` from `debugpilot.storage.config` and `DebugPilotEngine` from `debugpilot.core.engine`; enter the engine with `async with`.
+Doctor uses a local-only isolated SDK worker with bounded output and cleanup. It exits0 for successful checks,1 for unavailable Docker and2 for invalid configuration. Container discovery/logs and debugging arrive later. Dependency locking is a subsequent reproducibility unit.

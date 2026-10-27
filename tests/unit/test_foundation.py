@@ -1,11 +1,21 @@
 import asyncio
 
 import pytest
+from typer.testing import CliRunner
 
+from debugpilot.cli import app
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.events import Event, EventBus
 from debugpilot.core.exceptions import ConfigurationError, LifecycleError
 from debugpilot.storage.config import Settings, load_settings
+
+
+def test_version_and_help():
+    runner = CliRunner()
+    result = runner.invoke(app, ["version"])
+    assert result.exit_code == 0
+    assert "0.1.0" in result.output
+    assert runner.invoke(app, ["--help"]).exit_code == 0
 
 
 def test_config_missing_is_default(tmp_path):
@@ -30,6 +40,9 @@ def test_config_errors_do_not_echo_input_secrets(tmp_path):
     with pytest.raises(ConfigurationError) as error:
         load_settings(path)
     assert "secret-value" not in str(error.value)
+    result = CliRunner().invoke(app, ["doctor", "--config", str(path)])
+    assert result.exit_code == 2
+    assert "secret-value" not in result.output
 
 
 async def test_events_are_bounded_and_slow_subscriber_does_not_block():
