@@ -11,7 +11,7 @@ and controlled reconnect/cancellation. The TUI, DAP and FastAPI example remain p
 No connection is simulated in the application.
 
 ```console
-uv sync
+uv sync --locked
 uv run debugpilot version
 uv run debugpilot doctor
 uv run debugpilot containers
@@ -25,7 +25,7 @@ uv run ruff format --check .
 
 ```powershell
 $uv = 'C:\Users\Usuario\Documents\Development\motorsonido\.tools\bin\uv.exe'
-& $uv sync
+& $uv sync --locked
 & $uv run debugpilot doctor
 ```
 
