@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import DockerError
 from debugpilot.docker.diagnostics import DockerDiagnostics, default_endpoint
 from debugpilot.docker.service import DockerService
@@ -88,13 +89,14 @@ async def test_real_follow_channels_and_cancel_cleanup(tmp_path):
     await require_docker()
     async with log_fixture(tmp_path) as container:
         entries = []
-        service = DockerService(Settings())
-        async with aclosing(service.stream_logs(container, tail=100, follow=True)) as source:
-            async with asyncio.timeout(15):
-                async for entry in source:
-                    entries.append(entry)
-                    if entry.text == "INFO debugpilot-later":
-                        break
+        async with DebugPilotEngine(Settings(), docker=DockerService(Settings())) as engine:
+            async with aclosing(engine.stream_logs(container, tail=100, follow=True)) as source:
+                async with asyncio.timeout(15):
+                    async for entry in source:
+                        entries.append(entry)
+                        if entry.text == "INFO debugpilot-later":
+                            break
+            assert not engine._tasks or all(task.done() for task in engine._tasks)
         assert [entry.text for entry in entries if entry.stream == "stdout"] == [
             "INFO debugpilot-start",
             "INFO debugpilot-later",
