@@ -53,6 +53,8 @@ class Docker:
 
 def select_key(app, key):
     table = app.query_one("#containers", DataTable)
+    # Enter the table like a user; moving an unfocused cursor is not selection.
+    table.focus()
     table.move_cursor(
         row=next(index for index, row in enumerate(table.ordered_rows) if row.key.value == key)
     )
