@@ -89,3 +89,34 @@ async def test_worker_error_is_observed_without_leaking_exception_text():
             event = await asyncio.wait_for(subscription.get(), timeout=2)
             assert event.kind == "task_failed"
             assert "secret-token" not in event.message
+
+
+async def test_repeated_caller_cancellation_waits_for_async_cleanup():
+    cleanup_started = asyncio.Event()
+    allow_cleanup = asyncio.Event()
+    cleanup_finished = asyncio.Event()
+
+    async def worker():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleanup_started.set()
+            await allow_cleanup.wait()
+            cleanup_finished.set()
+
+    engine = DebugPilotEngine(Settings())
+    await engine.start()
+    engine.spawn(worker)
+    await asyncio.sleep(0)
+    closing = asyncio.create_task(engine.close())
+    await asyncio.wait_for(cleanup_started.wait(), timeout=2)
+    closing.cancel()
+    await asyncio.sleep(0)
+    closing.cancel()
+    await asyncio.sleep(0)
+    allow_cleanup.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(closing, timeout=2)
+    assert cleanup_finished.is_set()
+    assert engine.state == "closed"
+    await engine.close()

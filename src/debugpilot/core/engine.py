@@ -117,11 +117,16 @@ class DebugPilotEngine:
         if self._closing is None:
             self.state = EngineState.CLOSING
             self._closing = asyncio.create_task(self._drain())
-        try:
-            await asyncio.shield(self._closing)
-        except asyncio.CancelledError:
-            await self._closing
-            raise
+        cancelled = False
+        # Caller cancellation must never reach the shared cleanup task.
+        while not self._closing.done():
+            try:
+                await asyncio.shield(self._closing)
+            except asyncio.CancelledError:
+                cancelled = True
+        self._closing.result()
+        if cancelled:
+            raise asyncio.CancelledError
 
     async def __aenter__(self) -> Self:
         await self.start()
