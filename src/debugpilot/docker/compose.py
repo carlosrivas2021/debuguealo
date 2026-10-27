@@ -6,7 +6,9 @@ import math
 import os
 import re
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -155,6 +157,8 @@ class ComposeService:
                     # Shield creation so a cancellation cannot lose a newly-created child handle.
                     launch = asyncio.create_task(
                         asyncio.create_subprocess_exec(
+                            sys.executable,
+                            str(Path(__file__).with_name("_compose_worker.py")),
                             *plan._arguments(directory),
                             cwd=plan.project.workspace,
                             env=environment,
@@ -162,6 +166,7 @@ class ComposeService:
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.STDOUT,
                             **({"creationflags": 0x08000000} if os.name == "nt" else {}),
+                            **({"start_new_session": True} if os.name != "nt" else {}),
                         )
                     )
                     try:
@@ -206,9 +211,16 @@ class ComposeService:
 
     @staticmethod
     async def _stop(process) -> None:
-        if process.returncode is None:
+        if os.name != "nt" and getattr(process, "pid", None) is not None:
+            # The helper starts a fresh session. Its entire group is ours,
+            # including plugin descendants after the direct helper has exited.
             try:
-                process.kill()
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        elif process.returncode is None:
+            try:
+                process.kill()  # Windows helper owns a kill-on-close Job Object.
             except ProcessLookupError:
                 pass
         # asyncio's process wait can hang on a full, paused stdout pipe even

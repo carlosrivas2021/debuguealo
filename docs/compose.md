@@ -47,5 +47,10 @@ and [Compose up](https://docs.docker.com/reference/cli/docker/compose/up/).
   to 256 KiB, is not persisted by this service, and may contain build/application
   secrets. Review before copying or sharing it.
 - Nonzero exit codes are preserved. Timeout (10 minutes by default) or cancellation
-  stops/reaps the local CLI, **not a transactional rollback**: Docker daemon builds
+  stops/reaps the owned local CLI/plugin process tree, **not a transactional rollback**:
+  Docker daemon builds
   or partially changed containers may remain. Inspect the project before retrying.
+- On Windows, a helper establishes a kill-on-close Job Object before starting Docker;
+  on POSIX the helper runs in a new session/process group. If Windows cannot establish
+  containment, it fails before launching Docker. This prevents descendant-held stdout
+  from defeating cancellation; it is not a sandbox for trusted project code.

@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -77,8 +78,9 @@ async def test_ordered_files_actions_scope_and_explicit_local_target(
     plan = service.preview(project, action, target)
     result = await service.run(plan, confirmed=True)
     argv = captured["argv"]
-    assert argv[0] == "/tools/docker" and argv[1] == "--host"
-    assert argv[2] == (service.settings.docker_endpoint or compose.default_endpoint())
+    assert argv[0] == sys.executable and argv[1].endswith("_compose_worker.py")
+    assert argv[2] == "/tools/docker" and argv[3] == "--host"
+    assert argv[4] == (service.settings.docker_endpoint or compose.default_endpoint())
     assert argv.index(str(project.files[0])) < argv.index(str(project.files[1]))
     assert argv[argv.index("--project-name") + 1] == "demo"
     if action == "restart":
@@ -243,3 +245,43 @@ async def test_cancellation_during_launch_drains_a_real_childs_full_stdout(
     with pytest.raises(asyncio.CancelledError):
         await task
     assert done, "Cancellation cleanup hung until the full stdout pipe was drained"
+
+
+async def test_timeout_terminates_plugin_descendants_inheriting_stdout(
+    project, service, monkeypatch
+):
+    started = project.workspace / "started"
+    survivor = project.workspace / "survivor"
+    descendant = (
+        "import time,pathlib; time.sleep(1); "
+        f"pathlib.Path({str(survivor)!r}).write_text('still running'); time.sleep(30)"
+    )
+    launcher = (
+        "import subprocess,sys,time,pathlib; "
+        f"subprocess.Popen([sys.executable,'-c',{descendant!r}]); "
+        f"pathlib.Path({str(started)!r}).write_text('launched'); time.sleep(30)"
+    )
+    # Keep the actual production helper and its process-tree containment, replacing
+    # only the trusted executable command. No Docker is invoked.
+    monkeypatch.setattr(
+        compose.ComposePlan, "_arguments", lambda _self, _config: (sys.executable, "-c", launcher)
+    )
+    service.timeout_seconds = 0.5
+    start = time.monotonic()
+    with pytest.raises(ComposeError, match="timed out"):
+        await service.run(service.preview(project, "restart"), confirmed=True)
+    elapsed = time.monotonic() - start
+    assert started.exists(), "Probe did not reach descendant creation"
+    assert elapsed < 1.2, "Inherited stdout delayed timeout delivery"
+    await asyncio.sleep(1.1)
+    assert not survivor.exists(), "A plugin descendant survived cleanup"
+
+
+async def test_isolation_helper_preserves_real_exit_status(project, service, monkeypatch):
+    monkeypatch.setattr(
+        compose.ComposePlan,
+        "_arguments",
+        lambda _self, _config: (sys.executable, "-c", "print('real');exit(7)"),
+    )
+    result = await service.run(service.preview(project, "restart"), confirmed=True)
+    assert result.exit_code == 7 and result.output.strip() == "real"
