@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "debugpilot"
+version = "0.1.0"
+description = "Local-first Docker debugging, with a UI-independent Python engine."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "docker>=7.1,<8",
+  "platformdirs>=4.3,<5",
+  "pydantic>=2.10,<3",
+  "rich>=13.9,<15",
+  "textual>=1,<7",
+  "typer>=0.15,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.9,<1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: requires a real local external dependency"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# Preserve the user's verbatim specification, including Python code fences.
+extend-exclude = ["odd"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
