@@ -7,6 +7,12 @@ No daemon connection is simulated.
 
 ## Keyboard workflow
 
+The default inventory shows active containers (`running`, `paused`, `restarting`).
+Enable **Show all** to reveal a separate **STOPPED / INACTIVE** area, still grouped
+by Compose project. Hiding that area closes any hidden log selection. Project actions
+apply to the entire Compose project, including hidden/stopped services, not just
+the currently visible rows; always review the confirmation scope.
+
 1. Use Up/Down in the grouped inventory to select a Compose project header or one
    of its indented containers. Containers without Compose metadata appear under
    **Standalone containers**.

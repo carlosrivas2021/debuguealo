@@ -1011,6 +1011,13 @@ User request (verbatim):
 
 Lowercase r opens the restart preview/confirmation for the selected Compose service or project group. Shift+R (uppercase R) opens rebuild-and-recreate for that same target. Existing explicit confirmation and trusted workspace/files remain required; typing in input fields must not execute an operation. Move the old log-retry shortcut from R to Ctrl+R, including help/status messages. Standalone containers are not silently treated as Compose services.
 
+### S22 — Active-only inventory with a separate stopped area
+
+User request (verbatim):
+> Ademas veo contenedores que estan apagados quiero que por defecto se vean solo los encendidos, y si activo ver todos, salgan como en un area diferente
+
+Default inventory shows active containers only (running, paused, restarting). An opt-in Show all toggle reveals inactive/stopped containers in a separate labeled inventory area, still grouped by Compose project. Selection, confirmation scope and log-stream cleanup must remain correct as containers change state or the area is hidden. This is presentation filtering, never a Docker stop/start or discovery change.
+
 ## Tasks
 - T1 | S2-S5, S12-S15 | inline, no writer trigger | foundation: verified; default TUI deferred to T3 | commits 25283394dd8f12867242be5dc601313df22f53a7, df5c421b2c3b2e1ec9a760ab6e9494b718bb6aaf
 - T2 | S6, S14 | inline, no writer trigger | Docker: independently verified | commits e11a94df522995f717b5ed40bbb9f524e7f1d600, 697af07b033801dd1cd7f79d0a95cb02aabb9d24, 6ee3eb330cd58538582118ededd084139dc7fba4; native review pending
@@ -1024,6 +1031,8 @@ Lowercase r opens the restart preview/confirmation for the selected Compose serv
 - T9 | S7, S19-S21 | delegated parallel grouped TUI/actions unit (disjoint UI/tests/docs) | in progress; baseline24b561b
 
 - T10 | S19-S20 | inline discovered integration fix | verified locally: preserve Windows system plugin locations, RED unknown-compose/missingenv then GREEN; commit pending
+
+- T11 | S7, S20-S22 | inline: one contained UI filter, no writer trigger | in progress; independent targeted recheck after live backend proof
 
 ## Log
 L1 — Original user request (verbatim):
@@ -2048,3 +2057,9 @@ L57 — T9 scope updated before shortcut implementation; grouped-dashboard write
 
 L58 — Writers returned within declared surfaces. T8 lab6 deterministic tests GREEN after6 RED failures; T9 grouping3 RED and shortcuts5 RED then19 focused UI tests GREEN. Parent integrated88 tests passed28.05s, zero skips; Ruff check/format clean45 files, diff whitespace clean. Parent corrected two test assumptions: environment keys case-normalize onWindows; group logstatus must be awaited after async stream cleanup. Docker Compose config--formatjson validated all3projects/6services/sharedexternalnetwork/loopbackonlyGateway.
 L59 — Actual isolated Compose preflight exposed a pre-existing executor integration issue: stripping ProgramFiles/ProgramData prevented Docker from discovering installed systemplugins (unknowncommand). Preserving only these non-credential systempaths made Compose2.40.0 visible; targeted regression RED before fix, full88 suite GREEN after. No ambientcredentials orDockercontext restored. Python3.12-alpine baseimage absent; any livebuild/download must request explicitnativepermission. No newsource push authorized.
+
+L60 — User inventory correction (verbatim): Ademas veo contenedores que estan apagados quiero que por defecto se vean solo los encendidos, y si activo ver todos, salgan como en un area diferente
+L61 — Preserve full engine inventory for metadata/scope, filter only presentation. Defaultactive includesrunning/paused/restarting; stopped/created/dead rows belong to optionaldistinctarea. Existing independent verifier notified: continue immutable4b backend/live proof, then targetedS22 recheck against new UI commit, no livecleanup interruption.
+
+L62 — Independent immutable4b verification:85 unit tests PASS,12 CLI differentials unchanged, rejection/hash/no-spawn probesPASS, S21PASS. S20B1 reproduced live: API andworker built/exported the same image tag concurrently; Catalog succeeded, Orders failed image-already-exists. Native-approved publicpython3.12-alpine pull succeeded; verifier cleaned allcreatedcontainers/network, cachedimages retained. One bounded correction changes API/worker to distinctper-service image tags in all3projects;3newstructural regressions observedRED thenGREEN,9fixture testsPASS. Realchain/actionisolation proof mustnowresume asB1targetedrecheck.
+L63 — S22 implementedinline: defaultactiveonly, opt-inShowall reveals distinctSTOPPED/INACTIVEtable; bothkeepprojectgrouping withunique rowidentity, stable selectionacrossstatechanges, hiddenstreamcleanup andprojectscopewarningincludinghiddenservices.3newPilot testsREDthenGREEN;8new/existingUItestsGREEN;12combinedfixture/filtertestsGREEN. NativeT8/T9/T10/T11reviewnotapproved; sourcechangesnotpublished.
