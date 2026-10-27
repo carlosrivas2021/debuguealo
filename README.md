@@ -21,6 +21,10 @@ press `r` to request restart or `Shift+R` to request rebuild/recreate; both requ
 preview and confirmation. `Ctrl+R` retries logs. Try the
 [three-project network laboratory](docs/multi-project.md) with isolated demo services.
 
+Use **Open Compose** / **Ctrl+N** to browse and start a project from its Compose file.
+The default inventory shows active containers; **Show all** reveals stopped containers
+in a separate section. See [file-based startup](docs/starting-projects.md).
+
 ```console
 uv sync --locked
 uv run debugpilot

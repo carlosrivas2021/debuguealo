@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import json
 import math
 import os
 import re
@@ -88,7 +89,10 @@ class ComposePlan:
         if self.action == "restart":
             arguments.append("restart")
         else:
-            arguments.extend(("up", "-d", "--force-recreate", "--pull", "never"))
+            arguments.extend(("up", "-d"))
+            if self.action != "start":
+                arguments.append("--force-recreate")
+            arguments.extend(("--pull", "never"))
             if self.action == "rebuild":
                 arguments.append("--build")
         if self.service is not None:
@@ -119,8 +123,8 @@ class ComposeService:
             raise ComposeError(
                 "Docker CLI executable is unavailable. Install Docker with Compose v2."
             )
-        if action not in {"restart", "recreate", "rebuild"}:
-            raise ComposeError("Choose restart, recreate or rebuild.")
+        if action not in {"start", "restart", "recreate", "rebuild"}:
+            raise ComposeError("Choose start, restart, recreate or rebuild.")
         if service is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", service):
             raise ComposeError("Choose a valid Compose service name, not a container ID or option.")
         current = ComposeProject.create(project.workspace, project.files, project.project_name)
@@ -139,6 +143,39 @@ class ComposeService:
             raise ComposeError("Explicit confirmation is required before running Compose.")
         if self.preview(plan.project, plan.action, plan.service) != plan:
             raise ComposeError("Compose target changed; review a new preview before confirming.")
+        return await self._run_process(plan.project, plan._arguments)
+
+    async def inspect_project(self, workspace: Path, files: tuple[Path, ...]) -> ComposeProject:
+        """Resolve Compose's own name without overriding it or exposing configuration."""
+        project = ComposeProject.create(workspace, files, "inspection")
+        # Reuse availability/endpoint checks without executing a mutating operation.
+        plan = self.preview(project, "start")
+
+        def arguments(config):
+            args = list(plan._arguments(config))
+            index = args.index("--project-name")
+            del args[index : index + 2]
+            del args[args.index("up") :]
+            return (*args, "config", "--format", "json")
+
+        result = await self._run_process(project, arguments)
+        try:
+            if result.exit_code or len(result.output.encode()) > MAX_OUTPUT_BYTES:
+                raise ValueError
+            name = json.loads(result.output)["name"]
+            if not isinstance(name, str):
+                raise ValueError
+            resolved = ComposeProject.create(workspace, files, name)
+            if resolved.fingerprints != project.fingerprints:
+                raise ValueError
+            return resolved
+        except (ValueError, KeyError, TypeError, ComposeError) as error:
+            raise ComposeError(
+                "Cannot inspect Compose configuration. Check trusted YAML, interpolation and CLI."
+            ) from error
+
+    async def _run_process(self, project: ComposeProject, arguments) -> ComposeResult:
+        """One isolated, bounded, cancellation-safe subprocess path for config and execution."""
         if not math.isfinite(self.timeout_seconds) or not 0 < self.timeout_seconds <= 3600:
             raise ComposeError("Compose timeout must be between 0 and 3600 seconds.")
         process = None
@@ -160,8 +197,8 @@ class ComposeService:
                         asyncio.create_subprocess_exec(
                             sys.executable,
                             str(Path(__file__).with_name("_compose_worker.py")),
-                            *plan._arguments(directory),
-                            cwd=plan.project.workspace,
+                            *arguments(directory),
+                            cwd=project.workspace,
                             env=environment,
                             stdin=asyncio.subprocess.DEVNULL,
                             stdout=asyncio.subprocess.PIPE,

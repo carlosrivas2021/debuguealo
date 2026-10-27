@@ -5,6 +5,11 @@ Use `uv run debugpilot tui --config path/to/config.toml` for explicit configurat
 Docker errors appear in the dashboard; inventory refreshes automatically every two seconds.
 No daemon connection is simulated.
 
+Use **Open Compose** (or **Ctrl+N**) to browse for a local Compose file and prepare
+its startup, even when no containers exist. Browse does not execute Docker; Preview
+resolves the declared project name and Confirm starts it without forced recreation.
+See [starting from a Compose file](starting-projects.md).
+
 ## Keyboard workflow
 
 The default inventory shows active containers (`running`, `paused`, `restarting`).
@@ -12,6 +17,9 @@ Enable **Show all** to reveal a separate **STOPPED / INACTIVE** area, still grou
 by Compose project. Hiding that area closes any hidden log selection. Project actions
 apply to the entire Compose project, including hidden/stopped services, not just
 the currently visible rows; always review the confirmation scope.
+Inventory columns adapt to the sidebar width with ellipsis for long names instead
+of horizontal scrolling. Full identities remain available in metadata, tooltips and
+the confirmation dialog; long log entries can still scroll horizontally.
 
 1. Use Up/Down in the grouped inventory to select a Compose project header or one
    of its indented containers. Containers without Compose metadata appear under

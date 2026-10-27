@@ -11,6 +11,7 @@ from textual.widgets import Button, Input, Label, RichLog, Select, Static, TextA
 
 from debugpilot.core.models import ContainerInfo
 from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject, ComposeService
+from debugpilot.tui.file_picker import ComposeFilePicker
 
 
 class ComposeDialog(ModalScreen):
@@ -40,14 +41,17 @@ class ComposeDialog(ModalScreen):
         *,
         selected_project: str | None = None,
         initial_action: str = "recreate",
+        browse_on_mount: bool = False,
     ):
         super().__init__()
         self.service = service
         self.selected = selected
         self.selected_project = selected.compose_project if selected else selected_project
-        if initial_action not in {"restart", "recreate", "rebuild"}:
+        if initial_action not in {"start", "restart", "recreate", "rebuild"}:
             raise ValueError("Unknown initial Compose action.")
         self.initial_action = initial_action
+        self.browse_on_mount = browse_on_mount
+        self._resolve_identity = initial_action == "start"
         self.plan: ComposePlan | None = None
         self._revision = 0
         self._operation: asyncio.Task | None = None
@@ -61,6 +65,7 @@ class ComposeDialog(ModalScreen):
                 "Recreation replaces container writable layers; running services are interrupted.",
                 markup=False,
             )
+            yield Button("Browse Compose file", id="compose-browse")
             yield Label("Workspace directory (absolute path)")
             yield Input(placeholder="Path to your trusted project", id="compose-workspace")
             yield Label("Compose project name")
@@ -73,6 +78,7 @@ class ComposeDialog(ModalScreen):
             yield TextArea("compose.yaml", id="compose-files")
             yield Select(
                 [
+                    ("Start project - no forced recreation", "start"),
                     ("Recreate · reload environment", "recreate"),
                     ("Rebuild and recreate · --build", "rebuild"),
                     ("Restart · existing environment only", "restart"),
@@ -112,6 +118,28 @@ class ComposeDialog(ModalScreen):
                 highlight=False,
             )
 
+    def on_mount(self) -> None:
+        if self.browse_on_mount:
+            self.call_after_refresh(self.browse)
+
+    @on(Button.Pressed, "#compose-browse")
+    def browse(self) -> None:
+        if self._operation is not None and not self._operation.done():
+            return
+        self.app.push_screen(ComposeFilePicker(), self._file_chosen)
+
+    def _file_chosen(self, file: Path | None) -> None:
+        if file is None:
+            return
+        self._resolve_identity = True
+        self.query_one("#compose-workspace", Input).value = str(file.parent)
+        self.query_one(TextArea).text = str(file)
+        self.invalidate()
+        self.query_one("#compose-status", Static).update(
+            "Trusted file selected. Preview inspects Compose configuration read-only; "
+            "Confirm is still required to start or change containers."
+        )
+
     @on(Input.Changed)
     @on(Select.Changed)
     @on(TextArea.Changed)
@@ -122,7 +150,11 @@ class ComposeDialog(ModalScreen):
         self.query_one("#compose-command", Static).update("")
 
     @on(Button.Pressed, "#compose-preview")
-    async def preview(self) -> None:
+    def preview(self) -> None:
+        if self._operation is None or self._operation.done():
+            self._operation = asyncio.create_task(self._preview())
+
+    async def _preview(self) -> None:
         self.plan = None
         self.query_one("#compose-confirm", Button).disabled = True
         revision = self._revision
@@ -138,6 +170,17 @@ class ComposeDialog(ModalScreen):
         try:
             if not workspace.is_absolute():
                 raise ComposeError("Choose an absolute workspace directory.")
+            if self._resolve_identity or action == "start":
+                project = await self.service.inspect_project(workspace, files)
+                if revision != self._revision or self._leaving:
+                    return
+                project_name = project.project_name
+                with self.prevent(Input.Changed):
+                    self.query_one("#compose-project", Input).value = project_name
+            else:
+                project = await asyncio.to_thread(
+                    ComposeProject.create, workspace, files, project_name
+                )
             if self.selected_project is not None and project_name != self.selected_project:
                 raise ComposeError("Selected group belongs to a different Compose project.")
             target = None
@@ -147,7 +190,6 @@ class ComposeDialog(ModalScreen):
                 if project_name != self.selected.compose_project:
                     raise ComposeError("Selected service belongs to a different Compose project.")
                 target = self.selected.compose_service
-            project = await asyncio.to_thread(ComposeProject.create, workspace, files, project_name)
             plan = await asyncio.to_thread(self.service.preview, project, action, target)
         except ComposeError as error:
             self.query_one("#compose-status", Static).update(str(error))
@@ -165,7 +207,7 @@ class ComposeDialog(ModalScreen):
         self.query_one("#compose-confirm", Button).disabled = False
 
     def _set_busy(self, busy: bool) -> None:
-        for widget in self.query("Input, Select, TextArea, #compose-preview"):
+        for widget in self.query("Input, Select, TextArea, #compose-preview, #compose-browse"):
             widget.disabled = busy
         self.query_one("#compose-confirm", Button).disabled = True
 

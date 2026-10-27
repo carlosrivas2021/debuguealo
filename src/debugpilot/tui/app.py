@@ -8,7 +8,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Checkbox, DataTable, Footer, Input, Static
+from textual.widgets import Button, Checkbox, DataTable, Footer, Input, Static
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import DebugPilotError
@@ -31,6 +31,7 @@ class DebugPilotApp(App):
         Binding("r", "restart_selected", "Restart"),
         Binding("R,shift+r", "rebuild_selected", "Build"),
         Binding("ctrl+o", "compose", "Compose"),
+        Binding("ctrl+n", "start_project", "Open Compose"),
         *[
             Binding(key, "debugger_unavailable", show=False)
             for key in ("f5", "f9", "f10", "f11", "shift+f11")
@@ -57,7 +58,9 @@ class DebugPilotApp(App):
         self._stream_task: asyncio.Task | None = None
 
     def compose(self) -> ComposeResult:
-        yield Static("DebugPilot  ·  Docker: connecting…", id="docker-state", markup=False)
+        with Horizontal(id="topbar"):
+            yield Static("DebugPilot  ·  Docker: connecting…", id="docker-state", markup=False)
+            yield Button("Open Compose", id="open-compose")
         with Horizontal(id="dashboard"):
             with Vertical(id="sidebar"):
                 yield Checkbox("Show all", id="show-all")
@@ -341,6 +344,20 @@ class DebugPilotApp(App):
     def action_compose(self) -> None:
         self._open_compose()
 
+    @on(Button.Pressed, "#open-compose")
+    def action_start_project(self) -> None:
+        from debugpilot.docker.compose import ComposeService
+        from debugpilot.tui.compose_dialog import ComposeDialog
+
+        self.push_screen(
+            ComposeDialog(
+                ComposeService(self.engine.settings),
+                None,
+                initial_action="start",
+                browse_on_mount=True,
+            )
+        )
+
     def action_restart_selected(self) -> None:
         self._open_compose("restart", contextual=True)
 
@@ -384,6 +401,7 @@ class DebugPilotApp(App):
             "focus_logs",
             "restart_selected",
             "rebuild_selected",
+            "start_project",
         } and isinstance(self.screen, ModalScreen):
             return False
         if action in {"quit", "retry_logs", "restart_selected", "rebuild_selected"} and isinstance(

@@ -1,4 +1,7 @@
 Screen { background: #0b1120; color: #e2e8f0; }
+#topbar { height: 1; }
+#open-compose { width: 16; min-width: 16; height: 1; border: none; padding: 0; }
+#docker-state { width: 1fr; }
 #docker-state { height: 1; background: #162338; color: #7dd3fc; padding: 0 1; }
 #dashboard { height: 1fr; }
 #sidebar { width: 34; border: round #334155; border-title-color: #7dd3fc; }

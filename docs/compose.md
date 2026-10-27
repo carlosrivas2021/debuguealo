@@ -1,8 +1,12 @@
 # Explicit local Compose actions
 
-Compose actions can restart, recreate, or rebuild either one selected service or an
+Compose actions can start, restart, recreate, or rebuild either one selected service or an
 entire named project. They interrupt running applications. They are never run by
 discovery, log streaming, or tests against the user's containers.
+
+Use [the terminal file browser](starting-projects.md) to start a project without
+existing containers, or configure an existing selection below. Browsing is local;
+Preview resolves the selected file identity with read-only Compose config inspection.
 
 ## Configure and confirm
 
@@ -13,6 +17,7 @@ discovery, log streaming, or tests against the user's containers.
 
 | Action | Result |
 | --- | --- |
+| Start project | `up -d --pull never`; no forced recreation or forced rebuild. |
 | Restart | Restart existing containers with their existing environment configuration. |
 | Recreate | `up -d --force-recreate --pull never`; apply changed Compose/environment configuration. |
 | Rebuild and recreate | Add `--build` before recreating containers. |
