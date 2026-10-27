@@ -20,11 +20,40 @@ from debugpilot.docker.service import DockerService
 from debugpilot.storage.config import load_settings
 
 app = typer.Typer(
-    no_args_is_help=True,
+    no_args_is_help=False,
+    invoke_without_command=True,
     help="Local Docker debugging toolkit. Inspect containers, logs, and environment health.",
     pretty_exceptions_enable=False,
 )
 console = Console(markup=False)
+
+
+@app.callback()
+def main(ctx: typer.Context) -> None:
+    """Open the terminal dashboard when no command is supplied."""
+    if ctx.invoked_subcommand is None:
+        _launch_tui()
+
+
+def _launch_tui(config: Path | None = None) -> None:
+    # Keep non-interactive CLI commands and the core independent of Textual.
+    from debugpilot.tui.app import DebugPilotApp
+
+    try:
+        DebugPilotApp(_docker_engine(config)).run()
+    except ConfigurationError as error:
+        console.print(f"Configuration error: {error}", style="red")
+        raise typer.Exit(2) from None
+    except KeyboardInterrupt:
+        raise typer.Exit(130) from None
+
+
+@app.command()
+def tui(
+    config: Annotated[Path | None, typer.Option(help="Optional TOML configuration path.")] = None,
+) -> None:
+    """Open the keyboard-first container and live log dashboard."""
+    _launch_tui(config)
 
 
 @app.command()
