@@ -49,7 +49,8 @@ docker compose -f examples/multi-project/gateway/compose.yaml up --build -d
 ```
 
 The `name:` in each Compose file fixes project identity regardless of the shell's current
-directory. Each API and worker shares only its own project's image. API health checks
+directory. API and worker build their project's context into distinct image tags,
+avoiding concurrent exports to the same tag. API health checks
 check `/health`; a healthy Gateway API does not imply its upstream services are ready.
 
 From the repository root, request the full chain:
