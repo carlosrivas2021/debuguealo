@@ -25,6 +25,13 @@ def container(identity, state="running"):
     )
 
 
+async def wait_until(pilot, condition):
+    # Await observable state rather than racing the inventory timer under load.
+    async with asyncio.timeout(3):
+        while not condition():
+            await pilot.pause(0.02)
+
+
 class Docker:
     def __init__(self):
         self.inventory = [container("api"), container("worker")]
@@ -59,14 +66,14 @@ async def test_dashboard_keyboard_switching_closes_old_stream_and_exit():
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await pilot.pause()
+        await wait_until(pilot, lambda: docker.opened == ["api"])
         assert docker.opened == ["api"]
         docker.queues["api"].put_nowait(LogEntry(text="api entry"))
-        await pilot.pause(0.25)
+        await wait_until(pilot, lambda: bool(app.query_one(LogViewer).buffer.entries()))
         assert app.query_one(LogViewer).buffer.entries()[0].text == "api entry"
         app.query_one("#containers", DataTable).focus()
         await pilot.press("down")
-        await pilot.pause()
+        await wait_until(pilot, lambda: docker.opened == ["api", "worker"])
         assert docker.closed == ["api"] and docker.opened == ["api", "worker"]
         assert not app.query_one(LogViewer).buffer.entries()
         await pilot.press("ctrl+l")
@@ -89,20 +96,36 @@ async def test_empty_disconnect_recovery_removal_and_log_errors():
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, refresh_interval=0.05)
     async with app.run_test(size=(80, 24)) as pilot:
-        await pilot.pause()
+        await wait_until(
+            pilot,
+            lambda: "unavailable" in str(app.query_one("#docker-state", Static).render()).lower(),
+        )
         assert "unavailable" in str(app.query_one("#docker-state", Static).render()).lower()
         docker.failure = False
         docker.inventory = []
-        await pilot.pause()
+        await wait_until(
+            pilot,
+            lambda: "connected" in str(app.query_one("#docker-state", Static).render()).lower(),
+        )
         assert app.query_one("#containers", DataTable).row_count == 0
         docker.inventory = [container("api")]
-        await pilot.pause()
+        await wait_until(pilot, lambda: docker.opened == ["api"])
         assert docker.opened == ["api"]
         docker.queues["api"].put_nowait(DockerError("Unsupported logging driver."))
-        await pilot.pause()
+        await wait_until(
+            pilot,
+            lambda: (
+                "Unsupported logging driver" in str(app.query_one("#log-state", Static).render())
+            ),
+        )
         assert "Unsupported logging driver" in str(app.query_one("#log-state", Static).render())
         docker.inventory = []
-        await pilot.pause(0.15)
+        await wait_until(
+            pilot,
+            lambda: (
+                app.selected_container is None and not app.query_one(LogViewer).buffer.entries()
+            ),
+        )
         assert app.selected_container is None
         assert not app.query_one(LogViewer).buffer.entries()
         assert app.query_one("#log-entries").region.height > 0
