@@ -1,9 +1,11 @@
+import pytest
 from test_tui_grouping import Docker, item, until
 from textual.widgets import Checkbox, DataTable, Static
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
 from debugpilot.tui.app import DebugPilotApp
+from debugpilot.tui.compose_dialog import ComposeDialog
 
 
 def keys(app, selector):
@@ -67,3 +69,51 @@ async def test_state_change_moves_service_between_areas_without_losing_identity(
         assert app.selected_container.id == "api"
         assert app.selected_container.state == "exited"
         assert "container:api" not in keys(app, "#containers")
+
+
+@pytest.mark.parametrize("entry", ["click", "keyboard"])
+async def test_focusing_first_stopped_group_pins_the_action_target(entry):
+    docker = Docker()
+    docker.inventory = [item("on", "gateway", "api"), item("off", "orders", "api", "exited")]
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        assert app.selected_project == "gateway"
+        await pilot.click("#show-all")
+        table = app.query_one("#stopped-containers", DataTable)
+        if entry == "click":
+            await pilot.click("#stopped-containers", offset=(3, 1))
+        else:
+            for _ in range(8):
+                await pilot.press("tab")
+                if table.has_focus:
+                    break
+        assert table.has_focus and table.cursor_row == 0
+        await pilot.press("r")
+        assert isinstance(app.screen, ComposeDialog)
+        assert app.screen.query_one("#compose-project").value == "orders"
+        assert app.screen.query_one("#compose-scope").value == "project"
+        assert app.screen.query_one("#compose-action").value == "restart"
+
+
+@pytest.mark.parametrize("size", [(120, 40), (80, 24)])
+async def test_inventory_tables_fit_sidebar_without_horizontal_scroll(size):
+    docker = Docker()
+    project = "a-realistic-project-with-a-very-long-descriptive-name"
+    docker.inventory = [
+        item("container-with-a-long-name-api-1", project, "api"),
+        item("container-with-a-long-name-background-worker-1", project, "worker", "exited"),
+    ]
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    async with app.run_test(size=size) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        await pilot.click("#show-all")
+        await pilot.pause()
+        for selector in ("#containers", "#stopped-containers"):
+            table = app.query_one(selector, DataTable)
+            assert table.max_scroll_x == 0
+            assert table.region.width > 0 and table.region.height > 0
+        await pilot.resize_terminal(90, 28)
+        await pilot.pause()
+        assert app.query_one("#containers", DataTable).max_scroll_x == 0
+        assert app.query_one("#stopped-containers", DataTable).max_scroll_x == 0
