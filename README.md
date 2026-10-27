@@ -16,6 +16,11 @@ The dashboard also supports explicit, confirmation-gated local Compose restart,
 recreate and rebuild actions for a service or project, using ordered override files.
 Press Ctrl+O; read [Compose safety and limits](docs/compose.md) before using them.
 
+Containers are grouped by Compose project. Select a service or project header, then
+press `r` to request restart or `Shift+R` to request rebuild/recreate; both require
+preview and confirmation. `Ctrl+R` retries logs. Try the
+[three-project network laboratory](docs/multi-project.md) with isolated demo services.
+
 ```console
 uv sync --locked
 uv run debugpilot

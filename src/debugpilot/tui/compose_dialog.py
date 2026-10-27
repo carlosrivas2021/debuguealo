@@ -33,10 +33,21 @@ class ComposeDialog(ModalScreen):
     ComposeDialog RichLog { height: 6; }
     """
 
-    def __init__(self, service: ComposeService, selected: ContainerInfo | None):
+    def __init__(
+        self,
+        service: ComposeService,
+        selected: ContainerInfo | None,
+        *,
+        selected_project: str | None = None,
+        initial_action: str = "recreate",
+    ):
         super().__init__()
         self.service = service
         self.selected = selected
+        self.selected_project = selected.compose_project if selected else selected_project
+        if initial_action not in {"restart", "recreate", "rebuild"}:
+            raise ValueError("Unknown initial Compose action.")
+        self.initial_action = initial_action
         self.plan: ComposePlan | None = None
         self._revision = 0
         self._operation: asyncio.Task | None = None
@@ -54,7 +65,7 @@ class ComposeDialog(ModalScreen):
             yield Input(placeholder="Path to your trusted project", id="compose-workspace")
             yield Label("Compose project name")
             yield Input(
-                value=self.selected.compose_project or "" if self.selected else "",
+                value=self.selected_project or "",
                 placeholder="Explicit project name",
                 id="compose-project",
             )
@@ -66,11 +77,13 @@ class ComposeDialog(ModalScreen):
                     ("Rebuild and recreate · --build", "rebuild"),
                     ("Restart · existing environment only", "restart"),
                 ],
-                value="recreate",
+                value=self.initial_action,
                 allow_blank=False,
                 id="compose-action",
             )
-            selected_service = self.selected.compose_service if self.selected else None
+            selected_service = (
+                self.selected.compose_service if self.selected and self.selected_project else None
+            )
             yield Select(
                 [
                     (f"Selected service: {selected_service or 'unavailable'}", "service"),
@@ -125,6 +138,8 @@ class ComposeDialog(ModalScreen):
         try:
             if not workspace.is_absolute():
                 raise ComposeError("Choose an absolute workspace directory.")
+            if self.selected_project is not None and project_name != self.selected_project:
+                raise ComposeError("Selected group belongs to a different Compose project.")
             target = None
             if scope == "service":
                 if not self.selected or not self.selected.compose_service:

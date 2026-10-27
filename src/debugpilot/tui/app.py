@@ -12,6 +12,7 @@ from textual.widgets import DataTable, Footer, Input, Static
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import DebugPilotError
 from debugpilot.core.models import ContainerInfo
+from debugpilot.tui.container_list import ContainerRow, container_rows
 from debugpilot.tui.log_viewer import LogViewer
 
 
@@ -23,7 +24,9 @@ class DebugPilotApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+l", "focus_logs", "Logs"),
-        Binding("r", "retry_logs", "Retry logs"),
+        Binding("ctrl+r", "retry_logs", "Retry logs"),
+        Binding("r", "restart_selected", "Restart"),
+        Binding("R,shift+r", "rebuild_selected", "Build"),
         Binding("ctrl+o", "compose", "Compose"),
         *[
             Binding(key, "debugger_unavailable", show=False)
@@ -37,6 +40,9 @@ class DebugPilotApp(App):
         self.theme = "textual-dark"
         self.refresh_interval = max(0.05, refresh_interval)
         self.selected_container: ContainerInfo | None = None
+        self.selected_project: str | None = None
+        self._selection_key: str | None = None
+        self._rows: dict[str, ContainerRow] = {}
         self._inventory: dict[str, ContainerInfo] = {}
         self._inventory_loaded = False
         self._selection_changed = asyncio.Event()
@@ -63,7 +69,7 @@ class DebugPilotApp(App):
 
     async def on_mount(self) -> None:
         table = self.query_one("#containers", DataTable)
-        table.add_columns("Container", "State", "Compose")
+        table.add_columns("Project / container", "State", "Service")
         table.focus()
         await self.engine.start()
         self._ui_tasks = [
@@ -97,19 +103,35 @@ class DebugPilotApp(App):
         if self._inventory_loaded and current == self._inventory:
             return
         self._inventory_loaded = True
-        previous = self.selected_container
+        previous_key, previous_project = self._selection_key, self.selected_project
         self._inventory = current
+        rows = container_rows(inventory)
+        self._rows = {row.key: row for row in rows}
         table = self.query_one("#containers", DataTable)
         table.clear()
-        for item in inventory:
-            state = Text(item.state, style="green" if item.state == "running" else "yellow")
-            compose = "/".join(filter(None, (item.compose_project, item.compose_service))) or "—"
-            table.add_row(Text(item.name), state, Text(compose), key=item.id)
-        selected = current.get(previous.id) if previous else None
-        selected = selected or next(iter(current.values()), None)
+        for row in rows:
+            style = "green" if row.state == "running" else "yellow"
+            if row.container is None:
+                style = "bold cyan"
+            table.add_row(
+                Text(row.label, style="bold" if row.container is None else ""),
+                Text(row.state, style=style),
+                Text(row.service),
+                key=row.key,
+            )
+        selected = self._rows.get(previous_key)
+        if selected is None and previous_project is not None:
+            selected = self._rows.get(f"project:{previous_project}")
+        if selected is None and previous_key is None:
+            # Preserve initial auto-selection of a service, but never silently
+            # open an unrelated stream when an existing selection disappears.
+            selected = next((row for row in rows if row.container is not None), None)
+        selected = selected or next(iter(rows), None)
         if selected:
-            table.move_cursor(row=list(current).index(selected.id))
-        self._select(selected)
+            table.move_cursor(row=rows.index(selected))
+            self._select(selected.container, project=selected.project, row_key=selected.key)
+        else:
+            self._select(None)
 
     @on(DataTable.RowHighlighted, "#containers")
     def container_highlighted(self, event: DataTable.RowHighlighted) -> None:
@@ -119,20 +141,44 @@ class DebugPilotApp(App):
             # the row that is still under the cursor, not an obsolete selection.
             key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
             if event.row_key.value == key:
-                self._select(self._inventory.get(key))
+                row = self._rows.get(key)
+                if row is not None:
+                    self._select(row.container, project=row.project, row_key=row.key)
 
-    def _select(self, item: ContainerInfo | None, *, force: bool = False) -> None:
-        old = self.selected_container
+    def _select(
+        self,
+        item: ContainerInfo | None,
+        *,
+        project: str | None = None,
+        row_key: str | None = None,
+        force: bool = False,
+    ) -> None:
+        old = (self.selected_container, self.selected_project, self._selection_key)
         self.selected_container = item
+        self.selected_project = item.compose_project if item is not None else project
+        self._selection_key = row_key or (f"container:{item.id}" if item is not None else None)
+        empty_detail = "No containers found; waiting for Docker inventory."
+        if self.selected_project:
+            count = sum(
+                value.compose_project == self.selected_project for value in self._inventory.values()
+            )
+            empty_detail = (
+                f"Compose project: {self.selected_project}\n{count} containers\n"
+                "Select a service for logs; Ctrl+O acts on this project."
+            )
+        elif self._selection_key == "standalone:":
+            empty_detail = (
+                "Standalone containers have no Compose project. Select a container for logs."
+            )
         self.query_one("#container-info", Static).update(
             Text(
                 f"{item.image}\n{item.id[:12]} · {item.state}\n"
                 f"Compose: {item.compose_project or '—'} / {item.compose_service or '—'}"
             )
             if item
-            else "No containers found; waiting for Docker inventory."
+            else Text(empty_detail)
         )
-        if force or old != item:
+        if force or old != (item, self.selected_project, self._selection_key):
             self._generation += 1
             self._selection_changed.set()
 
@@ -155,7 +201,12 @@ class DebugPilotApp(App):
                 item, generation = self.selected_container, self._generation
                 self.query_one(LogViewer).action_clear_logs()
                 if item is None:
-                    self.query_one("#log-state", Static).update("No container selected")
+                    message = (
+                        f"Project · {self.selected_project} · select a service for logs"
+                        if self.selected_project
+                        else "No container selected"
+                    )
+                    self.query_one("#log-state", Static).update(message)
                 else:
                     self.query_one("#log-state", Static).update(f"Logs · {item.name}")
                     self._stream_task = asyncio.create_task(self._consume(item, generation))
@@ -170,11 +221,11 @@ class DebugPilotApp(App):
                 async for entry in entries:
                     if self._generation == generation and not self._closing:
                         self.query_one(LogViewer).append(entry)
-            message = f"Logs · {item.name} · stream ended (R to retry)"
+            message = f"Logs · {item.name} · stream ended (Ctrl+R to retry)"
         except DebugPilotError as error:
-            message = f"Logs · {item.name} · {error} (R to retry)"
+            message = f"Logs · {item.name} · {error} (Ctrl+R to retry)"
         except Exception:
-            message = f"Logs · {item.name} · unable to read logs (R to retry)"
+            message = f"Logs · {item.name} · unable to read logs (Ctrl+R to retry)"
         if self._generation == generation and not self._closing:
             self.query_one("#log-state", Static).update(message)
 
@@ -199,18 +250,48 @@ class DebugPilotApp(App):
         self.notify("Debugger controls arrive with DAP integration (T4–T5).")
 
     def action_compose(self) -> None:
+        self._open_compose()
+
+    def action_restart_selected(self) -> None:
+        self._open_compose("restart", contextual=True)
+
+    def action_rebuild_selected(self) -> None:
+        self._open_compose("rebuild", contextual=True)
+
+    def _open_compose(self, initial_action: str = "recreate", *, contextual: bool = False) -> None:
         from debugpilot.docker.compose import ComposeService
         from debugpilot.tui.compose_dialog import ComposeDialog
 
+        if contextual and (
+            not self.selected_project
+            or (self.selected_container is not None and not self.selected_container.compose_service)
+        ):
+            self.notify(
+                "Select a Compose project or service before restarting or rebuilding.",
+                severity="warning",
+            )
+            return
         self.push_screen(
-            ComposeDialog(ComposeService(self.engine.settings), self.selected_container)
+            ComposeDialog(
+                ComposeService(self.engine.settings),
+                self.selected_container,
+                selected_project=self.selected_project,
+                initial_action=initial_action,
+            )
         )
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        if action in {"quit", "retry_logs", "compose", "focus_logs"} and isinstance(
-            self.screen, ModalScreen
-        ):
+        if action in {
+            "quit",
+            "retry_logs",
+            "compose",
+            "focus_logs",
+            "restart_selected",
+            "rebuild_selected",
+        } and isinstance(self.screen, ModalScreen):
             return False
-        if action in {"quit", "retry_logs"} and isinstance(self.focused, Input):
+        if action in {"quit", "retry_logs", "restart_selected", "rebuild_selected"} and isinstance(
+            self.focused, Input
+        ):
             return False
         return True

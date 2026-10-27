@@ -997,6 +997,20 @@ User answer (verbatim):
 
 This explicitly extends S5's read-only application scope to user-confirmed Compose lifecycle actions, not permission to mutate the developer's current containers while implementing/testing. Support ordered Compose files, selected-service or whole-project scope, restart and rebuild/recreate. Explain that restart does not reload changed environment configuration. Test subprocess boundaries with fakes; no real build/restart/recreate against the user's environment. Files and execution target must be explicit and local; show scope and interruption consequences before confirmation. T4-T6 remain deferred.
 
+### S20 — Multi-project simulation and grouped actions
+
+User request (verbatim):
+> Necesito simular un caso necesito 3 proyectos separados, cada uno levante con docker compose sus propios servicios y que se comuniquen entre si a traves de red, entonces por proyecto deberian agruparse los servicios y deberia poder reiniciar la imagen sola o el grupo
+
+Scope: three independent Compose project directories sharing a Docker network, with an observable inter-project request chain; group discovered services by Compose project in the terminal and allow confirmed selected-service or whole-project lifecycle actions. A service/container restarts; rebuild/recreate applies an image or environment change. Existing confirmation, explicit local target, ordered-file and no-credential-reuse boundaries remain unchanged. Names and example domain are implementation assumptions: gateway, orders and catalog, each with its own API and worker. No DAP, persistence, cloud or automatic publication is added.
+
+### S21 — Contextual restart and rebuild shortcuts
+
+User request (verbatim):
+> Si toco la letra r reinicia, si pongo shift r build de donde este parado
+
+Lowercase r opens the restart preview/confirmation for the selected Compose service or project group. Shift+R (uppercase R) opens rebuild-and-recreate for that same target. Existing explicit confirmation and trusted workspace/files remain required; typing in input fields must not execute an operation. Move the old log-retry shortcut from R to Ctrl+R, including help/status messages. Standalone containers are not silently treated as Compose services.
+
 ## Tasks
 - T1 | S2-S5, S12-S15 | inline, no writer trigger | foundation: verified; default TUI deferred to T3 | commits 25283394dd8f12867242be5dc601313df22f53a7, df5c421b2c3b2e1ec9a760ab6e9494b718bb6aaf
 - T2 | S6, S14 | inline, no writer trigger | Docker: independently verified | commits e11a94df522995f717b5ed40bbb9f524e7f1d600, 697af07b033801dd1cd7f79d0a95cb02aabb9d24, 6ee3eb330cd58538582118ededd084139dc7fba4; native review pending
@@ -1005,6 +1019,11 @@ This explicitly extends S5's read-only application scope to user-confirmed Compo
 - T5 | S9-S10 | inline, no writer trigger | interactive debugging: pending
 - T6 | S11, S14-S17 | inline, no writer trigger | integration, example, docs and packaging: pending
 - T7 | S19 | delegated backend alongside inline dashboard; disjoint new module/test/doc surfaces | Compose execution/confirmation: functionally verified; backend442eea9, UI8a0fc8c, cleanup719ed2e; native review pending; no real lifecycle commands executed
+
+- T8 | S20 | delegated parallel fixtures unit (disjoint examples/tests/docs) | in progress; baseline24b561b
+- T9 | S7, S19-S21 | delegated parallel grouped TUI/actions unit (disjoint UI/tests/docs) | in progress; baseline24b561b
+
+- T10 | S19-S20 | inline discovered integration fix | verified locally: preserve Windows system plugin locations, RED unknown-compose/missingenv then GREEN; commit pending
 
 ## Log
 L1 — Original user request (verbatim):
@@ -2018,3 +2037,14 @@ L50 — T3/T7 current source checks:67 tests passed in16.53s, zero skips; real e
 
 L51 — Independent feature verification of immutable8a0fc8c: S5 PASS, scoped S7 PASS; S19 blockerB1 reproduced descendant-held stdout delaying.08s timeout to2.14s. One correction batch introduced owned helper: Windows kill-on-close Job Object before launching Docker, POSIX isolated process group. Commit719ed2e adds160/removes5 lines; backend16 tests pass including real benign Python descendants, timeout and exit7. Independent B1-only recheck PASS on immutable719ed2e: timeout.41s, cancellation.39s, normal exit.30s/exit7, all survival markers absent. Parent reran retained probe PASS (.44s/.00s/.27s). POSIX branch not executable on Windows; no claim of cross-platform runtime proof.
 L52 — Final full suite initially68 passed/1 failed due a TUI test racing a timer (not a reproduced application regression). Replaced fixed sleeps with bounded awaits of observable states; focused5 tests GREEN. Final full suite69 passed in19.64s, zero skips. Ruff check/format clean;11 baseline CLI differentials unchanged. No new independent review sweep; B1 targeted recheck remains closed. UI unit8a0fc8c is1057 additions/7 deletions; one honest slicing pass retained coherent UI behavior/tests/docs, disclose overage and recommend size:exception before publication rather than dropping proof. All commits remain local; no push, PR, merge, install, pull or actual Compose mutation. Native review remains pending; do not describe functional proof as review approval.
+
+L53 — User correction-candidate consent (verbatim): granted. Exact native START created review-faad03867384ef63 for targetsha256:2b63bcb54592fb62c721b6b96d45d88254fd13b05aed2b84501198107bc6003b (base8a0fc8c through24b561b;6files211lines). Four provider-issued captures launched concurrently in risk/resilience/readability/reliability order, all no findings. Last admitted capture approved; exact acknowledge-approved returned acknowledged/authorityburned at consumedrevision07e393b452609cc15cd07628fe8f5010c6fb8633027eeee35d7b8182090a759a. No further lifecycle action. Approval covers this correction only, not all TUI/backend/earlierDocker candidates. Functional proof remains69tests/zero skips; no source edits, realCompose operation or publication this turn. User screenshot launch error was copied PowerShell >> prompt text; parser verified ordinary ampersand invocation is valid.
+
+L54 — User scope extension (verbatim): Necesito simular un caso necesito 3 proyectos separados, cada uno levante con docker compose sus propios servicios y que se comuniquen entre si a traves de red, entonces por proyecto deberian agruparse los servicios y deberia poder reiniciar la imagen sola o el grupo
+L55 — Two independent multi-minute units run concurrently on disjoint surfaces: standalone lab fixture projects and grouped dashboard selection/action scope. Parent owns task document/git/.gitignore and one full seam suite. Forecast approximately800-1200 authored lines; existing feature-branch-chain retained; no push authorized for these new changes. Risk: item1 owned demo container recreation; item2 project/service mutation target isolation; item4 UI selection/stream cleanup; item5 fixture Docker builds/network. Deterministic behavior tests must observe RED before implementation. Existing reviewed engine/service/Compose executor remain unchanged. Live lab execution, if performed, must use explicit owned names and isolated local Docker configuration, no ambient credentials; require native permission before any image download or new containers.
+
+L56 — User shortcut correction (verbatim): Si toco la letra r reinicia, si pongo shift r build de donde este parado
+L57 — T9 scope updated before shortcut implementation; grouped-dashboard writer notified directly. r targets restart, Shift+R targets rebuild/recreate at selectedservice/group, both previewthenconfirm. Ctrl+R replaces previous logretry; inputtyping andmodalfocus guard preserved. T8 fixtureunit unchanged.
+
+L58 — Writers returned within declared surfaces. T8 lab6 deterministic tests GREEN after6 RED failures; T9 grouping3 RED and shortcuts5 RED then19 focused UI tests GREEN. Parent integrated88 tests passed28.05s, zero skips; Ruff check/format clean45 files, diff whitespace clean. Parent corrected two test assumptions: environment keys case-normalize onWindows; group logstatus must be awaited after async stream cleanup. Docker Compose config--formatjson validated all3projects/6services/sharedexternalnetwork/loopbackonlyGateway.
+L59 — Actual isolated Compose preflight exposed a pre-existing executor integration issue: stripping ProgramFiles/ProgramData prevented Docker from discovering installed systemplugins (unknowncommand). Preserving only these non-credential systempaths made Compose2.40.0 visible; targeted regression RED before fix, full88 suite GREEN after. No ambientcredentials orDockercontext restored. Python3.12-alpine baseimage absent; any livebuild/download must request explicitnativepermission. No newsource push authorized.
