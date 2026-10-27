@@ -2,7 +2,7 @@ name: dp-demo-orders
 
 services:
   api:
-    image: debugpilot-demo-orders:local
+    image: debugpilot-demo-orders-api:local
     build: .
     environment:
       APP_MARKER: ${APP_MARKER:-initial}
@@ -24,7 +24,7 @@ services:
     stop_grace_period: 3s
 
   worker:
-    image: debugpilot-demo-orders:local
+    image: debugpilot-demo-orders-worker:local
     build: .
     command: ["python", "app.py", "worker"]
     environment:

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import threading
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -9,6 +10,15 @@ from urllib.request import ProxyHandler, build_opener
 import pytest
 
 LAB = Path(__file__).parents[2] / "examples" / "multi-project"
+
+
+@pytest.mark.parametrize("name", ["gateway", "orders", "catalog"])
+def test_service_builds_export_distinct_image_tags(name):
+    # Both services build independently. Reusing a tag races concurrent exports
+    # in Docker Desktop's image store, even when their build contexts are equal.
+    content = (LAB / name / "compose.yaml").read_text(encoding="utf-8")
+    images = re.findall(r"(?m)^\s+image:\s*(\S+)", content)
+    assert images == [f"debugpilot-demo-{name}-api:local", f"debugpilot-demo-{name}-worker:local"]
 
 
 def load_project(name):
