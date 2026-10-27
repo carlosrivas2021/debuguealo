@@ -3,11 +3,15 @@ Screen { background: #0b1120; color: #e2e8f0; }
 #dashboard { height: 1fr; }
 #sidebar { width: 34; border: round #334155; border-title-color: #7dd3fc; }
 #containers { height: 1fr; }
+#show-all { height: 1; padding: 0; border: none; }
+#stopped-area { display: none; height: 1fr; border-top: solid #475569; }
+#stopped-title { height: 1; color: #fbbf24; }
+#stopped-containers { height: 1fr; }
 #container-info { height: 4; color: #94a3b8; padding: 0 1; }
 #logs-panel { width: 1fr; border: round #334155; }
 #log-state { height: 1; color: #7dd3fc; padding: 0 1; }
 #debugger-state { height: 1; color: #94a3b8; padding: 0 1; }
 .compact #dashboard { layout: vertical; }
-.compact #sidebar { width: 1fr; height: 6; }
+.compact #sidebar { width: 1fr; height: 8; }
 .compact #container-info { display: none; }
 .compact #debugger-state { display: none; }

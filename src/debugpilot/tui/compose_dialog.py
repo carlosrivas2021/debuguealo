@@ -158,7 +158,8 @@ class ComposeDialog(ModalScreen):
         self.query_one("#compose-command", Static).update(plan.display)
         self.query_one("#compose-status", Static).update(
             f"Target: {project_name} / {target or 'ENTIRE PROJECT'}. "
-            "Confirm interrupts services. Restart does NOT reload environment. "
+            + ("Includes hidden/stopped services. " if target is None else "")
+            + "Confirm interrupts services. Restart does NOT reload environment. "
             "No automatic rollback; inspect Docker after a failure or interruption."
         )
         self.query_one("#compose-confirm", Button).disabled = False
