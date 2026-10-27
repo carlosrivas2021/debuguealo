@@ -1018,6 +1018,20 @@ User request (verbatim):
 
 Default inventory shows active containers only (running, paused, restarting). An opt-in Show all toggle reveals inactive/stopped containers in a separate labeled inventory area, still grouped by Compose project. Selection, confirmation scope and log-stream cleanup must remain correct as containers change state or the area is hidden. This is presentation filtering, never a Docker stop/start or discovery change.
 
+### S23 — Locate a Compose file and start its project
+
+User request (verbatim):
+> Ok, generaste los proyectos con para hacer las pruebas, quisiera poder levantar los docker simplemente buscando el archivo
+
+Provide a terminal file picker for local Compose YAML files and a Start project action that prepares the selected project without requiring existing running containers. Choosing a file fills its explicit workspace and ordered file list, resolves the Compose-declared/default project identity rather than guessing a conflicting name, and still requires preview and confirmation. Existing trusted-file/local-endpoint/no-credential-reuse boundaries remain. A read-only Compose configuration inspection may resolve project identity; starting does not force-recreate unless explicitly requested. Ordered override files remain supported.
+
+### S24 — Remove sideways scrolling from the inventory
+
+User request (verbatim):
+> Ese scroll a la derecha no tiene sentido
+
+The attached screenshot shows clipped inventory columns in the sidebar. Active and stopped inventory areas must fit their available width without horizontal scrolling; keep the selected target identity and state understandable, use bounded ellipsis for long labels and preserve full names in selection/confirmation. This does not remove intentional horizontal scrolling from long log entries.
+
 ## Tasks
 - T1 | S2-S5, S12-S15 | inline, no writer trigger | foundation: verified; default TUI deferred to T3 | commits 25283394dd8f12867242be5dc601313df22f53a7, df5c421b2c3b2e1ec9a760ab6e9494b718bb6aaf
 - T2 | S6, S14 | inline, no writer trigger | Docker: independently verified | commits e11a94df522995f717b5ed40bbb9f524e7f1d600, 697af07b033801dd1cd7f79d0a95cb02aabb9d24, 6ee3eb330cd58538582118ededd084139dc7fba4; native review pending
@@ -1027,12 +1041,15 @@ Default inventory shows active containers only (running, paused, restarting). An
 - T6 | S11, S14-S17 | inline, no writer trigger | integration, example, docs and packaging: pending
 - T7 | S19 | delegated backend alongside inline dashboard; disjoint new module/test/doc surfaces | Compose execution/confirmation: functionally verified; backend442eea9, UI8a0fc8c, cleanup719ed2e; native review pending; no real lifecycle commands executed
 
-- T8 | S20 | delegated parallel fixtures unit (disjoint examples/tests/docs) | in progress; baseline24b561b
-- T9 | S7, S19-S21 | delegated parallel grouped TUI/actions unit (disjoint UI/tests/docs) | in progress; baseline24b561b
+- T8 | S20 | delegated parallel fixtures unit (disjoint examples/tests/docs) | implemented; commits40bf047/ca4b890, live chain/action isolation PASS; native review pending
+- T9 | S7, S19-S21 | delegated parallel grouped TUI/actions unit (disjoint UI/tests/docs) | implemented; commits4b69675/bfd8b96, independent keyboard/target checks PASS; native review pending
 
-- T10 | S19-S20 | inline discovered integration fix | verified locally: preserve Windows system plugin locations, RED unknown-compose/missingenv then GREEN; commit pending
+- T10 | S19-S20 | inline discovered integration fix | verified locally: preserve Windows system plugin locations, RED unknown-compose/missingenv then GREEN; commit485ca58
 
-- T11 | S7, S20-S22 | inline: one contained UI filter, no writer trigger | in progress; independent targeted recheck after live backend proof
+- T11 | S7, S20-S22 | inline: one contained UI filter, no writer trigger | implemented; commits6663ea2/bfd8b96, independent B2/S22 PASS; native review pending
+
+- T12 | S19, S23 | delegated file-start unit alongside independent parent inventory corrections | implemented; 35 writer tests plus9 parent integration tests PASS; independent audit pending
+- T13 | S22, S24 | inline inventory focus/layout correction | implemented; commitbfd8b96, independent B2 and S24 responsive-target checks PASS
 
 ## Log
 L1 — Original user request (verbatim):
@@ -2063,3 +2080,9 @@ L61 — Preserve full engine inventory for metadata/scope, filter only presentat
 
 L62 — Independent immutable4b verification:85 unit tests PASS,12 CLI differentials unchanged, rejection/hash/no-spawn probesPASS, S21PASS. S20B1 reproduced live: API andworker built/exported the same image tag concurrently; Catalog succeeded, Orders failed image-already-exists. Native-approved publicpython3.12-alpine pull succeeded; verifier cleaned allcreatedcontainers/network, cachedimages retained. One bounded correction changes API/worker to distinctper-service image tags in all3projects;3newstructural regressions observedRED thenGREEN,9fixture testsPASS. Realchain/actionisolation proof mustnowresume asB1targetedrecheck.
 L63 — S22 implementedinline: defaultactiveonly, opt-inShowall reveals distinctSTOPPED/INACTIVEtable; bothkeepprojectgrouping withunique rowidentity, stable selectionacrossstatechanges, hiddenstreamcleanup andprojectscopewarningincludinghiddenservices.3newPilot testsREDthenGREEN;8new/existingUItestsGREEN;12combinedfixture/filtertestsGREEN. NativeT8/T9/T10/T11reviewnotapproved; sourcechangesnotpublished.
+
+L64 — User file-start request (verbatim): Ok, generaste los proyectos con para hacer las pruebas, quisiera poder levantar los docker simplemente buscando el archivo
+L65 — User screenshot correction (verbatim): Ese scroll a la derecha no tiene sentido
+L66 — Independent B1 targeted live recheck on6663ea2 passed all3builds, 3-hopchain,6workers/containers and4single/grouprestart/rebuild identity-isolation assertions; cleanupremovedownedcontainers/network, imagescached. S22 firstaudit found B2: focusing already-highlighted stoppedgroup row0 missed RowHighlighted, leaving previousprojecttarget. Parent regression2cases(click/keyboard) observedRED thenGREEN after focus/selection synchronization and action-timecursorresolution. No new B1 correction/sweep. S23 filelaunch and S24 inventoryfit are newhumanrequirements, not adversarialscope expansion.
+
+L67 — Independent B2 recheck onbfd8b96 PASS: stoppedgroupclick targetsorders, pinnedpreviewwarnshiddenservices, stoppedserviceRebuild correct, hidingclosesstream. Independent S24 PASS: bothtables max_scroll_x0 at120x40/80x24/resize90x28; fullproject/service identities retained. Parent own7focus/visibility/layout testsGREEN; noB1resweep. T12 filepicker/Start worker completed35focused tests afterbackend/pickerRED; parentbutton/CtrlN entry2REDthenGREEN,9button/filter/focus testsPASS, Ruffclean51files. Sharedsubprocessrunner reused forread-onlyCompose configinspection andconfirmedStart; noforceflag addedtoStart. IndependentS23/fullseamproof pending; no publication.
