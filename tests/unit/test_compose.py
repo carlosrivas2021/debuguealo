@@ -146,6 +146,18 @@ async def test_ambient_credentials_and_remote_context_are_not_inherited(
     assert captured["stderr"] == asyncio.subprocess.STDOUT
 
 
+async def test_windows_system_plugin_locations_survive_environment_isolation(
+    project, service, monkeypatch
+):
+    monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+    monkeypatch.setenv("ProgramData", r"C:\ProgramData")
+    captured = fake_process(monkeypatch, Process())
+    await service.run(service.preview(project, "restart"), confirmed=True)
+    environment = {key.upper(): value for key, value in captured["env"].items()}
+    assert environment["PROGRAMFILES"] == r"C:\Program Files"
+    assert environment["PROGRAMDATA"] == r"C:\ProgramData"
+
+
 async def test_output_is_bounded_and_nonzero_exit_preserved(project, service, monkeypatch):
     process = Process(b"x" * (compose.MAX_OUTPUT_BYTES + 100), exit_code=7)
     fake_process(monkeypatch, process)
