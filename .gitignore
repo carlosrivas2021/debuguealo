@@ -9,3 +9,6 @@ dist/
 .coverage
 htmlcov/
 .codegraph/
+.env
+.env.*
+!.env.example
