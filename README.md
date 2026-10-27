@@ -7,11 +7,19 @@ Local-first Docker debugging in Python. **Implementation is in progress; this is
 The foundation provides packaging, a headless lifecycle engine, bounded events, TOML
 configuration, and real local Docker diagnostics. Docker integration adds discovery of
 running/stopped containers, Compose metadata, historical/live logs, bounded buffering,
-and controlled reconnect/cancellation. The TUI, DAP and FastAPI example remain pending.
+and controlled reconnect/cancellation. The terminal dashboard adds keyboard selection,
+live logs, bounded search/filter/pause controls and explicit connection errors.
+DAP and the FastAPI example remain pending.
 No connection is simulated in the application.
+
+The dashboard also supports explicit, confirmation-gated local Compose restart,
+recreate and rebuild actions for a service or project, using ordered override files.
+Press Ctrl+O; read [Compose safety and limits](docs/compose.md) before using them.
 
 ```console
 uv sync --locked
+uv run debugpilot
+uv run debugpilot tui
 uv run debugpilot version
 uv run debugpilot doctor
 uv run debugpilot containers
@@ -47,8 +55,8 @@ Dependency installation and the eventual example image build may require downloa
 
 ## Not available yet
 
-`debugpilot` without a command currently shows help, rather than a fake dashboard.
-`tui` and the future `gui` command are not registered yet.
+`debugpilot` and `debugpilot tui` open the terminal dashboard; see the
+[keyboard workflow](docs/tui.md). The future `gui` command is not registered.
 The FastAPI example and first-breakpoint walkthrough will arrive with the real DAP integration.
 No license has been selected; no license grant is implied by this source distribution.
 
