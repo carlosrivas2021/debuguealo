@@ -3,7 +3,7 @@ from contextlib import aclosing
 from dataclasses import replace
 
 from rich.text import Text
-from textual import on
+from textual import events, on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -49,6 +49,7 @@ class DebugPilotApp(App):
         self._inventory: dict[str, ContainerInfo] = {}
         self._inventory_loaded = False
         self._show_all = False
+        self._inventory_widths: dict[str, tuple[int, int]] = {}
         self._selection_changed = asyncio.Event()
         self._generation = 0
         self._closing = False
@@ -77,10 +78,6 @@ class DebugPilotApp(App):
 
     async def on_mount(self) -> None:
         table = self.query_one("#containers", DataTable)
-        table.add_columns("Project / container", "State", "Service")
-        self.query_one("#stopped-containers", DataTable).add_columns(
-            "Project / container", "State", "Service"
-        )
         table.focus()
         await self.engine.start()
         self._ui_tasks = [
@@ -90,6 +87,43 @@ class DebugPilotApp(App):
 
     def on_resize(self) -> None:
         self.set_class(self.size.width < 100 or self.size.height < 28, "compact")
+        self.call_after_refresh(self._resize_inventory)
+
+    def _resize_inventory(self) -> None:
+        if self._inventory_loaded and not self._closing:
+            self._show_inventory(list(self._inventory.values()), force=True)
+
+    def _render_inventory(self, table: DataTable, rows: list[ContainerRow]) -> None:
+        viewport = table.content_region.width or self.query_one("#containers").content_region.width
+        available = max(8, (viewport or 30) - table.styles.scrollbar_size_vertical - 4)
+        state_width = min(10, available // 3)
+        name_width = available - state_width
+        widths = (name_width, state_width)
+        if self._inventory_widths.get(table.id) != widths:
+            table.clear(columns=True)
+            table.add_column(
+                Text("Project / container", overflow="ellipsis", no_wrap=True), width=name_width
+            )
+            table.add_column("State", width=state_width)
+            self._inventory_widths[table.id] = widths
+        else:
+            table.clear()
+        for row in rows:
+            style = (
+                "bold cyan"
+                if row.container is None
+                else ("green" if row.state == "running" else "yellow")
+            )
+            table.add_row(
+                Text(
+                    row.label,
+                    style="bold" if row.container is None else "",
+                    overflow="ellipsis",
+                    no_wrap=True,
+                ),
+                Text(row.state, style=style, overflow="ellipsis", no_wrap=True),
+                key=row.key,
+            )
 
     async def _refresh_loop(self) -> None:
         while not self._closing:
@@ -136,17 +170,7 @@ class DebugPilotApp(App):
         self._rows = {row.key: row for row in all_rows}
         for selector, entries in (("#containers", rows), ("#stopped-containers", stopped)):
             table = self.query_one(selector, DataTable)
-            table.clear()
-            for row in entries:
-                style = "green" if row.state == "running" else "yellow"
-                if row.container is None:
-                    style = "bold cyan"
-                table.add_row(
-                    Text(row.label, style="bold" if row.container is None else ""),
-                    Text(row.state, style=style),
-                    Text(row.service),
-                    key=row.key,
-                )
+            self._render_inventory(table, entries)
         selected = self._rows.get(previous_key)
         if selected is None and previous_container is not None:
             selected = next(
@@ -178,14 +202,30 @@ class DebugPilotApp(App):
     @on(DataTable.RowHighlighted, "#containers")
     @on(DataTable.RowHighlighted, "#stopped-containers")
     def container_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        table = event.data_table
-        if table.row_count and table.has_focus and not self._closing:
+        self._select_focused_row(event.data_table, expected_key=event.row_key.value)
+
+    @on(DataTable.RowSelected, "#containers")
+    @on(DataTable.RowSelected, "#stopped-containers")
+    def container_selected(self, event: DataTable.RowSelected) -> None:
+        self._select_focused_row(event.data_table, expected_key=event.row_key.value)
+
+    @on(events.DescendantFocus, "#containers")
+    @on(events.DescendantFocus, "#stopped-containers")
+    def inventory_focused(self, event: events.DescendantFocus) -> None:
+        # Entering a table need not move its cursor or emit RowHighlighted.
+        self._select_focused_row(event.widget)
+
+    def _select_focused_row(self, table: DataTable, *, expected_key: str | None = None) -> None:
+        if table.row_count and table.has_focus and table.is_mounted and not self._closing:
             # Rebuilding inventory can enqueue old highlight events; accept only
             # the row that is still under the cursor, not an obsolete selection.
             key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
-            if event.row_key.value == key:
+            if expected_key is None or expected_key == key:
                 row = self._rows.get(key)
                 if row is not None:
+                    table.tooltip = Text(
+                        f"{row.label.strip()}\nState: {row.state}\nService: {row.service or '—'}"
+                    )
                     self._select(row.container, project=row.project, row_key=row.key)
 
     def _select(
@@ -310,6 +350,13 @@ class DebugPilotApp(App):
     def _open_compose(self, initial_action: str = "recreate", *, contextual: bool = False) -> None:
         from debugpilot.docker.compose import ComposeService
         from debugpilot.tui.compose_dialog import ComposeDialog
+
+        # Resolve the visibly focused cursor even if a focus event is still queued.
+        if isinstance(self.focused, DataTable) and self.focused.id in {
+            "containers",
+            "stopped-containers",
+        }:
+            self._select_focused_row(self.focused)
 
         if contextual and (
             not self.selected_project
