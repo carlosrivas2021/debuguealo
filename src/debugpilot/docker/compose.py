@@ -147,7 +147,8 @@ class ComposeService:
             environment = {
                 key: value
                 for key, value in os.environ.items()
-                if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
+                if key.upper()
+                in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PROGRAMFILES", "PROGRAMDATA"}
             }
             environment.update(
                 DOCKER_CONFIG=directory, COMPOSE_ANSI="never", COMPOSE_PROGRESS="plain"

@@ -31,6 +31,8 @@ and [Compose up](https://docs.docker.com/reference/cli/docker/compose/up/).
 
 - Only a local Unix socket or Windows named pipe is used. Ambient Docker contexts,
   `DOCKER_HOST`, Compose overrides, and credential environment variables are not inherited.
+  Windows system installation locations (`ProgramFiles`, `ProgramData`) are retained
+  so Docker can discover its installed CLI plugins, without reading the user's config.
 - Docker CLI with Compose v2 must already be installed. DebugPilot does not install it.
   A private empty Docker config prevents reuse of registry credentials; private image
   pulls and credential-dependent builds may therefore fail.
