@@ -7,3 +7,9 @@ Doctor uses a local-only isolated SDK worker with bounded output and cleanup. It
 ## Bounded log protocol
 
 The log library decodes Docker multiplex headers, preserves channel IDs and UTF-8 timestamps, truncates oversized lines and exposes a bounded filtered ring buffer. Replay counts retain legitimate duplicate multiplicity and fail explicitly beyond bounds. No live Docker log CLI is present yet.
+
+## Read-only Docker service API
+
+`DockerService(Settings())` supports `await service.list_containers()` and async log iterators via `service.stream_logs(name, tail=100, follow=True)`. Close iterators with `contextlib.aclosing`; cancellation reaps the worker. It also polls container state changes. The container/log CLI integration follows in the next unit.
+
+Integration tests use only cached images and a test-owned no-network/read-only fixture, then remove that fixture. They do not pull images or modify existing user containers.
