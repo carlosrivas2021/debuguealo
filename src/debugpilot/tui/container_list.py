@@ -15,6 +15,15 @@ class ContainerRow:
     project: str | None = None
 
 
+def container_label(item: ContainerInfo) -> str:
+    if item.compose_project:
+        for separator in ("-", "_"):
+            prefix = item.compose_project + separator
+            if item.name.startswith(prefix) and len(item.name) > len(prefix):
+                return item.name[len(prefix) :]
+    return item.name
+
+
 def container_rows(inventory: list[ContainerInfo]) -> list[ContainerRow]:
     groups: dict[str | None, list[ContainerInfo]] = {}
     for item in inventory:
@@ -42,7 +51,7 @@ def container_rows(inventory: list[ContainerInfo]) -> list[ContainerRow]:
         rows.extend(
             ContainerRow(
                 key=f"container:{item.id}",
-                label=f"  {item.name}",
+                label=f"  {container_label(item)}",
                 state=item.state,
                 service=item.compose_service or "—",
                 container=item,

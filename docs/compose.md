@@ -15,6 +15,63 @@ Preview resolves the selected file identity with read-only Compose config inspec
    `compose.yaml`, then `local.yaml`. Files must be readable inside that workspace.
 3. Choose the service or whole-project scope and review the command before confirming.
 
+After a successful operation, the app remembers that project's workspace and ordered
+Compose files in a local JSON file, including across app restarts. On a selected
+service or project, `r`
+prepares restart and `Shift+R` prepares rebuild/recreate using those files. A small
+inline bar shows the target with Confirm and Cancel buttons; the dashboard remains
+visible and no screen is pushed. Enter confirms the focused Confirm button;
+Escape cancels without executing. The command is
+available as the bar's tooltip. Files
+are revalidated for each preview and again before execution. Projects not configured
+previously show a reminder instead of changing screens. `Ctrl+O` opens the editable form
+to change the remembered file selection.
+
+While an inline operation runs, Cancel becomes Stop CLI. It cancels the local CLI,
+not the running services or Docker-side changes, and does not roll back. Completion
+is reported as a notification; the inventory and logs stay visible throughout.
+
+Dashboard logs are limited to the current execution using Docker's `StartedAt`,
+including when selecting a service again or retrying with `Ctrl+R`. A successful
+inline restart/rebuild refreshes the inventory and reconnects the affected view,
+discarding its previous buffer while retaining logs from the new startup. Recreated
+containers are resolved using their Compose service identity. Selecting another
+service while an operation runs does not retarget that selection on completion.
+Failure or cancellation does not clear the current view. Docker's stored history
+is not deleted, and CLI log history remains unchanged.
+
+### Saved project locations
+
+`compose-projects.json` lives next to the existing user `config.toml`:
+`%LOCALAPPDATA%\debugpilot\compose-projects.json` on Windows, or the platform's
+user configuration directory on other systems. It is strict JSON, not VS Code
+`launch.json` or JSON with comments. No environment values, credentials or YAML
+contents are saved. A typical document is:
+
+```json
+{
+  "version": 1,
+  "projects": [
+    {
+      "name": "dp-demo-catalog",
+      "workspace": "C:/projects/debugealo/examples/multi-project/catalog",
+      "files": ["compose.yaml", "local.yaml"]
+    }
+  ]
+}
+```
+
+The app writes absolute paths and preserves override order. Relative file paths
+in a manually edited document resolve within its absolute workspace. Close the
+app before editing this file. Removing a project entry makes the next app session
+ask for configuration again; it does not stop or remove containers.
+
+Malformed, unsupported-version, unreadable or oversized documents are reported,
+not silently overwritten. Missing Compose files require configuration again.
+Saving uses a temporary file and atomic replacement; a save failure leaves the
+successful Docker operation unchanged and keeps the configuration in memory for
+the current session. Simultaneous app instances use last-writer-wins configuration.
+
 | Action | Result |
 | --- | --- |
 | Start project | `up -d --pull never`; no forced recreation or forced rebuild. |

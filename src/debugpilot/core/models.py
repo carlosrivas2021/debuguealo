@@ -45,6 +45,9 @@ class ContainerInfo(BaseModel):
         if sum(len(k) + len(v) for k, v in labels.items()) > 32_768:
             raise ValueError("Container labels exceed the metadata limit.")
         identity = value["Id"]
+        ports = value.get("Ports")
+        if ports is None:
+            ports = []
         return cls(
             id=identity,
             name=(value.get("Names") or [identity])[0].removeprefix("/"),
@@ -59,7 +62,7 @@ class ContainerInfo(BaseModel):
                     protocol=port.get("Type", "tcp"),
                     host_ip=port.get("IP"),
                 )
-                for port in value.get("Ports", [])
+                for port in ports
             ),
             compose_project=labels.get("com.docker.compose.project"),
             compose_service=labels.get("com.docker.compose.service"),

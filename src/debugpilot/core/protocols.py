@@ -14,5 +14,5 @@ class DockerProvider(Protocol):
     async def list_containers(self) -> list[ContainerInfo]: ...
 
     def stream_logs(
-        self, container: str, *, tail: int = 100, follow: bool = False
+        self, container: str, *, tail: int = 100, follow: bool = False, current_run: bool = False
     ) -> AsyncIterator[LogEntry]: ...

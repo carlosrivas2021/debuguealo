@@ -90,10 +90,13 @@ async def test_focusing_first_stopped_group_pins_the_action_target(entry):
                     break
         assert table.has_focus and table.cursor_row == 0
         await pilot.press("r")
+        assert not isinstance(app.screen, ComposeDialog)
+        assert app.selected_project == "orders"
+        await pilot.press("ctrl+o")
         assert isinstance(app.screen, ComposeDialog)
         assert app.screen.query_one("#compose-project").value == "orders"
         assert app.screen.query_one("#compose-scope").value == "project"
-        assert app.screen.query_one("#compose-action").value == "restart"
+        assert app.screen.query_one("#compose-action").value == "recreate"
 
 
 @pytest.mark.parametrize("size", [(120, 40), (80, 24)])
