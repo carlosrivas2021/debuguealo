@@ -1,7 +1,10 @@
 """Blocking, read-only Docker SDK boundary, run only in a private child process."""
 
+import calendar
 import json
+import re
 import sys
+from datetime import datetime
 
 import docker
 from docker.errors import APIError, DockerException
@@ -69,6 +72,26 @@ def run(settings: Settings, request: dict) -> None:
             if request.get("since") is not None:
                 params["since"] = request["since"]
                 params["tail"] = "all"  # Replay every record at the inclusive second cursor.
+            if request.get("current_run"):
+                started = info.get("State", {}).get("StartedAt")
+                try:
+                    start_time = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                    if start_time.tzinfo is None:
+                        raise ValueError
+                except (AttributeError, TypeError, ValueError):
+                    raise DockerError(
+                        "Cannot determine this container's current execution."
+                    ) from None
+                if start_time.year == 1:  # Docker's zero timestamp: never started.
+                    emit("ready")
+                    return
+                # The HTTP API accepts Unix seconds.nanoseconds, unlike the CLI's ISO dates.
+                start_second = calendar.timegm(start_time.utctimetuple())
+                if request.get("since") is None or request["since"] <= start_second:
+                    fraction = re.search(r"\.(\d+)", started)
+                    nanos = (fraction[1] if fraction else "").ljust(9, "0")
+                    params["since"] = f"{start_second}.{nanos}"
+                params["tail"] = "all"
             with api._get(
                 api._url(f"/containers/{container}/logs"),
                 params=params,

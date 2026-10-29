@@ -11,9 +11,11 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, DataTable, Footer, Input, Static
 
 from debugpilot.core.engine import DebugPilotEngine
-from debugpilot.core.exceptions import DebugPilotError
+from debugpilot.core.exceptions import ConfigurationError, DebugPilotError
 from debugpilot.core.models import ContainerInfo
-from debugpilot.tui.container_list import ContainerRow, container_rows
+from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject
+from debugpilot.storage.compose_projects import ComposeProjectStore
+from debugpilot.tui.container_list import ContainerRow, container_label, container_rows
 from debugpilot.tui.log_viewer import LogViewer
 
 ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
@@ -32,6 +34,7 @@ class DebugPilotApp(App):
         Binding("R,shift+r", "rebuild_selected", "Build"),
         Binding("ctrl+o", "compose", "Compose"),
         Binding("ctrl+n", "start_project", "Open Compose"),
+        Binding("escape", "cancel_compose", show=False),
         *[
             Binding(key, "debugger_unavailable", show=False)
             for key in ("f5", "f9", "f10", "f11", "shift+f11")
@@ -53,9 +56,22 @@ class DebugPilotApp(App):
         self._inventory_widths: dict[str, tuple[int, int]] = {}
         self._selection_changed = asyncio.Event()
         self._generation = 0
+        self._selection_revision = 0
+        self._group_signature: tuple[tuple[str, str], ...] = ()
         self._closing = False
         self._ui_tasks: list[asyncio.Task] = []
         self._stream_task: asyncio.Task | None = None
+        self._compose_projects: dict[str, ComposeProject] = {}
+        self._inline_plan: ComposePlan | None = None
+        self._inline_service = None
+        self._inline_task: asyncio.Task | None = None
+        self._compose_store = ComposeProjectStore()
+        self._compose_config_error: str | None = None
+        try:
+            self._saved_compose_projects = self._compose_store.load()
+        except ConfigurationError as error:
+            self._saved_compose_projects = {}
+            self._compose_config_error = str(error)
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
@@ -77,9 +93,15 @@ class DebugPilotApp(App):
             id="debugger-state",
             markup=False,
         )
+        with Horizontal(id="inline-compose"):
+            yield Static("", id="inline-compose-message", markup=False)
+            yield Button("Confirm", id="inline-compose-confirm", variant="warning")
+            yield Button("Cancel", id="inline-compose-cancel")
         yield Footer()
 
     async def on_mount(self) -> None:
+        if self._compose_config_error:
+            self.notify(self._compose_config_error, severity="warning")
         table = self.query_one("#containers", DataTable)
         table.focus()
         await self.engine.start()
@@ -156,6 +178,12 @@ class DebugPilotApp(App):
         current = {item.id: item for item in inventory}
         if self._inventory_loaded and current == self._inventory and not force:
             return
+        if isinstance(self.focused, DataTable) and self.focused.id in {
+            "containers",
+            "stopped-containers",
+        }:
+            # Layout refresh may run before the highlighted-row event is handled.
+            self._select_focused_row(self.focused)
         self._inventory_loaded = True
         previous_key, previous_project = self._selection_key, self.selected_project
         previous_container = self.selected_container
@@ -226,8 +254,11 @@ class DebugPilotApp(App):
             if expected_key is None or expected_key == key:
                 row = self._rows.get(key)
                 if row is not None:
+                    if row.key != self._selection_key:
+                        self._selection_revision += 1
                     table.tooltip = Text(
-                        f"{row.label.strip()}\nState: {row.state}\nService: {row.service or '—'}"
+                        f"{row.container.name if row.container else row.label.strip()}\n"
+                        f"State: {row.state}\nService: {row.service or '—'}"
                     )
                     self._select(row.container, project=row.project, row_key=row.key)
 
@@ -239,10 +270,16 @@ class DebugPilotApp(App):
         row_key: str | None = None,
         force: bool = False,
     ) -> None:
-        old = (self.selected_container, self.selected_project, self._selection_key)
+        old = (
+            self.selected_container,
+            self.selected_project,
+            self._selection_key,
+            self._group_signature,
+        )
         self.selected_container = item
         self.selected_project = item.compose_project if item is not None else project
         self._selection_key = row_key or (f"container:{item.id}" if item is not None else None)
+        self._group_signature = tuple((member.id, member.state) for member in self._group_members())
         empty_detail = (
             "No active containers. Enable Show all to inspect stopped containers."
             if self._inventory and not self._show_all
@@ -254,7 +291,7 @@ class DebugPilotApp(App):
             )
             empty_detail = (
                 f"Compose project: {self.selected_project}\n{count} containers\n"
-                "Select a service for logs; Ctrl+O acts on this project."
+                "Combined project logs; select a service to isolate it."
             )
         elif self._selection_key == "standalone:":
             empty_detail = (
@@ -268,9 +305,26 @@ class DebugPilotApp(App):
             if item
             else Text(empty_detail)
         )
-        if force or old != (item, self.selected_project, self._selection_key):
+        if force or old != (
+            item,
+            self.selected_project,
+            self._selection_key,
+            self._group_signature,
+        ):
             self._generation += 1
             self._selection_changed.set()
+
+    def _group_members(self) -> tuple[ContainerInfo, ...]:
+        if self.selected_container is not None or not self.selected_project:
+            return ()
+        stopped = (self._selection_key or "").startswith("stopped:")
+        return tuple(
+            row.container
+            for row in self._rows.values()
+            if row.container is not None
+            and row.project == self.selected_project
+            and row.key.startswith("stopped:") == stopped
+        )
 
     async def _stop_stream(self) -> None:
         if self._stream_task is not None:
@@ -290,7 +344,20 @@ class DebugPilotApp(App):
                 self._selection_changed.clear()
                 item, generation = self.selected_container, self._generation
                 self.query_one(LogViewer).action_clear_logs()
-                if item is None:
+                members = self._group_members()
+                if item is None and members:
+                    if len(members) > 32:
+                        self.query_one("#log-state", Static).update(
+                            "Project has over 32 containers; select a service for logs."
+                        )
+                    else:
+                        self.query_one("#log-state", Static).update(
+                            f"Project · {self.selected_project} · {len(members)} services"
+                        )
+                        self._stream_task = asyncio.create_task(
+                            self._consume_group(members, generation, self.selected_project)
+                        )
+                elif item is None:
                     message = (
                         f"Project · {self.selected_project} · select a service for logs"
                         if self.selected_project
@@ -305,24 +372,58 @@ class DebugPilotApp(App):
         finally:
             await self._stop_stream()
 
-    async def _consume(self, item: ContainerInfo, generation: int) -> None:
+    async def _consume_group(
+        self, members: tuple[ContainerInfo, ...], generation: int, project: str
+    ) -> None:
+        labels = {item.id: container_label(item) for item in members}
+        for item in members:
+            if list(labels.values()).count(labels[item.id]) > 1:
+                labels[item.id] = item.name
+        statuses = {item.id: "following" for item in members}
+
+        async def consume(item: ContainerInfo) -> None:
+            message = await self._consume(item, generation, source=labels[item.id])
+            statuses[item.id] = message
+            if self._generation == generation and not self._closing:
+                summary = "; ".join(f"{labels[key]}: {value}" for key, value in statuses.items())
+                self.query_one("#log-state", Static).update(f"Project · {project} · {summary}")
+
+        await asyncio.gather(*(consume(item) for item in members))
+
+    async def _consume(
+        self, item: ContainerInfo, generation: int, *, source: str | None = None
+    ) -> str:
         try:
             async with aclosing(
-                self.engine.stream_logs(item.id, tail=100, follow=item.state == "running")
+                self.engine.stream_logs(
+                    item.id, tail=100, follow=item.state == "running", current_run=True
+                )
             ) as entries:
                 async for entry in entries:
                     if self._generation == generation and not self._closing:
+                        if source is not None:
+                            text = f"[{source}] {entry.text}"
+                            entry = entry.model_copy(
+                                update={
+                                    "text": text[:16_384],
+                                    "truncated": entry.truncated or len(text) > 16_384,
+                                }
+                            )
                         self.query_one(LogViewer).append(entry)
             message = f"Logs · {item.name} · stream ended (Ctrl+R to retry)"
         except DebugPilotError as error:
             message = f"Logs · {item.name} · {error} (Ctrl+R to retry)"
         except Exception:
             message = f"Logs · {item.name} · unable to read logs (Ctrl+R to retry)"
-        if self._generation == generation and not self._closing:
+        if source is None and self._generation == generation and not self._closing:
             self.query_one("#log-state", Static).update(message)
+        return message
 
     async def on_unmount(self) -> None:
         self._closing = True
+        if self._inline_task is not None:
+            self._inline_task.cancel()
+            await asyncio.gather(self._inline_task, return_exceptions=True)
         self._selection_changed.set()
         # Let the selection owner finish any pending stream cleanup rather than
         # cancelling it a second time in the middle of an async generator finally.
@@ -335,8 +436,13 @@ class DebugPilotApp(App):
         self.query_one("#log-entries", DataTable).focus()
 
     def action_retry_logs(self) -> None:
-        if self.selected_container:
-            self._select(self.selected_container, row_key=self._selection_key, force=True)
+        if self.selected_container or self.selected_project:
+            self._select(
+                self.selected_container,
+                project=self.selected_project,
+                row_key=self._selection_key,
+                force=True,
+            )
 
     def action_debugger_unavailable(self) -> None:
         self.notify("Debugger controls arrive with DAP integration (T4–T5).")
@@ -349,17 +455,31 @@ class DebugPilotApp(App):
         from debugpilot.docker.compose import ComposeService
         from debugpilot.tui.compose_dialog import ComposeDialog
 
+        if self._inline_task is not None and not self._inline_task.done():
+            self.notify("A Compose operation is already running.", severity="warning")
+            return
+        self._dismiss_inline_compose()
         self.push_screen(
             ComposeDialog(
                 ComposeService(self.engine.settings),
                 None,
                 initial_action="start",
                 browse_on_mount=True,
+                remember_project=self._remember_compose_project,
             )
         )
 
     def action_restart_selected(self) -> None:
         self._open_compose("restart", contextual=True)
+
+    def _remember_compose_project(self, project: ComposeProject) -> None:
+        self._compose_projects[project.project_name] = project
+        try:
+            self._compose_store.save(project)
+        except ConfigurationError as error:
+            self.notify(
+                f"Compose succeeded, but routes were not saved: {error}", severity="warning"
+            )
 
     def action_rebuild_selected(self) -> None:
         self._open_compose("rebuild", contextual=True)
@@ -368,6 +488,10 @@ class DebugPilotApp(App):
         from debugpilot.docker.compose import ComposeService
         from debugpilot.tui.compose_dialog import ComposeDialog
 
+        if self._inline_task is not None and not self._inline_task.done():
+            self.notify("A Compose operation is already running.", severity="warning")
+            return
+        self._dismiss_inline_compose()
         # Resolve the visibly focused cursor even if a focus event is still queued.
         if isinstance(self.focused, DataTable) and self.focused.id in {
             "containers",
@@ -384,16 +508,167 @@ class DebugPilotApp(App):
                 severity="warning",
             )
             return
+        remembered_project = self._compose_projects.get(self.selected_project)
+        if remembered_project is None and self.selected_project in self._saved_compose_projects:
+            try:
+                remembered_project = self._saved_compose_projects[self.selected_project].resolve()
+            except ComposeError:
+                self.notify(
+                    "Saved Compose files are unavailable. Choose the project configuration again.",
+                    severity="warning",
+                )
+        if contextual:
+            if remembered_project is None:
+                self.notify("Configure this project once with Ctrl+O first.", severity="warning")
+                return
+            service = ComposeService(self.engine.settings)
+            target = self.selected_container.compose_service if self.selected_container else None
+            try:
+                self._inline_plan = service.preview(remembered_project, initial_action, target)
+            except ComposeError as error:
+                self.notify(f"{error} Use Ctrl+O to review the configuration.", severity="warning")
+                return
+            self._inline_service = service
+            scope = target or "all services, including stopped"
+            verb = "Restart" if initial_action == "restart" else "Rebuild/recreate"
+            self.query_one("#inline-compose-message", Static).update(
+                f"{verb} {remembered_project.project_name} / {scope}?"
+            )
+            self.query_one("#inline-compose").tooltip = self._inline_plan.display
+            self.query_one("#inline-compose").display = True
+            self.query_one("#inline-compose-confirm", Button).disabled = False
+            self.query_one("#inline-compose-cancel", Button).label = "Cancel"
+            self.query_one("#inline-compose-confirm", Button).focus()
+            return
+        self._dismiss_inline_compose()
         self.push_screen(
             ComposeDialog(
                 ComposeService(self.engine.settings),
                 self.selected_container,
                 selected_project=self.selected_project,
                 initial_action=initial_action,
+                remembered_project=remembered_project,
+                quick=contextual,
+                remember_project=self._remember_compose_project,
             )
         )
 
+    def _dismiss_inline_compose(self) -> None:
+        self._inline_plan = None
+        self.query_one("#inline-compose").display = False
+
+    @on(Button.Pressed, "#inline-compose-confirm")
+    def confirm_inline_compose(self) -> None:
+        if self._inline_plan is None or (
+            self._inline_task is not None and not self._inline_task.done()
+        ):
+            return
+        plan, self._inline_plan = self._inline_plan, None
+        self.query_one("#inline-compose-confirm", Button).disabled = True
+        self.query_one("#inline-compose-cancel", Button).label = "Stop CLI"
+        self.query_one("#inline-compose-message", Static).update(
+            f"Running {plan.action}: {plan.project.project_name} / {plan.service or 'all services'}"
+        )
+        self._inline_task = asyncio.create_task(self._run_inline_compose(plan))
+
+    async def _run_inline_compose(self, plan: ComposePlan) -> None:
+        selection = self.selected_container
+        project, revision = self.selected_project, self._selection_revision
+        try:
+            result = await self._inline_service.run(plan, confirmed=True)
+            if result.exit_code == 0:
+                self._remember_compose_project(plan.project)
+                await self._refresh_compose_logs(plan, selection, project, revision)
+            self.notify(
+                f"Compose exited {result.exit_code}: {plan.project.project_name} / "
+                f"{plan.service or 'all services'}. "
+                + ("" if result.exit_code == 0 else "Inspect Docker before retrying."),
+                severity="information" if result.exit_code == 0 else "warning",
+            )
+        except asyncio.CancelledError:
+            if not self._closing:
+                self.notify(
+                    "CLI stopped; Docker changes may remain. No rollback.", severity="warning"
+                )
+        except ComposeError as error:
+            self.notify(str(error), severity="warning")
+        except Exception:
+            self.notify("Compose failed. Inspect Docker before retrying.", severity="warning")
+        finally:
+            if not self._closing:
+                self._dismiss_inline_compose()
+                self.query_one("#containers", DataTable).focus()
+
+    async def _refresh_compose_logs(
+        self, plan: ComposePlan, selection: ContainerInfo | None, project: str | None, revision: int
+    ) -> None:
+        try:
+            inventory = await self.engine.list_containers()
+        except Exception:
+            self.notify(
+                "Compose succeeded, but logs could not refresh. Use Ctrl+R to retry.",
+                severity="warning",
+            )
+            return
+        if self._closing:
+            return
+        self._show_inventory(inventory)
+        if (
+            revision == self._selection_revision
+            and project == plan.project.project_name
+            and selection is not None
+            and (plan.service is None or selection.compose_service == plan.service)
+        ):
+            # Rebuild replaces IDs; a temporary stopped state may also hide the row.
+            candidates = [
+                row
+                for row in self._rows.values()
+                if row.container is not None
+                and row.project == project
+                and row.container.compose_service == selection.compose_service
+            ]
+            target = next(
+                (
+                    row
+                    for row in candidates
+                    if row.container.id == selection.id or row.container.name == selection.name
+                ),
+                candidates[0] if len(candidates) == 1 else None,
+            )
+            if target is not None:
+                table = self.query_one(
+                    "#stopped-containers" if target.key.startswith("stopped:") else "#containers",
+                    DataTable,
+                )
+                table.move_cursor(
+                    row=next(
+                        i for i, row in enumerate(table.ordered_rows) if row.key.value == target.key
+                    )
+                )
+                self._select(target.container, project=target.project, row_key=target.key)
+        if self.selected_project == plan.project.project_name and (
+            self.selected_container is None
+            or plan.service is None
+            or self.selected_container.compose_service == plan.service
+        ):
+            # Reuse the selection owner so old streams close before the buffer resets.
+            self.action_retry_logs()
+
+    @on(Button.Pressed, "#inline-compose-cancel")
+    def action_cancel_compose(self) -> None:
+        if self._inline_task is not None and not self._inline_task.done():
+            self._inline_task.cancel()
+        else:
+            self._dismiss_inline_compose()
+            self.query_one("#containers", DataTable).focus()
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "cancel_compose" and isinstance(self.screen, ModalScreen):
+            return False
+        if action in {"compose", "start_project"} and (
+            self._inline_task is not None and not self._inline_task.done()
+        ):
+            return False
         if action in {
             "quit",
             "retry_logs",

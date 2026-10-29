@@ -67,18 +67,21 @@ class DebugPilotEngine:
             raise LifecycleError("No Docker provider has been configured.")
         return await self.spawn(self._docker.list_containers)
 
-    async def stream_logs(self, container: str, *, tail: int = 100, follow: bool = False):
+    async def stream_logs(
+        self, container: str, *, tail: int = 100, follow: bool = False, current_run: bool = False
+    ):
         if self._docker is None:
             raise LifecycleError("No Docker provider has been configured.")
         queue: asyncio.Queue = asyncio.Queue(maxsize=128)
         end = object()
+        options = {"tail": tail, "follow": follow}
+        if current_run:
+            options["current_run"] = True
 
         async def produce():
             try:
                 try:
-                    async with aclosing(
-                        self._docker.stream_logs(container, tail=tail, follow=follow)
-                    ) as source:
+                    async with aclosing(self._docker.stream_logs(container, **options)) as source:
                         async for entry in source:
                             await queue.put(entry)
                 except Exception as error:

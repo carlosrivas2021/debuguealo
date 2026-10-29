@@ -50,6 +50,25 @@ def test_plain_docker_container_without_compose_or_published_ports():
     assert container.ports == ()
 
 
+@pytest.mark.parametrize("ports", [None, []])
+def test_container_metadata_accepts_null_or_empty_ports(ports):
+    container = ContainerInfo.from_docker(
+        {
+            "Id": "abc",
+            "Names": ["/catalog-worker"],
+            "Image": "catalog:local",
+            "State": "running",
+            "Created": 1_700_000_000,
+            "Ports": ports,
+            "Labels": {"com.docker.compose.project": "dp-demo-catalog"},
+        }
+    )
+    assert container.ports == ()
+    assert container.name == "catalog-worker"
+    assert container.state == "running"
+    assert container.compose_project == "dp-demo-catalog"
+
+
 def test_frame_decoder_preserves_stdout_stderr_and_rejects_oversized_or_truncated():
     def frame(stream, data):
         return struct.pack(">BxxxI", stream, len(data)) + data

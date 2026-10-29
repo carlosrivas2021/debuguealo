@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 
 from rich.text import Text
@@ -32,6 +33,7 @@ class ComposeDialog(ModalScreen):
     ComposeDialog #compose-status { height: auto; min-height: 2; color: $warning; }
     ComposeDialog #compose-command { height: auto; min-height: 2; }
     ComposeDialog RichLog { height: 6; }
+    ComposeDialog.quick > VerticalScroll { height: auto; max-height: 90%; }
     """
 
     def __init__(
@@ -42,6 +44,9 @@ class ComposeDialog(ModalScreen):
         selected_project: str | None = None,
         initial_action: str = "recreate",
         browse_on_mount: bool = False,
+        remembered_project: ComposeProject | None = None,
+        quick: bool = False,
+        remember_project: Callable[[ComposeProject], None] | None = None,
     ):
         super().__init__()
         self.service = service
@@ -51,6 +56,10 @@ class ComposeDialog(ModalScreen):
             raise ValueError("Unknown initial Compose action.")
         self.initial_action = initial_action
         self.browse_on_mount = browse_on_mount
+        self.remembered_project = remembered_project
+        self.quick = quick and remembered_project is not None
+        self.set_class(self.quick, "quick")
+        self.remember_project = remember_project
         self._resolve_identity = initial_action == "start"
         self.plan: ComposePlan | None = None
         self._revision = 0
@@ -119,6 +128,17 @@ class ComposeDialog(ModalScreen):
             )
 
     def on_mount(self) -> None:
+        if self.remembered_project is not None:
+            self.query_one("#compose-workspace", Input).value = str(
+                self.remembered_project.workspace
+            )
+            self.query_one(TextArea).text = "\n".join(map(str, self.remembered_project.files))
+        if self.quick:
+            for widget in self.query("Input, Select, TextArea, #compose-browse, #compose-preview"):
+                widget.display = False
+            for label in list(self.query(Label))[1:]:
+                label.display = False
+            self.call_after_refresh(self.preview)
         if self.browse_on_mount:
             self.call_after_refresh(self.browse)
 
@@ -225,6 +245,8 @@ class ComposeDialog(ModalScreen):
     async def _execute(self, plan: ComposePlan) -> None:
         try:
             result = await self.service.run(plan, confirmed=True)
+            if result.exit_code == 0 and self.remember_project is not None:
+                self.remember_project(plan.project)
             if not self._leaving:
                 output = self.query_one(RichLog)
                 output.clear()

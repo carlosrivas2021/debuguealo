@@ -14,6 +14,9 @@ Screen { background: #0b1120; color: #e2e8f0; }
 #logs-panel { width: 1fr; border: round #334155; }
 #log-state { height: 1; color: #7dd3fc; padding: 0 1; }
 #debugger-state { height: 1; color: #94a3b8; padding: 0 1; }
+#inline-compose { display: none; height: 3; background: #302711; }
+#inline-compose-message { width: 1fr; height: 3; padding: 0 1; }
+#inline-compose Button { width: 12; min-width: 10; height: 3; }
 .compact #dashboard { layout: vertical; }
 .compact #sidebar { width: 1fr; height: 8; }
 .compact #container-info { display: none; }

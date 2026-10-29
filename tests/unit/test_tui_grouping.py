@@ -60,7 +60,7 @@ def select_key(app, key):
     )
 
 
-async def test_projects_and_standalone_are_grouped_and_group_selection_closes_logs():
+async def test_projects_and_standalone_are_grouped_and_group_selection_merges_logs():
     docker = Docker()
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, refresh_interval=0.05)
@@ -87,11 +87,11 @@ async def test_projects_and_standalone_are_grouped_and_group_selection_closes_lo
             lambda: (
                 app.selected_container is None
                 and bool(docker.closed)
-                and "select a service" in str(app.query_one("#log-state", Static).render()).lower()
+                and "2 services" in str(app.query_one("#log-state", Static).render()).lower()
             ),
         )
         assert app.selected_project == "orders"
-        assert "select a service" in str(app.query_one("#log-state", Static).render()).lower()
+        assert "2 services" in str(app.query_one("#log-state", Static).render()).lower()
         await pilot.press("ctrl+o")
         await until(pilot, lambda: isinstance(app.screen, ComposeDialog))
         assert app.screen.query_one("#compose-project", Input).value == "orders"
@@ -129,7 +129,8 @@ async def test_selection_identity_survives_refresh_then_disappears_without_wrong
         await until(
             pilot, lambda: app.selected_container is None and app.selected_project == "orders"
         )
-        assert docker.opened == opened
+        await until(pilot, lambda: docker.opened[-1] == "orders-worker")
+        opened = list(docker.opened)
         docker.inventory = [
             value for value in docker.inventory if value.compose_project != "orders"
         ]
@@ -206,13 +207,8 @@ async def test_r_requests_restart_for_selected_target_without_execution(target, 
         select_key(app, target)
         await until(pilot, lambda: app.selected_project == "orders")
         await pilot.press("r")
-        assert isinstance(app.screen, ComposeDialog)
-        assert app.screen.query_one("#compose-action", Select).value == "restart"
-        assert app.screen.query_one("#compose-project", Input).value == "orders"
-        assert app.screen.query_one("#compose-scope", Select).value == (
-            "project" if target.startswith("project:") else "service"
-        )
-        assert app.screen.query_one("#compose-confirm", Button).disabled
+        assert not isinstance(app.screen, ComposeDialog)
+        assert not app.query_one("#inline-compose").display
         assert not service.previews and not service.runs
 
 
@@ -235,8 +231,9 @@ async def test_shift_r_requests_rebuild_and_typing_never_runs_actions(key, targe
         select_key(app, target)
         await until(pilot, lambda: app.selected_project == "gateway")
         await pilot.press(key)
-        assert isinstance(app.screen, ComposeDialog)
-        assert app.screen.query_one("#compose-action", Select).value == "rebuild"
+        assert not isinstance(app.screen, ComposeDialog)
+        assert not app.query_one("#inline-compose").display
+        await pilot.press("ctrl+o")
         assert app.screen.query_one("#compose-scope", Select).value == (
             "project" if target.startswith("project:") else "service"
         )
@@ -271,3 +268,89 @@ async def test_context_shortcuts_refuse_an_empty_inventory():
         assert app.selected_container is None and app.selected_project is None
         assert not isinstance(app.screen, ComposeDialog)
         assert not docker.opened
+
+
+@pytest.mark.parametrize("target", ["container:orders-api", "project:orders"])
+async def test_resize_preserves_visible_cursor_before_selection_event(target):
+    docker = Docker()
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        table = app.query_one("#containers", DataTable)
+        with table.prevent(DataTable.RowHighlighted):
+            select_key(app, target)
+        assert app.selected_project == "catalog"
+        app._resize_inventory()
+        assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value == target
+        assert app.selected_project == "orders"
+        assert (app.selected_container is None) == target.startswith("project:")
+
+
+@pytest.mark.parametrize("key,action", [("r", "restart"), ("R", "rebuild")])
+@pytest.mark.parametrize("target", ["container:orders-api", "project:orders"])
+async def test_shortcuts_reuse_successful_compose_files_with_confirmation(
+    tmp_path, monkeypatch, key, action, target
+):
+    from test_tui_compose import Service
+
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    (tmp_path / "local.yaml").write_text("services: {}")
+    service = Service()
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
+    docker = Docker()
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        select_key(app, target)
+        await pilot.press("ctrl+o")
+        dialog = app.screen
+        dialog.query_one("#compose-workspace", Input).value = str(tmp_path)
+        dialog.query_one(TextArea).text = "compose.yaml\nlocal.yaml"
+        await pilot.pause()
+        await pilot.click("#compose-preview")
+        await until(pilot, lambda: dialog.plan is not None)
+        await pilot.click("#compose-confirm")
+        await until(pilot, lambda: bool(service.runs))
+        await until(pilot, lambda: dialog._operation.done())
+        await pilot.press("escape")
+        select_key(app, target)
+        await pilot.pause()
+        await pilot.press(key)
+        assert not isinstance(app.screen, ComposeDialog)
+        assert app.query_one("#inline-compose").display
+        plan = app._inline_plan
+        assert plan.action == action
+        assert plan.project.project_name == "orders"
+        assert plan.project.files == (
+            (tmp_path / "compose.yaml").resolve(),
+            (tmp_path / "local.yaml").resolve(),
+        )
+        assert plan.service == (None if target.startswith("project:") else "api")
+        assert len(service.runs) == 1
+        await pilot.click("#inline-compose-confirm")
+        await until(pilot, lambda: len(service.runs) == 2)
+        assert service.runs[-1] == (plan, True)
+        await until(pilot, lambda: app._inline_task.done())
+        await pilot.press("escape")
+        select_key(app, "project:gateway")
+        await pilot.pause()
+        await pilot.press(key)
+        assert not isinstance(app.screen, ComposeDialog)
+        assert not app.query_one("#inline-compose").display
+
+    restarted_docker = Docker()
+    restarted = DebugPilotApp(
+        DebugPilotEngine(Settings(), docker=restarted_docker), refresh_interval=0.05
+    )
+    async with restarted.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(restarted_docker.opened))
+        select_key(restarted, target)
+        await pilot.press(key)
+        assert not isinstance(restarted.screen, ComposeDialog)
+        assert restarted._inline_plan.project.files == plan.project.files
+        assert restarted._inline_plan.project.project_name == "orders"
+        assert restarted._inline_plan.action == action
+        assert restarted._inline_plan.service == plan.service
+        assert len(service.runs) == 2
+        await pilot.press("escape")
+        assert len(service.runs) == 2

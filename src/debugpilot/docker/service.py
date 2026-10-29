@@ -104,7 +104,9 @@ class DockerService:
                 previous = current
             await asyncio.sleep(interval)
 
-    async def stream_logs(self, container: str, *, tail: int = 100, follow: bool = False):
+    async def stream_logs(
+        self, container: str, *, tail: int = 100, follow: bool = False, current_run: bool = False
+    ):
         container = container.removeprefix("/")
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", container):
             raise ValueError("Invalid container name or ID.")
@@ -120,6 +122,8 @@ class DockerService:
                 "follow": follow,
                 "since": cursor.since,
             }
+            if current_run:
+                request["current_run"] = True
             try:
                 async with aclosing(self._records(request)) as records:
                     async for record in records:
