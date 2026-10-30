@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import aclosing
 from dataclasses import replace
+from pathlib import Path
 
 from rich.text import Text
 from textual import events, on
@@ -13,8 +14,9 @@ from textual.widgets import Button, Checkbox, DataTable, Footer, Input, Static
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import ConfigurationError, DebugPilotError
 from debugpilot.core.models import ContainerInfo
-from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject
+from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject, ComposeUpOptions
 from debugpilot.storage.compose_projects import ComposeProjectStore
+from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore
 from debugpilot.tui.container_list import ContainerRow, container_label, container_rows
 from debugpilot.tui.log_viewer import LogViewer
 
@@ -32,6 +34,7 @@ class DebugPilotApp(App):
         Binding("ctrl+r", "retry_logs", "Retry logs"),
         Binding("r", "restart_selected", "Restart"),
         Binding("R,shift+r", "rebuild_selected", "Build"),
+        Binding("s", "stop_selected", "Stop"),
         Binding("ctrl+o", "compose", "Compose"),
         Binding("ctrl+n", "start_project", "Open Compose"),
         Binding("escape", "cancel_compose", show=False),
@@ -41,7 +44,13 @@ class DebugPilotApp(App):
         ],
     ]
 
-    def __init__(self, engine: DebugPilotEngine, *, refresh_interval: float = 2):
+    def __init__(
+        self,
+        engine: DebugPilotEngine,
+        *,
+        refresh_interval: float = 2,
+        workspace: Path | None = None,
+    ):
         super().__init__()
         self.engine = engine
         self.theme = "textual-dark"
@@ -63,10 +72,19 @@ class DebugPilotApp(App):
         self._stream_task: asyncio.Task | None = None
         self._compose_projects: dict[str, ComposeProject] = {}
         self._inline_plan: ComposePlan | None = None
+        self._pending_stop: tuple[str, ...] = ()
         self._inline_service = None
         self._inline_task: asyncio.Task | None = None
         self._compose_store = ComposeProjectStore()
         self._compose_config_error: str | None = None
+        self._launch_store: LaunchProfileStore | None = None
+        self._launch_profiles: list[LaunchProfile] = []
+        self._launch_error: str | None = None
+        self._profile_choices: dict[str, str] = {}
+        try:
+            self._launch_store = LaunchProfileStore(workspace)
+        except ConfigurationError as error:
+            self._launch_error = str(error)
         try:
             self._saved_compose_projects = self._compose_store.load()
         except ConfigurationError as error:
@@ -77,6 +95,8 @@ class DebugPilotApp(App):
         with Horizontal(id="topbar"):
             yield Static("DebugPilot  ·  Docker: connecting…", id="docker-state", markup=False)
             yield Button("Open Compose", id="open-compose")
+            yield Button("Stop", id="stop-selected", variant="warning")
+        yield Static("Launch profiles: loading…", id="launch-state", markup=False)
         with Horizontal(id="dashboard"):
             with Vertical(id="sidebar"):
                 yield Checkbox("Show all", id="show-all")
@@ -154,6 +174,7 @@ class DebugPilotApp(App):
         while not self._closing:
             try:
                 inventory = await self.engine.list_containers()
+                self._update_launch_profiles(inventory)
                 active = sum(item.state in ACTIVE_STATES for item in inventory)
                 self.query_one("#docker-state", Static).update(
                     f"DebugPilot  ·  Docker: connected  ·  {active} active / {len(inventory)} total"
@@ -173,6 +194,70 @@ class DebugPilotApp(App):
     def visibility_changed(self, event: Checkbox.Changed) -> None:
         self._show_all = event.value
         self._show_inventory(list(self._inventory.values()), force=True)
+
+    def _update_launch_profiles(self, inventory: list[ContainerInfo]) -> None:
+        if self._launch_store is None:
+            self.query_one("#launch-state", Static).update(
+                f"Launch profiles unavailable: {self._launch_error}"
+            )
+            return
+        try:
+            self._launch_store.register(inventory)
+            self._launch_profiles = self._launch_store.profiles()
+            self._launch_error = None
+            pending = sum(profile.pending_reason is not None for profile in self._launch_profiles)
+            self.query_one("#launch-state", Static).update(
+                f"Launch: {len(self._launch_profiles) - pending} ready / {pending} pending · "
+                f"Ctrl+O · {self._launch_store.path}"
+            )
+            self.query_one("#launch-state").tooltip = str(self._launch_store.path)
+        except (ConfigurationError, OSError) as error:
+            self._launch_error = str(error)
+            self._launch_profiles = []
+            self.query_one("#launch-state", Static).update(
+                f"Launch profiles: {error} · logs remain available"
+            )
+
+    def _project_from_profile(self, profile: LaunchProfile) -> ComposeProject:
+        if self._launch_store is None:
+            raise ConfigurationError("Launch profiles are unavailable.")
+        resolved = self._launch_store.resolve(profile)
+        if resolved is None or profile.pending_reason:
+            raise ConfigurationError(
+                profile.pending_reason or "Launch profile needs configuration."
+            )
+        values = resolved.up
+        up = (
+            None
+            if values is None
+            else ComposeUpOptions(
+                build=values.get("build", False),
+                detach=values.get("detach", True),
+                force_recreate=values.get("forceRecreate", False),
+            )
+        )
+        return ComposeProject.create(
+            resolved.workspace,
+            resolved.files,
+            resolved.project_name,
+            project_directory=resolved.project_directory,
+            process_cwd=resolved.cwd,
+            environment_files=resolved.environment_files,
+            up=up,
+        )
+
+    def _profile_selected(self, name: str, project: str) -> None:
+        self._profile_choices[project] = name
+
+    def _dialog_profiles(self, project: str | None = None) -> list[LaunchProfile]:
+        if self._launch_store is None:
+            return []
+        try:
+            return self._launch_store.profiles(project)
+        except ConfigurationError as error:
+            self._launch_error = str(error)
+            self.notify(str(error), severity="warning")
+            return []
 
     def _show_inventory(self, inventory: list[ContainerInfo], *, force: bool = False) -> None:
         current = {item.id: item for item in inventory}
@@ -459,13 +544,18 @@ class DebugPilotApp(App):
             self.notify("A Compose operation is already running.", severity="warning")
             return
         self._dismiss_inline_compose()
+        profiles = self._dialog_profiles()
         self.push_screen(
             ComposeDialog(
                 ComposeService(self.engine.settings),
                 None,
                 initial_action="start",
-                browse_on_mount=True,
+                browse_on_mount=not profiles,
                 remember_project=self._remember_compose_project,
+                launch_profiles=profiles,
+                resolve_profile=self._project_from_profile,
+                profile_selected=self._profile_selected,
+                launch_store=self._launch_store,
             )
         )
 
@@ -509,7 +599,45 @@ class DebugPilotApp(App):
             )
             return
         remembered_project = self._compose_projects.get(self.selected_project)
-        if remembered_project is None and self.selected_project in self._saved_compose_projects:
+        profiles = self._dialog_profiles(self.selected_project)
+        if (
+            profiles
+            and all(profile.dynamic for profile in profiles)
+            and (
+                remembered_project is not None
+                or self.selected_project in self._saved_compose_projects
+            )
+        ):
+            # Explicitly chosen session/legacy routes win over live detection hints.
+            profiles = []
+        if contextual and self._launch_error:
+            self.notify(
+                f"Fix launch profiles before running Compose: {self._launch_error}",
+                severity="warning",
+            )
+            return
+        if profiles:
+            choice = self._profile_choices.get(self.selected_project)
+            candidates = [p for p in profiles if p.name == choice] if choice else profiles
+            if len(candidates) == 1:
+                try:
+                    remembered_project = self._project_from_profile(candidates[0])
+                except (ConfigurationError, ComposeError) as error:
+                    remembered_project = None
+                    if contextual:
+                        self.notify(
+                            f"Launch profile pending: {error} Edit {self._launch_store.path}.",
+                            severity="warning",
+                        )
+                        return
+            elif contextual:
+                self.notify("Choose a launch profile with Ctrl+O first.", severity="warning")
+                return
+        if (
+            not profiles
+            and remembered_project is None
+            and self.selected_project in self._saved_compose_projects
+        ):
             try:
                 remembered_project = self._saved_compose_projects[self.selected_project].resolve()
             except ComposeError:
@@ -550,15 +678,66 @@ class DebugPilotApp(App):
                 remembered_project=remembered_project,
                 quick=contextual,
                 remember_project=self._remember_compose_project,
+                launch_profiles=profiles,
+                resolve_profile=self._project_from_profile,
+                profile_selected=self._profile_selected,
+                launch_store=self._launch_store,
             )
         )
 
     def _dismiss_inline_compose(self) -> None:
         self._inline_plan = None
+        self._pending_stop = ()
         self.query_one("#inline-compose").display = False
+
+    @on(Button.Pressed, "#stop-selected")
+    def action_stop_selected(self) -> None:
+        if self._inline_task is not None and not self._inline_task.done():
+            self.notify("An operation is already running.", severity="warning")
+            return
+        if isinstance(self.focused, DataTable) and self.focused.id in {
+            "containers",
+            "stopped-containers",
+        }:
+            self._select_focused_row(self.focused)
+        members = (
+            [self.selected_container]
+            if self.selected_container is not None
+            else list(self._group_members())
+            if self.selected_project
+            else []
+        )
+        targets = tuple(c.id for c in members if c.state in ACTIVE_STATES)
+        if not targets or len(targets) > 32:
+            self.notify(
+                "Select 1–32 active containers; select a service for larger groups.",
+                severity="warning",
+            )
+            return
+        self._dismiss_inline_compose()
+        self._pending_stop = targets
+        scope = self.selected_container.name if self.selected_container else self.selected_project
+        self.query_one("#inline-compose-message", Static).update(
+            f"Stop {scope} / {len(targets)} active container(s)? "
+            "No containers or volumes are removed."
+        )
+        self.query_one("#inline-compose").tooltip = "Pinned targets:\n" + "\n".join(targets)
+        self.query_one("#inline-compose").display = True
+        self.query_one("#inline-compose-confirm", Button).disabled = False
+        self.query_one("#inline-compose-cancel", Button).label = "Cancel"
+        self.query_one("#inline-compose-confirm", Button).focus()
 
     @on(Button.Pressed, "#inline-compose-confirm")
     def confirm_inline_compose(self) -> None:
+        if self._pending_stop and (self._inline_task is None or self._inline_task.done()):
+            targets, self._pending_stop = self._pending_stop, ()
+            self.query_one("#inline-compose-confirm", Button).disabled = True
+            self.query_one("#inline-compose-cancel", Button).label = "Cancel wait"
+            self.query_one("#inline-compose-message", Static).update(
+                f"Stopping {len(targets)} pinned container(s)…"
+            )
+            self._inline_task = asyncio.create_task(self._run_stop(targets))
+            return
         if self._inline_plan is None or (
             self._inline_task is not None and not self._inline_task.done()
         ):
@@ -570,6 +749,35 @@ class DebugPilotApp(App):
             f"Running {plan.action}: {plan.project.project_name} / {plan.service or 'all services'}"
         )
         self._inline_task = asyncio.create_task(self._run_inline_compose(plan))
+
+    async def _run_stop(self, targets: tuple[str, ...]) -> None:
+        try:
+            result = await self.engine.stop_containers(targets, confirmed=True)
+            details = "; ".join(f"{key[:12]}: {value}" for key, value in result.failed.items())
+            self.notify(
+                f"Stop finished: {len(result.stopped)} stopped, "
+                f"{len(result.failed)} failed/unknown. " + details[:500],
+                severity="warning" if result.failed else "information",
+            )
+            inventory = await self.engine.list_containers()
+            if not self._closing:
+                self._update_launch_profiles(inventory)
+                self._show_inventory(inventory)
+        except asyncio.CancelledError:
+            if not self._closing:
+                self.notify(
+                    "Stop wait cancelled; Docker may still stop targets. No rollback.",
+                    severity="warning",
+                )
+        except Exception:
+            if not self._closing:
+                self.notify(
+                    "Stop outcome is unknown. Inspect Docker before retrying.", severity="warning"
+                )
+        finally:
+            if not self._closing:
+                self._dismiss_inline_compose()
+                self.query_one("#containers", DataTable).focus()
 
     async def _run_inline_compose(self, plan: ComposePlan) -> None:
         selection = self.selected_container
@@ -676,11 +884,16 @@ class DebugPilotApp(App):
             "focus_logs",
             "restart_selected",
             "rebuild_selected",
+            "stop_selected",
             "start_project",
         } and isinstance(self.screen, ModalScreen):
             return False
-        if action in {"quit", "retry_logs", "restart_selected", "rebuild_selected"} and isinstance(
-            self.focused, Input
-        ):
+        if action in {
+            "quit",
+            "retry_logs",
+            "restart_selected",
+            "rebuild_selected",
+            "stop_selected",
+        } and isinstance(self.focused, Input):
             return False
         return True

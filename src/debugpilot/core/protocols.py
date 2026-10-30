@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from typing import Protocol
 
-from debugpilot.core.models import ContainerInfo, DiagnosticCheck, LogEntry
+from debugpilot.core.models import ContainerInfo, DiagnosticCheck, LogEntry, StopResult
 
 
 class DiagnosticsProvider(Protocol):
@@ -12,6 +12,14 @@ class DiagnosticsProvider(Protocol):
 
 class DockerProvider(Protocol):
     async def list_containers(self) -> list[ContainerInfo]: ...
+
+    async def stop_containers(
+        self,
+        containers: tuple[str, ...],
+        *,
+        confirmed: bool = False,
+        timeout_seconds: int = 10,
+    ) -> StopResult: ...
 
     def stream_logs(
         self, container: str, *, tail: int = 100, follow: bool = False, current_run: bool = False

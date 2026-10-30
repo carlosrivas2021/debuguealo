@@ -15,6 +15,14 @@ Preview resolves the selected file identity with read-only Compose config inspec
    `compose.yaml`, then `local.yaml`. Files must be readable inside that workspace.
 3. Choose the service or whole-project scope and review the command before confirming.
 
+Launch profiles may also pin a separate Compose project directory and explicit `up`
+options. Relative Compose files still resolve from the workspace; the project directory
+controls Compose's default project-name and `.env` lookup semantics. New profiles can
+choose `build`, `detach`, and `forceRecreate`; values are booleans, not command-line
+fragments. Profile `up` options affect starting only. The `r` shortcut remains restart,
+and `Shift+R` remains rebuild-and-recreate. Existing saved projects without these
+fields keep their original workspace-based project directory and start defaults.
+
 After a successful operation, the app remembers that project's workspace and ordered
 Compose files in a local JSON file, including across app restarts. On a selected
 service or project, `r`

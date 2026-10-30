@@ -1,4 +1,4 @@
-"""Blocking, read-only Docker SDK boundary, run only in a private child process."""
+"""Blocking Docker SDK boundary, run only in a private child process."""
 
 import calendar
 import json
@@ -15,6 +15,8 @@ from debugpilot.core.models import ContainerInfo
 from debugpilot.docker.logs import LogDecoder, read_frames
 from debugpilot.docker.probe import PipeError
 from debugpilot.storage.config import Settings
+
+STOP_TARGET_RE = re.compile(r"(?:[A-Fa-f0-9]{12,64}|[A-Za-z0-9][A-Za-z0-9_.-]{0,127})")
 
 
 def emit(kind: str, **values) -> None:
@@ -46,7 +48,45 @@ def run(settings: Settings, request: dict) -> None:
         # IDs, unlike SDK logs(), which merges stdout and stderr.
         version = bounded_json(api, "/version")
         api._version = version["ApiVersion"]
-        if request["command"] == "containers":
+        if request["command"] == "stop":
+            containers = request["containers"]
+            timeout = request["timeout_seconds"]
+            if (
+                not isinstance(containers, list)
+                or not 1 <= len(containers) <= 32
+                or any(
+                    not isinstance(container, str) or not STOP_TARGET_RE.fullmatch(container)
+                    for container in containers
+                )
+                or len(set(containers)) != len(containers)
+                or type(timeout) is not int
+                or not 1 <= timeout <= 30
+            ):
+                raise DockerError("Invalid Docker stop request.")
+            emit("ready")
+            for container in containers:
+                try:
+                    api.stop(container, timeout=timeout)
+                    emit("stop_result", container=container, stopped=True)
+                except APIError as error:
+                    status = error.response.status_code if error.response is not None else 0
+                    if status == 404:
+                        message = "Container not found."
+                    elif status in {401, 403}:
+                        message = "Docker access denied."
+                    elif status >= 500:
+                        message = "Stop outcome unknown; inspect container state."
+                    else:
+                        message = "Stop failed. Inspect container state."
+                    emit("stop_result", container=container, stopped=False, message=message)
+                except (DockerException, RequestException, OSError):
+                    emit(
+                        "stop_result",
+                        container=container,
+                        stopped=False,
+                        message="Stop outcome unknown; inspect container state.",
+                    )
+        elif request["command"] == "containers":
             containers = bounded_json(api, "/containers/json", all=1)
             if not isinstance(containers, list) or len(containers) > 10_000:
                 raise DockerError("Container inventory exceeds the supported limit.")

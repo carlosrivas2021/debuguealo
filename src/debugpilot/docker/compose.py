@@ -27,14 +27,42 @@ class ComposeError(DebugPilotError):
 
 
 @dataclass(frozen=True)
+class ComposeUpOptions:
+    """The supported, non-shell Compose `up` options for a launch profile."""
+
+    build: bool = False
+    detach: bool = True
+    force_recreate: bool = False
+
+    def __post_init__(self):
+        if any(type(value) is not bool for value in (self.build, self.detach, self.force_recreate)):
+            raise ValueError("Compose up options must be boolean values.")
+
+
+@dataclass(frozen=True)
 class ComposeProject:
     workspace: Path
     files: tuple[Path, ...]
     project_name: str
     fingerprints: tuple[str, ...]
+    project_directory: Path | None = None
+    up: ComposeUpOptions | None = None
+    process_cwd: Path | None = None
+    environment_files: tuple[Path, ...] = ()
+    environment_fingerprints: tuple[str, ...] = ()
 
     @classmethod
-    def create(cls, workspace: Path, files: tuple[Path, ...], project_name: str):
+    def create(
+        cls,
+        workspace: Path,
+        files: tuple[Path, ...],
+        project_name: str,
+        *,
+        project_directory: Path | None = None,
+        up: ComposeUpOptions | None = None,
+        process_cwd: Path | None = None,
+        environment_files: tuple[Path, ...] = (),
+    ):
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", project_name):
             raise ComposeError("Use a lowercase Compose project name with letters, digits, - or _.")
         if not 1 <= len(files) <= 16:
@@ -43,6 +71,37 @@ class ComposeProject:
             workspace = Path(workspace).resolve(strict=True)
             if not workspace.is_dir():
                 raise ComposeError("Choose an existing workspace directory.")
+            if project_directory is not None:
+                project_directory = Path(project_directory)
+                if not project_directory.is_absolute():
+                    project_directory = workspace / project_directory
+                project_directory = project_directory.resolve(strict=True)
+                if (
+                    not project_directory.is_relative_to(workspace)
+                    or not project_directory.is_dir()
+                ):
+                    raise ComposeError(
+                        "Compose project directory must be inside the selected workspace."
+                    )
+            if up is not None and not isinstance(up, ComposeUpOptions):
+                raise ComposeError("Compose up options must use ComposeUpOptions.")
+            if process_cwd is not None:
+                process_cwd = (workspace / Path(process_cwd)).resolve(strict=True)
+                if not process_cwd.is_relative_to(workspace) or not process_cwd.is_dir():
+                    raise ComposeError("Compose process directory must be inside the workspace.")
+            if len(environment_files) > 16:
+                raise ComposeError("Choose at most 16 environment files.")
+            env_paths, env_fingerprints = [], []
+            for value in environment_files:
+                path = (workspace / Path(value)).resolve(strict=True)
+                if not path.is_relative_to(workspace) or not path.is_file():
+                    raise ComposeError("Environment files must be inside the workspace.")
+                with path.open("rb") as source:
+                    data = source.read(MAX_FILE_BYTES + 1)
+                if len(data) > MAX_FILE_BYTES:
+                    raise ComposeError("Environment files must be at most 1 MiB each.")
+                env_paths.append(path)
+                env_fingerprints.append(hashlib.sha256(data).hexdigest())
             resolved, fingerprints = [], []
             for file in files:
                 file = Path(file)
@@ -58,9 +117,19 @@ class ComposeProject:
                     raise ComposeError("Compose files must be nonempty and at most 1 MiB each.")
                 resolved.append(file)
                 fingerprints.append(hashlib.sha256(data).hexdigest())
-        except (OSError, ValueError) as error:
+        except (OSError, TypeError, ValueError) as error:
             raise ComposeError("Workspace or Compose files cannot be read.") from error
-        return cls(workspace, tuple(resolved), project_name, tuple(fingerprints))
+        return cls(
+            workspace,
+            tuple(resolved),
+            project_name,
+            tuple(fingerprints),
+            project_directory,
+            up,
+            process_cwd,
+            tuple(env_paths),
+            tuple(env_fingerprints),
+        )
 
 
 @dataclass(frozen=True)
@@ -80,20 +149,25 @@ class ComposePlan:
             config,
             "compose",
             "--project-directory",
-            str(self.project.workspace),
+            str(self.project.project_directory or self.project.workspace),
             "--project-name",
             self.project.project_name,
         ]
+        for file in self.project.environment_files:
+            arguments.extend(("--env-file", str(file)))
         for file in self.project.files:
             arguments.extend(("-f", str(file)))
         if self.action == "restart":
             arguments.append("restart")
         else:
-            arguments.extend(("up", "-d"))
-            if self.action != "start":
+            arguments.append("up")
+            configured_up = self.project.up if self.action == "start" else None
+            if configured_up is None or configured_up.detach:
+                arguments.append("-d")
+            if self.action != "start" or (configured_up and configured_up.force_recreate):
                 arguments.append("--force-recreate")
             arguments.extend(("--pull", "never"))
-            if self.action == "rebuild":
+            if self.action == "rebuild" or (configured_up and configured_up.build):
                 arguments.append("--build")
         if self.service is not None:
             arguments.extend(("--no-deps", self.service))
@@ -127,7 +201,15 @@ class ComposeService:
             raise ComposeError("Choose start, restart, recreate or rebuild.")
         if service is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", service):
             raise ComposeError("Choose a valid Compose service name, not a container ID or option.")
-        current = ComposeProject.create(project.workspace, project.files, project.project_name)
+        current = ComposeProject.create(
+            project.workspace,
+            project.files,
+            project.project_name,
+            project_directory=project.project_directory,
+            up=project.up,
+            process_cwd=project.process_cwd,
+            environment_files=project.environment_files,
+        )
         if current != project:
             raise ComposeError("Compose files changed; review a new preview before confirming.")
         return ComposePlan(
@@ -145,9 +227,26 @@ class ComposeService:
             raise ComposeError("Compose target changed; review a new preview before confirming.")
         return await self._run_process(plan.project, plan._arguments)
 
-    async def inspect_project(self, workspace: Path, files: tuple[Path, ...]) -> ComposeProject:
+    async def inspect_project(
+        self,
+        workspace: Path,
+        files: tuple[Path, ...],
+        *,
+        project_directory: Path | None = None,
+        up: ComposeUpOptions | None = None,
+        process_cwd: Path | None = None,
+        environment_files: tuple[Path, ...] = (),
+    ) -> ComposeProject:
         """Resolve Compose's own name without overriding it or exposing configuration."""
-        project = ComposeProject.create(workspace, files, "inspection")
+        project = ComposeProject.create(
+            workspace,
+            files,
+            "inspection",
+            project_directory=project_directory,
+            up=up,
+            process_cwd=process_cwd,
+            environment_files=environment_files,
+        )
         # Reuse availability/endpoint checks without executing a mutating operation.
         plan = self.preview(project, "start")
 
@@ -165,7 +264,15 @@ class ComposeService:
             name = json.loads(result.output)["name"]
             if not isinstance(name, str):
                 raise ValueError
-            resolved = ComposeProject.create(workspace, files, name)
+            resolved = ComposeProject.create(
+                workspace,
+                files,
+                name,
+                project_directory=project.project_directory,
+                up=project.up,
+                process_cwd=project.process_cwd,
+                environment_files=project.environment_files,
+            )
             if resolved.fingerprints != project.fingerprints:
                 raise ValueError
             return resolved
@@ -198,7 +305,7 @@ class ComposeService:
                             sys.executable,
                             str(Path(__file__).with_name("_compose_worker.py")),
                             *arguments(directory),
-                            cwd=project.workspace,
+                            cwd=project.process_cwd or project.workspace,
                             env=environment,
                             stdin=asyncio.subprocess.DEVNULL,
                             stdout=asyncio.subprocess.PIPE,

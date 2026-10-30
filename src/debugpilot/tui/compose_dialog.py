@@ -10,8 +10,10 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, RichLog, Select, Static, TextArea
 
+from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.core.models import ContainerInfo
 from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject, ComposeService
+from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore
 from debugpilot.tui.file_picker import ComposeFilePicker
 
 
@@ -47,6 +49,10 @@ class ComposeDialog(ModalScreen):
         remembered_project: ComposeProject | None = None,
         quick: bool = False,
         remember_project: Callable[[ComposeProject], None] | None = None,
+        launch_profiles: list[LaunchProfile] | None = None,
+        resolve_profile: Callable[[LaunchProfile], ComposeProject] | None = None,
+        profile_selected: Callable[[str, str], None] | None = None,
+        launch_store: LaunchProfileStore | None = None,
     ):
         super().__init__()
         self.service = service
@@ -60,6 +66,13 @@ class ComposeDialog(ModalScreen):
         self.quick = quick and remembered_project is not None
         self.set_class(self.quick, "quick")
         self.remember_project = remember_project
+        self.launch_profiles = launch_profiles or []
+        self.resolve_profile = resolve_profile
+        self.profile_selected = profile_selected
+        self.launch_store = launch_store
+        self._selected_launch: LaunchProfile | None = None
+        self._profile_project: ComposeProject | None = None
+        self._paths_visible = True
         self._resolve_identity = initial_action == "start"
         self.plan: ComposePlan | None = None
         self._revision = 0
@@ -74,17 +87,37 @@ class ComposeDialog(ModalScreen):
                 "Recreation replaces container writable layers; running services are interrupted.",
                 markup=False,
             )
+            if self.launch_profiles:
+                yield Label("Launch profile")
+                yield Select(
+                    [
+                        (p.name or f"Unnamed profile {i + 1}", p.name or str(i))
+                        for i, p in enumerate(self.launch_profiles)
+                    ],
+                    prompt="Choose a launch profile",
+                    id="compose-profile",
+                )
             yield Button("Browse Compose file", id="compose-browse")
-            yield Label("Workspace directory (absolute path)")
+            yield Button("Edit paths", id="compose-edit-paths")
+            yield Label("Workspace directory (absolute path)", id="compose-workspace-label")
             yield Input(placeholder="Path to your trusted project", id="compose-workspace")
-            yield Label("Compose project name")
+            yield Label("Compose project name", id="compose-project-label")
             yield Input(
                 value=self.selected_project or "",
                 placeholder="Explicit project name",
                 id="compose-project",
             )
-            yield Label("Compose YAML files in override order (one path per line)")
+            yield Label(
+                "Compose YAML files in override order (one path per line)", id="compose-files-label"
+            )
             yield TextArea("compose.yaml", id="compose-files")
+            yield Label(
+                "Compose project directory (optional; first file directory)",
+                id="compose-directory-label",
+            )
+            yield Input(
+                id="compose-project-directory", placeholder="Default: first Compose file folder"
+            )
             yield Select(
                 [
                     ("Start project - no forced recreation", "start"),
@@ -117,6 +150,8 @@ class ComposeDialog(ModalScreen):
                 yield Button(
                     "Confirm & run", variant="warning", disabled=True, id="compose-confirm"
                 )
+                if self.launch_store is not None:
+                    yield Button("Save Configuration", id="compose-save-profile")
                 yield Button("Close / stop", id="compose-cancel")
             yield RichLog(
                 id="compose-output",
@@ -128,11 +163,19 @@ class ComposeDialog(ModalScreen):
             )
 
     def on_mount(self) -> None:
+        self.query_one("#compose-edit-paths").display = False
         if self.remembered_project is not None:
             self.query_one("#compose-workspace", Input).value = str(
                 self.remembered_project.workspace
             )
             self.query_one(TextArea).text = "\n".join(map(str, self.remembered_project.files))
+            self._profile_project = self.remembered_project
+            self.query_one("#compose-project-directory", Input).value = str(
+                self.remembered_project.project_directory or ""
+            )
+        if len(self.launch_profiles) == 1:
+            profile = self.launch_profiles[0]
+            self.query_one("#compose-profile", Select).value = profile.name or "0"
         if self.quick:
             for widget in self.query("Input, Select, TextArea, #compose-browse, #compose-preview"):
                 widget.display = False
@@ -141,6 +184,84 @@ class ComposeDialog(ModalScreen):
             self.call_after_refresh(self.preview)
         if self.browse_on_mount:
             self.call_after_refresh(self.browse)
+
+    @on(Select.Changed, "#compose-profile")
+    def choose_launch_profile(self, event: Select.Changed) -> None:
+        value = event.value
+        profile = next(
+            (p for i, p in enumerate(self.launch_profiles) if (p.name or str(i)) == value), None
+        )
+        if profile is None or self.resolve_profile is None:
+            return
+        self.invalidate()
+        try:
+            project = self.resolve_profile(profile)
+        except (ConfigurationError, ComposeError) as error:
+            self._profile_project = None
+            self.query_one("#compose-status", Static).update(f"Launch profile pending: {error}")
+            return
+        self._profile_project = project
+        self._selected_launch = profile
+        self.query_one("#compose-workspace", Input).value = str(project.workspace)
+        self.query_one("#compose-project", Input).value = project.project_name
+        self.query_one("#compose-project-directory", Input).value = str(
+            project.project_directory or ""
+        )
+        self.query_one(TextArea).text = "\n".join(map(str, project.files))
+        self._set_paths_visible(False)
+        if self.profile_selected is not None and profile.name is not None:
+            self.profile_selected(profile.name, project.project_name)
+        self.query_one("#compose-status", Static).update(
+            "Profile loaded. Preview and confirm to run."
+        )
+        self.call_after_refresh(self.query_one("#compose-preview").scroll_visible, animate=False)
+
+    def _set_paths_visible(self, visible: bool) -> None:
+        self._paths_visible = visible
+        for widget in self.query(
+            "Input, TextArea, #compose-browse, #compose-workspace-label, "
+            "#compose-project-label, #compose-files-label, #compose-directory-label"
+        ):
+            widget.display = visible
+        self.query_one("#compose-edit-paths").display = True
+        self.query_one("#compose-edit-paths", Button).label = (
+            "Hide paths" if visible else "Edit paths"
+        )
+
+    @on(Button.Pressed, "#compose-edit-paths")
+    def edit_profile_paths(self) -> None:
+        self._set_paths_visible(not self._paths_visible)
+
+    @on(Button.Pressed, "#compose-save-profile")
+    def save_configuration(self) -> None:
+        if self.launch_store is None or (
+            self._operation is not None and not self._operation.done()
+        ):
+            return
+        from debugpilot.tui.launch_save import SaveLaunchDialog
+
+        raw = dict(self._selected_launch.raw) if self._selected_launch else {}
+        project = self.query_one("#compose-project", Input).value.strip()
+        raw.update(
+            name=raw.get("name") or f"Compose: {project}",
+            type="docker-compose",
+            projectName=project,
+            # The workspace input is a safety boundary, not a loaded profile's cwd.
+            cwd=raw.get("cwd")
+            if self._selected_launch
+            else self.query_one("#compose-workspace", Input).value,
+            files=[
+                line.strip()
+                for line in self.query_one("#compose-files", TextArea).text.splitlines()
+                if line.strip()
+            ],
+        )
+        directory = self.query_one("#compose-project-directory", Input).value.strip()
+        if directory:
+            raw["projectDirectory"] = directory
+        else:
+            raw.pop("projectDirectory", None)
+        self.app.push_screen(SaveLaunchDialog(self.launch_store, raw))
 
     @on(Button.Pressed, "#compose-browse")
     def browse(self) -> None:
@@ -152,6 +273,8 @@ class ComposeDialog(ModalScreen):
         if file is None:
             return
         self._resolve_identity = True
+        self._profile_project = None
+        self._selected_launch = None
         self.query_one("#compose-workspace", Input).value = str(file.parent)
         self.query_one(TextArea).text = str(file)
         self.invalidate()
@@ -187,11 +310,28 @@ class ComposeDialog(ModalScreen):
         project_name = self.query_one("#compose-project", Input).value
         action = str(self.query_one("#compose-action", Select).value)
         scope = self.query_one("#compose-scope", Select).value
+        directory = self.query_one("#compose-project-directory", Input).value.strip()
         try:
             if not workspace.is_absolute():
                 raise ComposeError("Choose an absolute workspace directory.")
-            if self._resolve_identity or action == "start":
-                project = await self.service.inspect_project(workspace, files)
+            absolute_files = tuple((workspace / path).resolve() for path in files)
+            project_directory = (
+                Path(directory)
+                if directory
+                else (absolute_files[0].parent if absolute_files else None)
+            )
+            extras = {}
+            if project_directory is not None and project_directory != workspace:
+                extras["project_directory"] = project_directory
+            if self._profile_project is not None:
+                extras.update(
+                    project_directory=project_directory,
+                    process_cwd=self._profile_project.process_cwd,
+                    environment_files=self._profile_project.environment_files,
+                    up=self._profile_project.up,
+                )
+            if (self._resolve_identity or action == "start") and self._profile_project is None:
+                project = await self.service.inspect_project(workspace, files, **extras)
                 if revision != self._revision or self._leaving:
                     return
                 project_name = project.project_name
@@ -199,7 +339,7 @@ class ComposeDialog(ModalScreen):
                     self.query_one("#compose-project", Input).value = project_name
             else:
                 project = await asyncio.to_thread(
-                    ComposeProject.create, workspace, files, project_name
+                    ComposeProject.create, workspace, files, project_name, **extras
                 )
             if self.selected_project is not None and project_name != self.selected_project:
                 raise ComposeError("Selected group belongs to a different Compose project.")
@@ -227,7 +367,9 @@ class ComposeDialog(ModalScreen):
         self.query_one("#compose-confirm", Button).disabled = False
 
     def _set_busy(self, busy: bool) -> None:
-        for widget in self.query("Input, Select, TextArea, #compose-preview, #compose-browse"):
+        for widget in self.query(
+            "Input, Select, TextArea, #compose-preview, #compose-browse, #compose-save-profile"
+        ):
             widget.disabled = busy
         self.query_one("#compose-confirm", Button).disabled = True
 

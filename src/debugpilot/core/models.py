@@ -69,6 +69,13 @@ class ContainerInfo(BaseModel):
         )
 
 
+class StopResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stopped: tuple[str, ...]
+    failed: dict[str, str]
+
+
 class LogEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
     timestamp: str | None = Field(default=None, max_length=64)
