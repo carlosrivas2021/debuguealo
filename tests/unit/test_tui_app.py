@@ -173,7 +173,8 @@ async def test_compose_modal_does_not_stop_background_inventory_or_leak_on_exit(
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await pilot.press("ctrl+o")
+        app._open_compose()
+        await pilot.pause()
         await pilot.pause(0.15)
         assert isinstance(app.screen, ComposeDialog)
         assert all(not task.done() for task in app._ui_tasks)

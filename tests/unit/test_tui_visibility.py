@@ -92,7 +92,8 @@ async def test_focusing_first_stopped_group_pins_the_action_target(entry):
         await pilot.press("r")
         assert not isinstance(app.screen, ComposeDialog)
         assert app.selected_project == "orders"
-        await pilot.press("ctrl+o")
+        app._open_compose()
+        await pilot.pause()
         assert isinstance(app.screen, ComposeDialog)
         assert app.screen.query_one("#compose-project").value == "orders"
         assert app.screen.query_one("#compose-scope").value == "project"

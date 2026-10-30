@@ -7,13 +7,13 @@ does not create or rewrite this file and does not create a second discovery JSON
 
 ## Quick path
 
-1. Open the project directory that owns the Compose files.
-2. Let inventory refresh. Open **Ctrl+O** or **Open Compose** to choose a detected or saved profile. Incomplete metadata remains pending; it is never used to launch anything.
-3. Choose **Save Configuration** when you want to keep a profile. Review its JSON and name, then select **Create launch.json** if the file is absent.
-4. If the file already exists, use **Copy JSON** and add the configuration object to its `configurations` array in your editor. DebugPilot does not replace an existing editor file. The next refresh picks up your changes.
+1. Open the workspace in DebugPilot.
+2. From the empty welcome, choose **Open launch.json** to edit the workspace configuration with nano or vi in the same terminal.
+3. On first open, DebugPilot creates the file only if it is missing. When the real catalog example exists in the workspace, the starter profile points to it; otherwise the file has an empty `configurations` array.
+4. Existing files, including malformed ones, are passed through unchanged so they can be repaired in the editor.
 
-Saving or copying never runs Compose. Preview and Confirm are separate actions.
 Dynamic profiles are rediscovered from inventory rather than restored from a cache.
+Opening or creating the file never runs Compose.
 
 ## Version 1 shape
 
@@ -55,16 +55,21 @@ this feature adds no new cache.
 The registry supports at most 128 configurations. Discovery that would exceed this
 limit is rejected as a whole, leaving the existing document unchanged and readable.
 
-Detected entries are ephemeral; saving makes a manual configuration. Local mappings,
+Detected entries are ephemeral; saving makes a manual configuration. Saved profile names
+own the primary sidebar rows, with selectable actual container children matched only by
+the Compose project label. Inventory that matches a saved `projectName` is not repeated
+in the lower unowned-container area. If multiple saved profiles share a project name,
+each profile remains a distinct owner row with unique child identities. Local mappings,
 custom fields and launch flags in saved profiles are never reconciled from Docker.
 Conflicting detection metadata stays pending until a trusted mapping is supplied.
 
 The application opens the directory from which it was launched as its workspace.
-Run DebugPilot from the repository that owns the Compose files. `Ctrl+O` shows named
-profiles for the selected project; **Open Compose** / **Ctrl+N** offers all profiles
-in the workspace, including profiles with no running containers. **Edit paths** expands
-the form. Merely choosing a profile does not launch Docker: Preview and Confirm are
-still required. `r` and `Shift+R` use the chosen profile for restart and rebuild.
+DebugPilot suspends its TUI and runs `nano`, or `vi` if nano is unavailable, in the
+same terminal without a shell. It waits for the editor to exit, restores the dashboard,
+and reloads the profiles. Install nano or vi on PATH, including on Windows; the tool
+does not use graphical editors or system file associations. A nonzero editor exit
+or an unavailable editor is reported in the TUI. See [terminal controls](tui.md)
+for save and exit shortcuts.
 
 `environmentFiles` may list workspace-local dotenv files when an existing Compose
 project reports explicit `--env-file` metadata. Their paths, not contents, are stored;

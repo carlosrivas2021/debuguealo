@@ -14,38 +14,38 @@ No connection is simulated in the application.
 
 The dashboard also supports explicit, confirmation-gated local Compose restart,
 recreate and rebuild actions for a service or project, using ordered override files.
-Press Ctrl+O; read [Compose safety and limits](docs/compose.md) before using them.
+Press Ctrl+O to open launch.json; read [Compose safety and limits](docs/compose.md) before running actions.
 
-Containers are grouped by Compose project. Select a service or project header, then
-inspect one service's logs or the group's combined logs, tagged with their container
-origin. Child labels omit the repeated project prefix (for example `api-1`), while
-full names and IDs remain the operation targets. Project logs follow the containers
-visible under that group, with a shared bounded buffer; Ctrl+R reconnects all of them.
-Groups above 32 containers require selecting a service to keep resource use bounded.
-Select a service or project header, then
-press `r` to request restart or `Shift+R` to request rebuild/recreate; both require
-preview and confirmation. After a successful Compose operation, its workspace and
-ordered files are saved in a local `compose-projects.json`, including across app
-restarts. `r` and `Shift+R` then
-show a three-line confirmation bar inside the dashboard, without changing screens.
-Press Enter to confirm, or Escape to cancel without executing.
-Dashboard logs show only each container's current execution, starting at Docker's
-reported start time. Successful restart/rebuild refreshes the inventory, clears the
-old view and reconnects automatically, including after container IDs change.
-Docker's stored history is not deleted; the `logs` CLI keeps its existing history behavior.
-Unknown projects show a reminder to configure once with `Ctrl+O`, which opens
-the editable form. Nothing runs until you confirm. `Ctrl+R` retries logs. Try the
-[three-project network laboratory](docs/multi-project.md) with isolated demo services.
+The primary sidebar lists saved configurations from `.debugpilot/launch.json`, using
+its profile names. Running containers are linked by the explicit Compose `projectName`,
+not by the display label. Profiles remain available when no containers are running.
+The lower **View active containers** area shows Docker inventory separately, including
+containers not configured in the launch file; selecting raw inventory does not authorize
+Compose actions.
 
-Use **Open Compose** / **Ctrl+N** to browse and start a project from its Compose file.
-The opened working directory owns `.debugpilot/launch.json`. Existing Compose projects
-appear as dynamic profiles from Docker labels without writing files or starting anything,
-including projects started manually. **Ctrl+O** lets you choose a named profile;
-**Edit paths** expands its settings. **Save Configuration** explicitly creates a missing
-launch file or offers JSON to copy into an existing file in your editor. No second
-discovery JSON is created.
-Incomplete profiles remain pending while logs stay available. See
-[workspace launch profiles](docs/launch-profiles.md) for variables and nested file paths.
+With no saved profiles, a welcome view offers **Open launch.json**. **Ctrl+O** and
+**Ctrl+N** request the same editor action directly, without a Compose picker. If absent,
+the file is created only on that explicit action, using the catalog example when it
+exists in the opened workspace, or an empty configuration array otherwise. Existing
+files are never replaced. The TUI yields the same terminal to `nano` (or `vi` if
+`nano` is unavailable), waits for you to exit, then restores the dashboard and reloads
+the profiles. No VS Code window or system file association is opened. Install `nano`
+or `vi` on PATH if neither is available. In nano, save with Ctrl+O, Enter, then exit
+with Ctrl+X; in vi, use `:wq` to save and exit. No second discovery JSON is created.
+
+Select a saved profile, then use **Play / Recreate** (`r`) to apply Compose configuration,
+environment and port changes, or **Build + Recreate** (`Shift+R`) when code or image
+dependencies changed. Plain Restart is not exposed in the dashboard. Each action shows
+an inline confirmation with the pinned profile; changing its saved configuration before
+confirmation invalidates the preview. Escape cancels without running Docker. Builds
+and recreation may interrupt services; inspect Docker after partial failures.
+
+The selected profile follows its project's combined logs, tagged by container origin.
+Raw inventory also supports individual service logs. **Ctrl+R** reconnects the current
+selection. Dashboard logs show only each container's current execution. Successful
+recreation refreshes inventory, clears the old view and reconnects after container IDs
+change; Docker's stored history is not deleted. The `logs` CLI retains history behavior.
+See the [keyboard workflow](docs/tui.md) and [workspace launch profiles](docs/launch-profiles.md).
 Press **s** or click **Stop** to confirm stopping a container or its selected project
 group, without removing containers or volumes. See [container controls](docs/container-controls.md).
 The default inventory shows active containers; **Show all** reveals stopped containers

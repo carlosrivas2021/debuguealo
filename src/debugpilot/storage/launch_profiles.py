@@ -227,6 +227,42 @@ class LaunchProfileStore:
         profile.pop("pendingReason", None)
         self._create_launch({"version": 1, "configurations": [profile]})
 
+    def ensure_launch_file(self) -> Path:
+        """Create the starter launch file only when missing, then return its path."""
+        self._check_destination()
+        if self.path.exists():
+            return self.path
+
+        profile = None
+        relative_example = Path("examples/multi-project/catalog/compose.yaml")
+        example = self.workspace / relative_example
+        try:
+            resolved_example = example.resolve(strict=True)
+            if resolved_example.is_relative_to(self.workspace) and resolved_example.is_file():
+                profile = {
+                    "name": "Catalog example",
+                    "type": "docker-compose",
+                    "projectName": "dp-demo-catalog",
+                    "source": "manual",
+                    "cwd": "${workspaceFolder}",
+                    "files": [relative_example.as_posix()],
+                    "up": {"build": True, "detach": True, "forceRecreate": True},
+                }
+        except (OSError, RuntimeError, ValueError):
+            # Missing or unusable example assets never become fabricated launch paths.
+            profile = None
+        configurations = [profile] if profile is not None else []
+        document = {"version": 1, "configurations": configurations}
+        try:
+            self._create_launch(document, existing_ok=True)
+        except ConfigurationError:
+            # If an editor won the create race, return its untouched file, even if
+            # that document is malformed; opening it lets the user repair it.
+            self._check_destination()
+            if not self.path.exists():
+                raise
+        return self.path
+
     def resolve(self, profile: LaunchProfile) -> ResolvedLaunch | None:
         """Resolve only workspace-local inputs; never interprets shell variables."""
         raw = profile.raw
@@ -404,7 +440,7 @@ class LaunchProfileStore:
             return "Compose paths or launch options need attention."
         return None
 
-    def _create_launch(self, document: dict[str, Any]) -> None:
+    def _create_launch(self, document: dict[str, Any], *, existing_ok: bool = False) -> bool:
         if len(document["configurations"]) > MAX_CONFIGURATIONS:
             raise ConfigurationError(
                 f"Launch profiles support at most {MAX_CONFIGURATIONS} configurations."
@@ -413,6 +449,8 @@ class LaunchProfileStore:
         try:
             self._check_destination()
             if self.path.exists():
+                if existing_ok:
+                    return False
                 raise ConfigurationError(
                     "launch.json already exists; copy the configuration into your editor. "
                     "The file was not changed."
@@ -433,9 +471,12 @@ class LaunchProfileStore:
             # Linking publishes complete bytes atomically only if the name is absent.
             # Unlike replace, this cannot clobber a concurrent editor's new file.
             os.link(temporary, self.path)
+            return True
         except ConfigurationError:
             raise
         except FileExistsError:
+            if existing_ok:
+                return False
             raise ConfigurationError(
                 "launch.json was created by another editor; no update was written."
             ) from None
