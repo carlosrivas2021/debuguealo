@@ -6,7 +6,7 @@ from typing import Any, Self
 
 from debugpilot.core.events import Event, EventBus
 from debugpilot.core.exceptions import LifecycleError
-from debugpilot.core.models import ContainerInfo, DiagnosticCheck
+from debugpilot.core.models import ContainerInfo, DiagnosticCheck, StopResult
 from debugpilot.core.protocols import DiagnosticsProvider, DockerProvider
 from debugpilot.storage.config import Settings
 
@@ -66,6 +66,23 @@ class DebugPilotEngine:
         if self._docker is None:
             raise LifecycleError("No Docker provider has been configured.")
         return await self.spawn(self._docker.list_containers)
+
+    async def stop_containers(
+        self,
+        containers: tuple[str, ...],
+        *,
+        confirmed: bool = False,
+        timeout_seconds: int = 10,
+    ) -> StopResult:
+        if self._docker is None:
+            raise LifecycleError("No Docker provider has been configured.")
+        return await self.spawn(
+            lambda: self._docker.stop_containers(
+                containers,
+                confirmed=confirmed,
+                timeout_seconds=timeout_seconds,
+            )
+        )
 
     async def stream_logs(
         self, container: str, *, tail: int = 100, follow: bool = False, current_run: bool = False

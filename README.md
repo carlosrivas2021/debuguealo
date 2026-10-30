@@ -38,6 +38,16 @@ the editable form. Nothing runs until you confirm. `Ctrl+R` retries logs. Try th
 [three-project network laboratory](docs/multi-project.md) with isolated demo services.
 
 Use **Open Compose** / **Ctrl+N** to browse and start a project from its Compose file.
+The opened working directory owns `.debugpilot/launch.json`. Existing Compose projects
+appear as dynamic profiles from Docker labels without writing files or starting anything,
+including projects started manually. **Ctrl+O** lets you choose a named profile;
+**Edit paths** expands its settings. **Save Configuration** explicitly creates a missing
+launch file or offers JSON to copy into an existing file in your editor. No second
+discovery JSON is created.
+Incomplete profiles remain pending while logs stay available. See
+[workspace launch profiles](docs/launch-profiles.md) for variables and nested file paths.
+Press **s** or click **Stop** to confirm stopping a container or its selected project
+group, without removing containers or volumes. See [container controls](docs/container-controls.md).
 The default inventory shows active containers; **Show all** reveals stopped containers
 in a separate section. See [file-based startup](docs/starting-projects.md).
 

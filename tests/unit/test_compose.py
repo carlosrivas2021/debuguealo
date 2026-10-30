@@ -110,6 +110,127 @@ async def test_confirmation_and_revalidation_spawn_nothing(project, service, mon
     assert not captured
 
 
+def test_project_directory_and_up_options_are_strict_and_workspace_bound(project, tmp_path):
+    from debugpilot.docker.compose import ComposeUpOptions
+
+    nested = project.workspace / "nested"
+    nested.mkdir()
+    selected = ComposeProject.create(
+        project.workspace,
+        project.files,
+        project.project_name,
+        project_directory=Path("nested"),
+        up=ComposeUpOptions(build=True, detach=False, force_recreate=True),
+    )
+    assert selected.project_directory == nested.resolve()
+    assert selected.up == ComposeUpOptions(build=True, detach=False, force_recreate=True)
+    for field in ("build", "detach", "force_recreate"):
+        with pytest.raises((TypeError, ValueError)):
+            ComposeUpOptions(**{field: "--build"})
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    with pytest.raises(ComposeError):
+        ComposeProject.create(
+            project.workspace, project.files, project.project_name, project_directory=outside
+        )
+    with pytest.raises(ComposeError):
+        ComposeProject.create(
+            project.workspace,
+            project.files,
+            project.project_name,
+            project_directory=Path("missing"),
+        )
+
+
+async def test_explicit_project_directory_and_up_flags_preserve_order(
+    project, service, monkeypatch
+):
+    from debugpilot.docker.compose import ComposeUpOptions
+
+    root = project.workspace
+    (root / "local" / "agents").mkdir(parents=True)
+    (root / "local" / "agents" / "docker-compose.yaml").write_text("services: {}\n")
+    (root / "scratchpad").mkdir()
+    (root / "scratchpad" / "agents.ports.yaml").write_text("services: {}\n")
+    (root / "nested-project").mkdir()
+    selected = ComposeProject.create(
+        root,
+        (Path("local/agents/docker-compose.yaml"), Path("scratchpad/agents.ports.yaml")),
+        "nested",
+        project_directory=Path("nested-project"),
+        up=ComposeUpOptions(build=True, detach=False, force_recreate=True),
+    )
+    captured = fake_process(monkeypatch, Process())
+    await service.run(service.preview(selected, "start"), confirmed=True)
+    argv = captured["argv"]
+    assert argv[argv.index("--project-directory") + 1] == str(root / "nested-project")
+    assert argv.index(str(selected.files[0])) < argv.index(str(selected.files[1]))
+    assert "up" in argv and "--build" in argv and "--force-recreate" in argv
+    assert "-d" not in argv and "--pull" in argv and argv[argv.index("--pull") + 1] == "never"
+
+
+async def test_legacy_start_argv_and_restart_rebuild_ignore_profile_up(
+    project, service, monkeypatch
+):
+    from debugpilot.docker.compose import ComposeUpOptions
+
+    legacy = fake_process(monkeypatch, Process())
+    await service.run(service.preview(project, "start"), confirmed=True)
+    legacy_argv = legacy["argv"]
+    assert legacy_argv[legacy_argv.index("--project-directory") + 1] == str(project.workspace)
+    assert legacy_argv[legacy_argv.index("up") + 1] == "-d"
+    assert "--build" not in legacy_argv and "--force-recreate" not in legacy_argv
+
+    configured = ComposeProject.create(
+        project.workspace,
+        project.files,
+        project.project_name,
+        up=ComposeUpOptions(build=True, detach=False, force_recreate=False),
+    )
+    captured = fake_process(monkeypatch, Process())
+    await service.run(service.preview(configured, "rebuild"), confirmed=True)
+    argv = captured["argv"]
+    assert "-d" in argv and "--build" in argv and "--force-recreate" in argv
+
+
+async def test_profile_fields_are_revalidated_before_run(project, service, monkeypatch):
+    from debugpilot.docker.compose import ComposeUpOptions
+
+    directory = project.workspace / "project"
+    directory.mkdir()
+    configured = ComposeProject.create(
+        project.workspace,
+        project.files,
+        project.project_name,
+        project_directory=directory,
+        up=ComposeUpOptions(build=True),
+    )
+    captured = fake_process(monkeypatch, Process())
+    plan = service.preview(configured, "start")
+    directory.rename(project.workspace / "moved")
+    with pytest.raises(ComposeError):
+        await service.run(plan, confirmed=True)
+    assert not captured
+
+
+async def test_inspection_preserves_profile_identity_and_options(project, service, monkeypatch):
+    from debugpilot.docker.compose import ComposeUpOptions
+
+    directory = project.workspace / "compose-project"
+    directory.mkdir()
+    captured = fake_process(monkeypatch, Process(b'{"name":"inspected"}'))
+    inspected = await service.inspect_project(
+        project.workspace,
+        project.files,
+        project_directory=directory,
+        up=ComposeUpOptions(build=True, detach=False),
+    )
+    assert inspected.project_name == "inspected"
+    assert inspected.project_directory == directory.resolve()
+    assert inspected.up == ComposeUpOptions(build=True, detach=False)
+    assert captured["argv"][captured["argv"].index("--project-directory") + 1] == str(directory)
+
+
 def test_invalid_project_files_and_service_are_rejected(project, service, tmp_path):
     with pytest.raises(ComposeError):
         ComposeProject.create(tmp_path, (), "demo")
@@ -297,3 +418,27 @@ async def test_isolation_helper_preserves_real_exit_status(project, service, mon
     )
     result = await service.run(service.preview(project, "restart"), confirmed=True)
     assert result.exit_code == 7 and result.output.strip() == "real"
+
+
+async def test_profile_process_cwd_and_environment_files_are_bound(project, service, monkeypatch):
+    process_cwd = project.workspace / "local"
+    process_cwd.mkdir()
+    environment = project.workspace / "settings.env"
+    environment.write_text("MODE=local\n")
+    configured = ComposeProject.create(
+        project.workspace,
+        project.files,
+        project.project_name,
+        project_directory=process_cwd,
+        process_cwd=process_cwd,
+        environment_files=(environment,),
+    )
+    captured = fake_process(monkeypatch, Process())
+    plan = service.preview(configured, "start")
+    await service.run(plan, confirmed=True)
+    assert captured["cwd"] == process_cwd
+    argv = plan._arguments("private")
+    assert argv[argv.index("--env-file") + 1] == str(environment)
+    environment.write_text("MODE=changed\n")
+    with pytest.raises(ComposeError, match="changed"):
+        service.preview(configured, "start")

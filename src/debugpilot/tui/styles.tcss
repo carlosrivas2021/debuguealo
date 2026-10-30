@@ -21,3 +21,4 @@ Screen { background: #0b1120; color: #e2e8f0; }
 .compact #sidebar { width: 1fr; height: 8; }
 .compact #container-info { display: none; }
 .compact #debugger-state { display: none; }
+#launch-state { height: 1; }

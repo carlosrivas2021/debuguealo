@@ -8,10 +8,19 @@ from contextlib import aclosing
 from pathlib import Path
 
 from debugpilot.core.exceptions import DockerError
-from debugpilot.core.models import ContainerInfo, LogEntry
+from debugpilot.core.models import ContainerInfo, LogEntry, StopResult
 from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.docker.logs import ReplayCursor
 from debugpilot.storage.config import Settings
+
+_STOP_TARGET_RE = re.compile(r"(?:[A-Fa-f0-9]{12,64}|[A-Za-z0-9][A-Za-z0-9_.-]{0,127})")
+_STOP_FAILURE_MESSAGES = {
+    "Container not found.",
+    "Docker access denied.",
+    "Stop failed. Inspect container state.",
+    "Stop outcome unknown; inspect container state.",
+}
+_STOP_UNKNOWN = "Stop outcome unknown; inspect container state."
 
 
 class DockerService:
@@ -45,11 +54,16 @@ class DockerService:
                 ready = False
                 assert process.stdout is not None
                 while True:
-                    timeout = (
-                        None
-                        if ready and request.get("follow")
-                        else self.settings.docker_timeout_seconds * 2 + 3
-                    )
+                    if ready and request.get("follow"):
+                        timeout = None
+                    elif request.get("command") == "stop":
+                        timeout = (
+                            request["timeout_seconds"]
+                            + self.settings.docker_timeout_seconds * 2
+                            + 3
+                        )
+                    else:
+                        timeout = self.settings.docker_timeout_seconds * 2 + 3
                     async with asyncio.timeout(timeout):
                         line = await process.stdout.readline()
                     if not line:
@@ -92,6 +106,72 @@ class DockerService:
                     raise DockerError("Invalid or oversized container inventory.")
                 containers.append(ContainerInfo.model_validate(record["value"]))
         return sorted(containers, key=lambda container: container.name.casefold())
+
+    async def stop_containers(
+        self,
+        containers: tuple[str, ...],
+        *,
+        confirmed: bool = False,
+        timeout_seconds: int = 10,
+    ) -> StopResult:
+        if confirmed is not True:
+            raise DockerError("Explicit confirmation is required before stopping containers.")
+        if (
+            not isinstance(containers, tuple)
+            or not 1 <= len(containers) <= 32
+            or any(
+                not isinstance(container, str) or not _STOP_TARGET_RE.fullmatch(container)
+                for container in containers
+            )
+            or len(set(containers)) != len(containers)
+        ):
+            raise DockerError("Choose between 1 and 32 unique valid container IDs or names.")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, int)
+            or not 1 <= timeout_seconds <= 30
+        ):
+            raise DockerError("Container stop timeout must be an integer from 1 to 30 seconds.")
+
+        stopped = []
+        failed = {}
+        reported = set()
+        request = {
+            "command": "stop",
+            "containers": list(containers),
+            "timeout_seconds": timeout_seconds,
+        }
+        try:
+            async with aclosing(self._records(request)) as records:
+                async for record in records:
+                    if (
+                        not isinstance(record, dict)
+                        or record.get("kind") != "stop_result"
+                        or record.get("container") not in containers
+                        or record.get("container") in reported
+                        or type(record.get("stopped")) is not bool
+                    ):
+                        raise DockerError("Invalid Docker stop result.")
+                    target = record["container"]
+                    reported.add(target)
+                    if record["stopped"]:
+                        stopped.append(target)
+                    else:
+                        message = record.get("message")
+                        failed[target] = (
+                            message if message in _STOP_FAILURE_MESSAGES else _STOP_UNKNOWN
+                        )
+        except asyncio.CancelledError:
+            # The daemon may have processed the request before local cancellation.
+            # Propagate cancellation; never claim rollback or retry a stop.
+            raise
+        except (DockerError, OSError, TimeoutError, ValueError, KeyError, TypeError):
+            # Results already observed are authoritative; unreported targets are not.
+            pass
+        for target in containers:
+            if target not in reported:
+                failed[target] = _STOP_UNKNOWN
+        return StopResult(stopped=tuple(stopped), failed=failed)
 
     async def watch_containers(self, interval: float = 2):
         if interval < 0.1:
