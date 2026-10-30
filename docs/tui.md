@@ -10,8 +10,10 @@ On smaller terminals the panels stack vertically; the same keyboard shortcuts ap
 
 ## Launch profiles
 
-The primary sidebar lists only saved profiles from the opened workspace's
-`.debugpilot/launch.json`, using each profile's `name`. If none are saved, choose
+The primary sidebar lists saved profiles from the central user-configuration
+`launch.json`, using each profile's `name`. Central profiles require their own explicit
+`workspaceFolder` root. Explicit local-workspace callers retain the
+`.debugpilot/launch.json` compatibility location. If none are saved, choose
 **Open launch.json** to create or edit that file in an editor. Opening the file is
 explicit; startup and Docker inventory refresh never create or rewrite it.
 
@@ -60,7 +62,7 @@ unrelated stream is not opened automatically.
 | `r` | Preview Play / Recreate for the selected saved launch profile. |
 | `Shift+R` | Preview Build + Recreate for the selected saved launch profile. |
 | `s` | Confirm stopping the selected visible container or project group. |
-| `Ctrl+O` / `Ctrl+N` | Edit `.debugpilot/launch.json` with nano or vi in this terminal. |
+| `Ctrl+O` / `Ctrl+N` | Edit the central (or explicitly selected local) `launch.json` with nano or vi. |
 | `Ctrl+L` | Focus logs. |
 | `Ctrl+R` | Retry the selected log stream after EOF or an error. |
 | `q` | Exit. |

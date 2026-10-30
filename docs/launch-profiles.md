@@ -1,15 +1,20 @@
 # Workspace Compose launch profiles
 
 DebugPilot shows detected Compose configurations immediately, including services started
-outside the app. These dynamic profiles live only in memory. Your saved configurations
-live in the single `.debugpilot/launch.json` at the opened workspace root. Discovery
-does not create or rewrite this file and does not create a second discovery JSON.
+outside the app. These dynamic profiles live only in memory. By default, saved configurations live in the stable central `launch.json` beside
+DebugPilot's user `config.toml`, independent of the process working directory. Profiles
+in this central file must declare an existing absolute `workspaceFolder`; that directory
+is the confinement root for `cwd`, Compose files, `projectDirectory`, and
+`environmentFiles`. The optional explicitly selected `LaunchProfileStore(workspace=...)`
+compatibility mode still uses `<workspace>/.debugpilot/launch.json` and confines paths
+to that workspace. The old local file is not automatically loaded, moved, or deleted by
+central mode. Discovery does not create or rewrite launch files.
 
 ## Quick path
 
-1. Open the workspace in DebugPilot.
-2. From the empty welcome, choose **Open launch.json** to edit the workspace configuration with nano or vi in the same terminal.
-3. On first open, DebugPilot creates the file only if it is missing. When the real catalog example exists in the workspace, the starter profile points to it; otherwise the file has an empty `configurations` array.
+1. Start DebugPilot from any directory; the default application uses the same central launch file.
+2. From the empty welcome, choose **Open launch.json** to edit the central configuration with nano or vi in the same terminal.
+3. On first open, DebugPilot creates the file only if it is missing, with an empty `configurations` array. Add profiles with an explicit `workspaceFolder`. Only explicit local-workspace mode generates a catalog starter when that workspace contains the real example.
 4. Existing files, including malformed ones, are passed through unchanged so they can be repaired in the editor.
 
 Dynamic profiles are rediscovered from inventory rather than restored from a cache.
@@ -25,7 +30,8 @@ Opening or creating the file never runs Compose.
       "name": "Compose: catalog",
       "type": "docker-compose",
       "projectName": "catalog",
-      "source": "discovered",
+      "workspaceFolder": "/path/to/project",
+      "source": "manual",
       "cwd": "${workspaceFolder}",
       "files": ["local/agents/docker-compose.yaml", "agents.ports.yaml"],
       "up": {"build": true, "detach": true, "forceRecreate": true}
@@ -34,15 +40,17 @@ Opening or creating the file never runs Compose.
 }
 ```
 
-`cwd` is where relative file paths are resolved. `projectDirectory` is optional; without it, Compose uses the first file's parent. `${workspaceFolder}` is the only supported variable. No shell command, inherited environment, or other variable expansion is performed. `up` flags are optional strict booleans; omitted values remain unspecified.
+`workspaceFolder` is required in central mode and must name an existing, non-symlink absolute directory; it is the project root, never inferred from cwd or Docker metadata. `cwd` is where relative file paths are resolved, while `${workspaceFolder}` expands to that profile's root. `projectDirectory` is optional; without it, Compose uses the first file's parent. No shell command, inherited environment, or other variable expansion is performed. `up` flags are optional strict booleans; omitted values remain unspecified.
 
 ## Discovery and safety
 
 Discovery groups containers by Compose project label, not container ID. Saved profiles
 for a project take precedence; discovery never edits their fields. Docker directory,
-configuration-file, and environment-file labels are used only when they resolve inside
-the opened workspace. Missing, conflicting, stale, inaccessible, or external paths leave
-the detection pending. A profile load or discovery operation never executes Docker Compose.
+configuration-file, and environment-file labels are used only in explicit local-workspace
+mode and only when they resolve inside that workspace. Central mode never trusts labels
+to choose an external root; profiles without a saved root remain pending. Missing,
+conflicting, stale, inaccessible, or escaping paths remain pending. A profile load or
+discovery operation never executes Docker Compose.
 
 The store preserves unknown JSON fields and refuses malformed, unsupported-version,
 oversized, or symlinked files. Explicit creation publishes complete bytes with an
@@ -63,7 +71,8 @@ each profile remains a distinct owner row with unique child identities. Local ma
 custom fields and launch flags in saved profiles are never reconciled from Docker.
 Conflicting detection metadata stays pending until a trusted mapping is supplied.
 
-The application opens the directory from which it was launched as its workspace.
+The default application uses the central configuration location; each central profile
+selects its own project root. Explicit local-workspace mode remains available to callers.
 DebugPilot suspends its TUI and runs `nano`, or `vi` if nano is unavailable, in the
 same terminal without a shell. It waits for the editor to exit, restores the dashboard,
 and reloads the profiles. Install nano or vi on PATH, including on Windows; the tool
@@ -71,6 +80,24 @@ does not use graphical editors or system file associations. A nonzero editor exi
 or an unavailable editor is reported in the TUI. See [terminal controls](tui.md)
 for save and exit shortcuts.
 
-`environmentFiles` may list workspace-local dotenv files when an existing Compose
+`environmentFiles` may list project-local dotenv files when an existing Compose
 project reports explicit `--env-file` metadata. Their paths, not contents, are stored;
 the preview binds their content hashes and refuses execution if they change.
+
+## Independent external profiles
+
+For the example project root `/mnt/c/Users/Usuario/Documents/Development/test-docker`,
+add these three objects independently to the central file's `configurations` array. Keep
+`workspaceFolder` set to that exact root for each profile:
+
+```json
+[
+  {"name":"Agente","type":"docker-compose","projectName":"local-agente","workspaceFolder":"/mnt/c/Users/Usuario/Documents/Development/test-docker","cwd":"${workspaceFolder}","files":["local/agente/docker-compose.yaml"]},
+  {"name":"MCP","type":"docker-compose","projectName":"local-mcp","workspaceFolder":"/mnt/c/Users/Usuario/Documents/Development/test-docker","cwd":"${workspaceFolder}","files":["local/mcp/docker-compose.yaml"]},
+  {"name":"Conversation","type":"docker-compose","projectName":"local-conversation","workspaceFolder":"/mnt/c/Users/Usuario/Documents/Development/test-docker","cwd":"${workspaceFolder}","files":["local/conversation/docker-compose.yaml"]}
+]
+```
+
+Each profile previews and confirms independently. **Play / Recreate** and **Build +
+Recreate** are the existing actions; there is no plain-start action. Merely reading or
+opening this configuration does not run Docker or create project files.

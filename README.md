@@ -16,8 +16,11 @@ The dashboard also supports explicit, confirmation-gated local Compose restart,
 recreate and rebuild actions for a service or project, using ordered override files.
 Press Ctrl+O to open launch.json; read [Compose safety and limits](docs/compose.md) before running actions.
 
-The primary sidebar lists saved configurations from `.debugpilot/launch.json`, using
-its profile names. Running containers are linked by the explicit Compose `projectName`,
+The primary sidebar lists saved configurations from a central `launch.json` beside
+DebugPilot's user `config.toml`, independent of the working directory. Each central
+profile explicitly names its project root with `workspaceFolder`; the previous
+`.debugpilot/launch.json` local-workspace mode remains supported for explicit callers
+and is not auto-migrated. Running containers are linked by the explicit Compose `projectName`,
 not by the display label. Profiles remain available when no containers are running.
 The lower **View active containers** area shows Docker inventory separately, including
 containers not configured in the launch file; selecting raw inventory does not authorize
@@ -25,8 +28,8 @@ Compose actions.
 
 With no saved profiles, a welcome view offers **Open launch.json**. **Ctrl+O** and
 **Ctrl+N** request the same editor action directly, without a Compose picker. If absent,
-the file is created only on that explicit action, using the catalog example when it
-exists in the opened workspace, or an empty configuration array otherwise. Existing
+the central file is created only on that explicit action as an empty configuration array.
+Existing
 files are never replaced. The TUI yields the same terminal to `nano` (or `vi` if
 `nano` is unavailable), waits for you to exit, then restores the dashboard and reloads
 the profiles. No VS Code window or system file association is opened. Install `nano`
