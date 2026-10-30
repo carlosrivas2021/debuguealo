@@ -28,6 +28,70 @@ def workspace_files(root):
     (root / "agents.ports.yaml").write_text("services: {}\n")
 
 
+def test_default_store_uses_central_path_across_cwd_and_resolves_explicit_external_root(
+    tmp_path, monkeypatch
+):
+    config_root = tmp_path / "settings"
+    monkeypatch.setattr(
+        "debugpilot.storage.launch_profiles.config_path", lambda: config_root / "config.toml"
+    )
+    project = tmp_path / "external"
+    (project / "local" / "agente").mkdir(parents=True)
+    compose = project / "local" / "agente" / "docker-compose.yaml"
+    compose.write_text("services: {}\\n")
+    monkeypatch.chdir(tmp_path)
+    first = LaunchProfileStore()
+    monkeypatch.chdir(project)
+    second = LaunchProfileStore()
+    assert first.path == second.path == config_root / "launch.json"
+    assert not first.path.parent.exists()
+
+    profile = {
+        "name": "Agente",
+        "type": "docker-compose",
+        "projectName": "local-agente",
+        "workspaceFolder": str(project),
+        "cwd": "${workspaceFolder}",
+        "files": ["local/agente/docker-compose.yaml"],
+    }
+    from debugpilot.storage.launch_profiles import LaunchProfile
+
+    resolved = first.resolve(LaunchProfile("Agente", "local-agente", None, profile))
+    assert resolved is not None
+    assert resolved.workspace == project.resolve()
+    assert resolved.cwd == project.resolve()
+    assert resolved.files == (compose.resolve(),)
+
+
+def test_default_store_rejects_external_paths_without_explicit_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "debugpilot.storage.launch_profiles.config_path",
+        lambda: tmp_path / "settings" / "config.toml",
+    )
+    compose = tmp_path / "compose.yaml"
+    compose.write_text("services: {}\\n")
+    store = LaunchProfileStore()
+    from debugpilot.storage.launch_profiles import LaunchProfile
+
+    profile = LaunchProfile(
+        "Bad",
+        "demo",
+        None,
+        {
+            "type": "docker-compose",
+            "projectName": "demo",
+            "cwd": str(tmp_path),
+            "files": [str(compose)],
+        },
+    )
+    assert store.resolve(profile) is None
+
+
+def test_explicit_workspace_store_remains_local(tmp_path):
+    store = LaunchProfileStore(tmp_path)
+    assert store.path == tmp_path / ".debugpilot" / "launch.json"
+
+
 def test_dynamic_discovery_creates_no_files_and_saved_profile_wins(tmp_path):
     store = LaunchProfileStore(tmp_path)
     assert store.register([service("a")]) is True

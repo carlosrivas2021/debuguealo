@@ -85,10 +85,13 @@ def test_symlinked_launch_target_fails_closed(tmp_path):
     assert other.read_text() == "{}"
 
 
-@pytest.mark.parametrize("available, expected", [
-    ({"nano": "/tools/nano", "vi": "/tools/vi"}, "/tools/nano"),
-    ({"vi": "/tools/vi"}, "/tools/vi"),
-])
+@pytest.mark.parametrize(
+    "available, expected",
+    [
+        ({"nano": "/tools/nano", "vi": "/tools/vi"}, "/tools/nano"),
+        ({"vi": "/tools/vi"}, "/tools/vi"),
+    ],
+)
 def test_terminal_editor_inherits_terminal_and_waits(tmp_path, monkeypatch, available, expected):
     target = tmp_path / "path with spaces" / "launch.json"
     target.parent.mkdir()

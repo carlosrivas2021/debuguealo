@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from debugpilot.core.exceptions import ConfigurationError
+from debugpilot.storage.config import config_path
 
 MAX_LAUNCH_BYTES = 256 * 1024
 MAX_CONFIGURATIONS = 128
@@ -86,10 +87,12 @@ class LaunchProfileStore:
     """Read, resolve and idempotently register profiles inside one workspace."""
 
     def __init__(self, workspace: Path | None = None):
-        self.workspace = _safe_workspace(
-            workspace if workspace is not None else default_workspace()
+        self.workspace = _safe_workspace(workspace) if workspace is not None else None
+        self.path = (
+            self.workspace / ".debugpilot" / "launch.json"
+            if self.workspace is not None
+            else config_path().parent / "launch.json"
         )
-        self.path = self.workspace / ".debugpilot" / "launch.json"
         self._discovered: list[dict[str, Any]] = []
 
     def _check_destination(self) -> None:
@@ -233,6 +236,10 @@ class LaunchProfileStore:
         if self.path.exists():
             return self.path
 
+        if self.workspace is None:
+            self._create_launch({"version": 1, "configurations": []}, existing_ok=True)
+            return self.path
+
         profile = None
         relative_example = Path("examples/multi-project/catalog/compose.yaml")
         example = self.workspace / relative_example
@@ -274,21 +281,27 @@ class LaunchProfileStore:
         ):
             return None
         try:
+            workspace = self.workspace
+            if workspace is None:
+                root_value = raw.get("workspaceFolder")
+                if not isinstance(root_value, str) or not Path(root_value).is_absolute():
+                    return None
+                workspace = _safe_workspace(Path(root_value))
             cwd_value = raw.get("cwd")
             if not isinstance(cwd_value, str) or not cwd_value:
                 return None
-            cwd = self._resolve_path(cwd_value, self.workspace)
+            cwd = self._resolve_path(cwd_value, workspace, workspace)
             if not cwd.is_dir():
                 return None
             values = raw.get("files")
             if not isinstance(values, list) or not 1 <= len(values) <= MAX_FILES:
                 return None
-            files = tuple(self._resolve_path(item, cwd) for item in values)
+            files = tuple(self._resolve_path(item, cwd, workspace) for item in values)
             if any(not file.is_file() for file in files):
                 return None
             directory_value = raw.get("projectDirectory")
             project_directory = (
-                self._resolve_path(directory_value, cwd)
+                self._resolve_path(directory_value, cwd, workspace)
                 if directory_value is not None
                 else files[0].parent
             )
@@ -304,11 +317,13 @@ class LaunchProfileStore:
             environment_files = raw.get("environmentFiles", [])
             if not isinstance(environment_files, list) or len(environment_files) > MAX_FILES:
                 return None
-            env_paths = tuple(self._resolve_path(value, cwd) for value in environment_files)
+            env_paths = tuple(
+                self._resolve_path(value, cwd, workspace) for value in environment_files
+            )
             if any(not path.is_file() for path in env_paths):
                 return None
             return ResolvedLaunch(
-                workspace=self.workspace,
+                workspace=workspace,
                 cwd=cwd,
                 files=files,
                 project_directory=project_directory,
@@ -316,10 +331,13 @@ class LaunchProfileStore:
                 up=up,
                 environment_files=env_paths,
             )
-        except (OSError, RuntimeError, TypeError, ValueError):
+        except (ConfigurationError, OSError, RuntimeError, TypeError, ValueError):
             return None
 
-    def _resolve_path(self, value: Any, base: Path) -> Path:
+    def _resolve_path(self, value: Any, base: Path, workspace: Path | None = None) -> Path:
+        workspace = workspace or self.workspace
+        if workspace is None:
+            raise ValueError
         if (
             not isinstance(value, str)
             or not value
@@ -327,20 +345,22 @@ class LaunchProfileStore:
             or "\x00" in value
         ):
             raise ValueError
-        expanded = value.replace("${workspaceFolder}", str(self.workspace))
+        expanded = value.replace("${workspaceFolder}", str(workspace))
         if "$" in expanded or "{" in expanded or "}" in expanded:
             raise ValueError
         path = Path(expanded)
         if not path.is_absolute():
             path = base / path
         resolved = path.resolve(strict=True)
-        if not resolved.is_relative_to(self.workspace):
+        if not resolved.is_relative_to(workspace):
             raise ValueError
         return resolved
 
     def _discovered_metadata(
         self, project: str, members: list[dict[str, Any]]
     ) -> tuple[dict[str, Any], str | None]:
+        if self.workspace is None:
+            return {}, "Central profiles require an explicitly saved project root."
         if not PROJECT_NAME.fullmatch(project):
             return {}, "Compose project name is not supported for launch profiles."
         observed = []
