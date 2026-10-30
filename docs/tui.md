@@ -1,88 +1,80 @@
-# Inspect containers and live logs
+# Terminal dashboard
 
-Run `uv run debugpilot` or `uv run debugpilot tui` to open the local terminal dashboard.
-Use `uv run debugpilot tui --config path/to/config.toml` for explicit configuration.
-Docker errors appear in the dashboard; inventory refreshes automatically every two seconds.
-No daemon connection is simulated.
+Run `uv run debugpilot` or `uv run debugpilot tui` to open the local Docker dashboard.
+Use `uv run debugpilot tui --config path/to/config.toml` for explicit settings. Docker
+connection status is shown separately from saved launch configuration state.
 
-Use **Open Compose** (or **Ctrl+N**) to browse for a local Compose file and prepare
-its startup, even when no containers exist. Browse does not execute Docker; Preview
-resolves the declared project name and Confirm starts it without forced recreation.
-See [starting from a Compose file](starting-projects.md).
+The dashboard keeps containers and logs in terminal-style panels, with a near-black
+background, muted separators, compact one-line actions, and visible keyboard focus.
+On smaller terminals the panels stack vertically; the same keyboard shortcuts apply.
 
-## Keyboard workflow
+## Launch profiles
 
-The default inventory shows active containers (`running`, `paused`, `restarting`).
-Enable **Show all** to reveal a separate **STOPPED / INACTIVE** area, still grouped
-by Compose project. Hiding that area closes any hidden log selection. Project actions
-apply to the entire Compose project, including hidden/stopped services, not just
-the currently visible rows; always review the confirmation scope.
-Inventory columns adapt to the sidebar width with ellipsis for long names instead
-of horizontal scrolling. Full identities remain available in metadata, tooltips and
-the confirmation dialog; long log entries can still scroll horizontally.
+The primary sidebar lists only saved profiles from the opened workspace's
+`.debugpilot/launch.json`, using each profile's `name`. If none are saved, choose
+**Open launch.json** to create or edit that file in an editor. Opening the file is
+explicit; startup and Docker inventory refresh never create or rewrite it.
 
-1. Use Up/Down in the grouped inventory to select a Compose project header or one
-   of its indented containers. Containers without Compose metadata appear under
-   **Standalone containers**.
-2. Press Ctrl+L to focus logs. Arrow/Page keys scroll; Tab moves between controls.
-3. Filter text or severity, or search within the retained entries. Enter in Search
-   (or N when not typing) selects the next match and turns off auto-scroll.
-4. Press Q outside an input to exit. Ctrl+P opens Textual's command palette.
+Choose a profile and use **Play / Recreate** to apply its Compose files, or **Build +
+Recreate** when code changed. Both actions require confirmation. `r` previews Play /
+Recreate; `Shift+R` previews Build + Recreate. There is no plain Restart action in the
+TUI. `Ctrl+O` or `Ctrl+N` opens `launch.json` directly; neither key opens a Compose file
+picker or starts a service. Editing stays in the same terminal: DebugPilot suspends
+the dashboard, runs `nano` (falling back to `vi` when nano is not installed), and
+restores the TUI after the editor exits. The launch profiles are reloaded on return.
+There is no editor timeout and no external graphical window. Install `nano` or `vi`
+on PATH; if neither is available, the TUI displays an actionable warning.
+In nano, use Ctrl+O, Enter to save and Ctrl+X to return. In vi, use `:wq` to save
+and return, or `:q!` to discard your edits.
+
+The profile's display `name` is for people. Containers link by the configured Compose
+`projectName` label, so profiles can have names different from their Docker projects.
+Each saved profile row contains indented, selectable children for its matching actual
+containers. Profiles remain listed when they have no matching containers. When two
+profiles share a Compose project, each retains its own child rows. Selecting a profile
+shows combined project logs; selecting a child shows that container's logs and Stop
+acts on that actual container. Play and Build + Recreate continue to act on the owning
+saved profile. Incomplete or invalid profiles remain visible as pending and must be
+fixed in `launch.json` before they can run.
+
+## Active containers and logs
+
+The separate **View active containers** area shows only actual Docker inventory that
+is not owned by any saved profile, grouped by Compose project; standalone containers
+remain separate. Containers with a matching saved-profile `projectName` appear under
+their profile instead and are not duplicated below. Unowned containers do not grant
+permission to run arbitrary Compose actions. Choose an actual container or project in
+the lower area to inspect logs or explicitly stop visible targets. **Show all** reveals
+stopped containers both under their owning profiles and in a distinct inactive area for
+unowned containers. Group stop actions use the visible project's active members; hidden
+siblings are not silently included.
+
+Selecting a saved profile links log selection to active containers with the matching
+`projectName`; it does not rename them to the profile's display name. A project-level
+selection combines that project's service logs, while selecting a container isolates
+its logs. Selection survives inventory reorder and refresh; if a target disappears, an
+unrelated stream is not opened automatically.
 
 | Control | Effect |
 | --- | --- |
-| Ctrl+Space / Pause | Freeze the view, not Docker or ingestion; Resume shows retained entries. |
-| Ctrl+E / Auto | Toggle automatic scrolling to new entries. |
-| Ctrl+K / Clear | Clear the in-memory view/buffer; never delete Docker logs. |
-| Ctrl+F | Focus Search; text filtering is a separate field. |
-| Ctrl+Y / Copy | Copy the selected entry using terminal clipboard support (OSC 52). |
-| r | Request restart for the selected Compose service or project group. |
-| Shift+R | Request rebuild and recreation for that same service or project group. |
-| Ctrl+R | Retry the selected log stream after EOF or an error. |
-| Ctrl+O | Configure, preview and explicitly confirm a local Compose action. |
+| `r` | Preview Play / Recreate for the selected saved launch profile. |
+| `Shift+R` | Preview Build + Recreate for the selected saved launch profile. |
+| `s` | Confirm stopping the selected visible container or project group. |
+| `Ctrl+O` / `Ctrl+N` | Edit `.debugpilot/launch.json` with nano or vi in this terminal. |
+| `Ctrl+L` | Focus logs. |
+| `Ctrl+R` | Retry the selected log stream after EOF or an error. |
+| `q` | Exit. |
 
-Docker/Compose names and container states appear in the inventory. Stopped containers
-use historical logs; running containers request a live stream. A state change or a
-selection change closes the old stream before opening another. Logging-driver errors
-are shown separately from inventory connectivity. Quit closes the UI's tasks and engine.
+Recreate and Build + Recreate interrupt running services. They use explicit profile
+files and never interpret shell command strings or shell variables. See
+[Compose safety and limits](compose.md) and [container stop](container-controls.md).
 
-Selecting a project header closes the previous service's log stream and asks you to
-select a service for logs. A project header never silently streams an arbitrary member.
-Selection survives inventory reorder and refresh; if a selected container disappears,
-its surviving project header is selected instead. If the project disappears, no unrelated
-service stream is opened automatically. Identically named services in different projects
-remain separate targets.
+## Log display limits
 
-The log buffer is limited to 2,000 entries and 2 MiB. The rendered table is also bounded;
-long messages can be scrolled horizontally, and embedded newlines appear as `↵`.
-Pausing can lose older entries when these limits are reached. Copy depends on your
-terminal's clipboard policy and is not guaranteed on every terminal.
-
-## Compose lifecycle controls
-
-Press Ctrl+O to configure a trusted workspace, explicit project name and ordered
-Compose files (one per line). Choose the selected **Compose service** or the entire
-project, then restart, recreate, or rebuild and recreate. Preview never starts a
-Docker operation; **Confirm & run** does. Editing the form invalidates confirmation.
-Restart keeps the existing environment; recreate applies changed environment settings.
-Actions are not saved or repeated automatically. See [Compose safety and limits](compose.md).
-
-The selected project name is prefilled and must still match the selected group.
-A project header defaults to whole-project scope; a container defaults to its Compose
-service, not its container name. Standalone containers do not become Compose services.
-
-The **r** and **Shift+R** shortcuts open this same dialog with Restart or Rebuild
-already selected. They never bypass **Preview** and **Confirm & run**, and typing
-letters inside an input does not trigger an action. Restart preserves the container's
-existing environment; Recreate or Rebuild and recreate applies updated configuration.
-Use Ctrl+R, not r, when you only want to reconnect logs.
-
-The dialog remains responsive during execution. Output appears after completion,
-bounded to 256 KiB, and may contain secrets. Escape / Close stops an in-flight CLI;
-it does not roll back changes already made in Docker. Press again to close afterward.
+The in-memory log buffer is limited to 2,000 entries and 2 MiB. Pausing can lose older
+entries when those limits are reached. Copy depends on terminal clipboard support.
 
 ## Not implemented yet
 
-DAP, breakpoints, source navigation, variables and stepping are T4–T5 work. Their
-shortcuts report that they are unavailable; this dashboard does not pretend to debug.
-The application does not provide an editor or a desktop GUI.
+DAP, breakpoints, source navigation, variables and stepping are not implemented. This
+dashboard does not pretend to debug source code or provide a desktop editor.

@@ -42,14 +42,18 @@ async def test_manual_start_registers_once_and_shortcuts_use_nested_files(tmp_pa
     app = DebugPilotApp(
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
+    store = LaunchProfileStore(tmp_path)
+    store.register(docker.inventory)
+    store.save_configuration(store.profiles()[0].raw)
+    original = path.read_bytes()
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: len(app._launch_profiles) == 1)
-        assert not path.parent.exists()
+        assert path.read_bytes() == original
         assert not service.runs and not service.previews
         docker.inventory = [c.model_copy(update={"id": c.id + "-new"}) for c in docker.inventory]
         await until(pilot, lambda: "orders-api-new" in app._inventory)
-        assert not path.parent.exists()
-        select_key(app, "project:orders")
+        assert path.read_bytes() == original
+        select_key(app, "profile:Compose: orders")
         await pilot.press("R")
         await until(pilot, lambda: bool(service.previews))
         project, action, target = service.previews[0]
@@ -73,9 +77,21 @@ async def test_pending_profile_does_not_block_logs_or_execute_actions(tmp_path, 
     app = DebugPilotApp(
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
+    path.parent.mkdir()
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "configurations": [
+                    {"name": "Pending", "type": "docker-compose", "projectName": "orders"}
+                ],
+            }
+        )
+    )
+    original = path.read_bytes()
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: len(app._launch_profiles) == 1)
-        assert not path.parent.exists()
+        assert path.read_bytes() == original
         await until(pilot, lambda: bool(docker.opened))
         assert "pending" in str(app.query_one("#launch-state", Static).render()).lower()
         await pilot.press("r")
@@ -107,8 +123,9 @@ async def test_named_profiles_select_without_overwriting_custom_fields(tmp_path,
     )
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        select_key(app, "project:orders")
-        await pilot.press("ctrl+o")
+        select_key(app, "profile:Local")
+        app._open_compose()
+        await pilot.pause()
         await until(pilot, lambda: isinstance(app.screen, ComposeDialog))
         selector = app.screen.query_one("#compose-profile", Select)
         selector.value = "Rebuild"
@@ -130,9 +147,10 @@ async def test_explicit_save_creates_launch_without_running_compose(tmp_path, mo
     )
     path = tmp_path / ".debugpilot" / "launch.json"
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: len(app._launch_profiles) == 1)
+        await until(pilot, lambda: bool(app._inventory))
         select_key(app, "project:orders")
-        await pilot.press("ctrl+o")
+        app._open_compose()
+        await pilot.pause()
         await until(pilot, lambda: isinstance(app.screen, ComposeDialog))
         await pilot.pause()
         button = app.screen.query_one("#compose-save-profile", Button)
@@ -227,8 +245,9 @@ async def test_copy_saved_nested_cwd_preserves_profile_semantics(tmp_path, monke
     monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        select_key(app, "project:orders")
-        await pilot.press("ctrl+o")
+        select_key(app, "profile:Nested")
+        app._open_compose()
+        await pilot.pause()
         await until(
             pilot,
             lambda: (

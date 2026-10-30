@@ -1,24 +1,46 @@
-Screen { background: #0b1120; color: #e2e8f0; }
+Screen { background: #080b0e; color: #d6d9dc; }
+Button { height: 1; min-height: 1; border: none; padding: 0 1; background: #171c20; color: #c8cdd1; }
+Button:hover { background: #242c32; }
+Button:focus { background: #30414c; color: #ffffff; text-style: bold; }
+Button:disabled { color: #697279; background: #101417; }
 #topbar { height: 1; }
-#open-compose { width: 16; min-width: 16; height: 1; border: none; padding: 0; }
-#docker-state { width: 1fr; }
-#docker-state { height: 1; background: #162338; color: #7dd3fc; padding: 0 1; }
+#open-launch-file { width: 20; min-width: 20; height: 1; border: none; padding: 0; }
+#docker-state { width: 1fr; height: 1; background: #101518; color: #9db5bf; padding: 0 1; }
 #dashboard { height: 1fr; }
-#sidebar { width: 34; border: round #334155; border-title-color: #7dd3fc; }
+#sidebar { width: 34; border: none; }
+#launch-section { height: 1fr; min-height: 8; }
+#launch-section.empty-launch { height: 9; }
+#launch-title { height: 1; color: #a9c2cc; padding: 0 1; }
+#launch-profiles { height: 1fr; }
+#profile-actions { layout: horizontal; height: 1; }
+#profile-actions Button { width: 1fr; min-width: 10; height: 1; }
+#empty-welcome { display: none; height: 6; padding: 0 1; color: #9ba5aa; }
+#empty-welcome-message { height: 3; }
+#empty-welcome Button { width: 1fr; min-width: 14; height: 1; }
+#active-container-section { height: 1fr; min-height: 5; border-top: solid #2b3439; }
+#active-container-heading { layout: horizontal; height: 1; }
+#active-containers-title { width: 1fr; height: 1; color: #a9c2cc; }
+#show-all { width: auto; height: 1; padding: 0; border: none; }
 #containers { height: 1fr; }
-#show-all { height: 1; padding: 0; border: none; }
-#stopped-area { display: none; height: 1fr; border-top: solid #475569; }
-#stopped-title { height: 1; color: #fbbf24; }
+#stopped-area { display: none; height: 1fr; min-height: 3; border-top: solid #2b3439; }
+#stopped-title { height: 1; color: #c5a66f; }
 #stopped-containers { height: 1fr; }
-#container-info { height: 4; color: #94a3b8; padding: 0 1; }
-#logs-panel { width: 1fr; border: round #334155; }
-#log-state { height: 1; color: #7dd3fc; padding: 0 1; }
-#debugger-state { height: 1; color: #94a3b8; padding: 0 1; }
-#inline-compose { display: none; height: 3; background: #302711; }
+#container-info { height: 4; color: #9ba5aa; padding: 0 1; }
+#logs-panel { width: 1fr; border: none; border-left: solid #2b3439; }
+#log-state { height: 1; color: #a9c2cc; padding: 0 1; }
+#debugger-state { height: 1; color: #858f94; padding: 0 1; }
+#inline-compose { display: none; height: 3; background: #292316; }
 #inline-compose-message { width: 1fr; height: 3; padding: 0 1; }
-#inline-compose Button { width: 12; min-width: 10; height: 3; }
+#inline-compose Button { width: 12; min-width: 10; height: 1; }
 .compact #dashboard { layout: vertical; }
-.compact #sidebar { width: 1fr; height: 8; }
+.compact #sidebar { width: 1fr; height: 14; }
+.compact #launch-section { height: 1fr; min-height: 6; }
+.compact #launch-section.empty-launch { height: 4; min-height: 4; }
+.compact #empty-welcome { height: 3; }
+.compact #empty-welcome-message { height: 1; }
+.compact #empty-welcome Button { height: 1; border: none; padding: 0; }
+.compact #profile-actions { layout: horizontal; height: 1; }
+.compact #active-container-section { height: 1fr; }
 .compact #container-info { display: none; }
 .compact #debugger-state { display: none; }
-#launch-state { height: 1; }
+#launch-state { height: 1; color: #858f94; }

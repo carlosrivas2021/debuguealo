@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from launch_ui_helpers import save_remembered_profile
 from test_tui_compose import Service
 from test_tui_grouping import Docker, item, select_key, until
 from textual.widgets import Static
@@ -74,8 +75,11 @@ def make_app(tmp_path, monkeypatch, *, exit_code=0, blocked=False):
     docker = RunDocker()
     service = RestartService(docker, exit_code, blocked)
     monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
-    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    app = DebugPilotApp(
+        DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
+    )
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
     return app, docker, service
 
 
@@ -87,7 +91,7 @@ async def test_success_reconnects_current_execution_and_discards_stale_view(
     app, docker, service = make_app(tmp_path, monkeypatch)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        select_key(app, target)
+        select_key(app, "profile:Orders")
         viewer = app.query_one(LogViewer)
         await until(pilot, lambda: bool(viewer.buffer.entries()))
         await pilot.press(key, "enter")
@@ -97,15 +101,11 @@ async def test_success_reconnects_current_execution_and_discards_stale_view(
         assert all("run 1 startup" in e.text for e in viewer.buffer.entries())
         assert all(options.get("current_run") for options in docker.options)
         assert "stream ended" not in str(app.query_one("#log-state", Static).render())
-        if target.startswith("container:"):
-            assert app.selected_container.compose_service == "api"
-            assert app.selected_container.id == "orders-api" + ("-new" if key == "R" else "")
-        else:
-            assert app.selected_project == "orders" and app.selected_container is None
-            assert {e.text for e in viewer.buffer.entries()} == {
-                "[api] run 1 startup",
-                "[worker] run 1 startup",
-            }
+        assert app.selected_project == "orders" and app.selected_container is None
+        assert {e.text for e in viewer.buffer.entries()} == {
+            "[api] run 1 startup",
+            "[worker] run 1 startup",
+        }
         opened = len(docker.opened)
         await pilot.press("ctrl+r")
         await until(pilot, lambda: len(docker.opened) > opened)
@@ -120,8 +120,8 @@ async def test_failed_or_cancelled_operation_preserves_current_stream(
     app, docker, _service = make_app(tmp_path, monkeypatch, exit_code=1, blocked=cancel)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        select_key(app, "container:orders-api")
-        await until(pilot, lambda: docker.opened[-1] == "orders-api")
+        select_key(app, "profile:Orders")
+        await until(pilot, lambda: app.selected_project == "orders")
         viewer = app.query_one(LogViewer)
         await until(pilot, lambda: bool(viewer.buffer.entries()))
         before = viewer.buffer.entries()
@@ -141,8 +141,8 @@ async def test_completion_does_not_retarget_unrelated_selection(tmp_path, monkey
     app, docker, service = make_app(tmp_path, monkeypatch, blocked=True)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        select_key(app, "container:orders-api")
-        await until(pilot, lambda: docker.opened[-1] == "orders-api")
+        select_key(app, "profile:Orders")
+        await until(pilot, lambda: app.selected_project == "orders")
         await pilot.press("r", "enter")
         await until(pilot, lambda: bool(service.runs))
         select_key(app, "container:catalog-api")
@@ -159,10 +159,20 @@ async def test_selecting_again_and_retrying_only_show_the_current_execution(tmp_
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
         viewer = app.query_one(LogViewer)
-        for target in ("container:orders-api", "container:orders-worker", "container:orders-api"):
+        for target in (
+            "profile-child:profile:Orders:orders-api",
+            "profile-child:profile:Orders:orders-worker",
+            "profile-child:profile:Orders:orders-api",
+        ):
             opened = len(docker.opened)
             select_key(app, target)
-            await until(pilot, lambda opened=opened: len(docker.opened) > opened)
+            try:
+                await until(pilot, lambda opened=opened: len(docker.opened) > opened)
+            except TimeoutError:
+                pytest.fail(
+                    f"target={target} selected={app._selection_key} "
+                    f"focused={app.focused} opened={docker.opened}"
+                )
             await until(pilot, lambda: bool(viewer.buffer.entries()))
             assert [e.text for e in viewer.buffer.entries()] == ["run 0 startup"]
         opened = len(docker.opened)
@@ -176,8 +186,8 @@ async def test_temporary_stopped_state_does_not_lose_restart_target(tmp_path, mo
     app, docker, service = make_app(tmp_path, monkeypatch, blocked=True)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        select_key(app, "container:orders-api")
-        await until(pilot, lambda: docker.opened[-1] == "orders-api")
+        select_key(app, "profile:Orders")
+        await until(pilot, lambda: app.selected_project == "orders")
         await pilot.press("r", "enter")
         await until(pilot, lambda: bool(service.runs))
         index = next(i for i, c in enumerate(docker.inventory) if c.id == "orders-api")
@@ -187,11 +197,11 @@ async def test_temporary_stopped_state_does_not_lose_restart_target(tmp_path, mo
         docker.inventory[index] = original
         service.release.set()
         await until(pilot, lambda: app._inline_task.done())
-        await until(pilot, lambda: app.selected_container is not None)
-        assert app.selected_container.id == "orders-api"
+        await until(pilot, lambda: app.selected_project == "orders")
+        assert app._selection_key == "profile:Orders"
         await until(
             pilot,
             lambda: any(
-                e.text == "run 1 startup" for e in app.query_one(LogViewer).buffer.entries()
+                "run 1 startup" in e.text for e in app.query_one(LogViewer).buffer.entries()
             ),
         )
