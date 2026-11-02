@@ -71,7 +71,7 @@ async def test_dashboard_keyboard_switching_closes_old_stream_and_exit():
         docker.queues["api"].put_nowait(LogEntry(text="api entry"))
         await wait_until(pilot, lambda: bool(app.query_one(LogViewer).buffer.entries()))
         assert app.query_one(LogViewer).buffer.entries()[0].text == "api entry"
-        app.query_one("#containers", DataTable).focus()
+        app.query_one("#launch-profiles", DataTable).focus()
         await pilot.press("down")
         await wait_until(pilot, lambda: docker.opened == ["api", "worker"])
         assert docker.closed == ["api"] and docker.opened == ["api", "worker"]
@@ -83,7 +83,7 @@ async def test_dashboard_keyboard_switching_closes_old_stream_and_exit():
         assert app.query_one("#filter-logs", Input).value == "q"
         assert engine.state == EngineState.RUNNING
         await pilot.press("escape")
-        app.query_one("#containers", DataTable).focus()
+        app.query_one("#launch-profiles", DataTable).focus()
         await pilot.press("q")
     assert engine.state == EngineState.CLOSED
     assert docker.closed == ["api", "worker"]
@@ -107,7 +107,7 @@ async def test_empty_disconnect_recovery_removal_and_log_errors():
             pilot,
             lambda: "connected" in str(app.query_one("#docker-state", Static).render()).lower(),
         )
-        assert app.query_one("#containers", DataTable).row_count == 0
+        assert app.query_one("#launch-profiles", DataTable).row_count == 0
         docker.inventory = [container("api")]
         await wait_until(pilot, lambda: docker.opened == ["api"])
         assert docker.opened == ["api"]
@@ -152,7 +152,7 @@ async def test_rapid_selection_during_cleanup_opens_only_latest_stream_once():
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         docker.cleanup_gate = asyncio.Event()
-        table = app.query_one("#containers", DataTable)
+        table = app.query_one("#launch-profiles", DataTable)
         table.focus()
         await pilot.press("down")
         await pilot.press("up")

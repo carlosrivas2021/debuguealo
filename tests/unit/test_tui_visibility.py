@@ -1,6 +1,6 @@
 import pytest
 from test_tui_grouping import Docker, item, until
-from textual.widgets import Checkbox, DataTable, Static
+from textual.widgets import Checkbox, DataTable
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
@@ -12,7 +12,7 @@ def keys(app, selector):
     return [row.key.value for row in app.query_one(selector, DataTable).ordered_rows]
 
 
-async def test_default_active_only_and_show_all_uses_separate_stopped_area():
+async def test_default_active_only_and_show_all_uses_one_tree():
     docker = Docker()
     docker.inventory = [
         item("on", "demo", "api"),
@@ -21,17 +21,18 @@ async def test_default_active_only_and_show_all_uses_separate_stopped_area():
     ]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(keys(app, "#containers")))
-        assert "container:on" in keys(app, "#containers")
-        assert "container:paused" in keys(app, "#containers")
-        assert "container:off" not in keys(app, "#containers")
-        assert not app.query_one("#stopped-area").display
+        await until(pilot, lambda: bool(keys(app, "#launch-profiles")))
+        assert "container:on" in keys(app, "#launch-profiles")
+        assert "container:paused" in keys(app, "#launch-profiles")
+        assert "container:off" not in keys(app, "#launch-profiles")
+        assert "stopped:container:off" not in keys(app, "#launch-profiles")
+        assert len(app.query_one("#sidebar").query(DataTable)) == 1
         assert not app.query_one("#show-all", Checkbox).value
         await pilot.click("#show-all")
-        await until(pilot, lambda: "stopped:container:off" in keys(app, "#stopped-containers"))
-        assert "container:off" not in keys(app, "#containers")
-        assert app.query_one("#stopped-area").display
-        assert "stopped" in str(app.query_one("#stopped-title", Static).render()).lower()
+        await until(pilot, lambda: "stopped:container:off" in keys(app, "#launch-profiles"))
+        assert "container:off" not in keys(app, "#launch-profiles")
+        assert str(app.query_one("#show-all", Checkbox).label) == "Show all (1 stopped)"
+        assert len(app.query_one("#sidebar").query(DataTable)) == 1
 
 
 async def test_hiding_selected_stopped_container_clears_selection_and_keeps_scope_safe():
@@ -41,10 +42,10 @@ async def test_hiding_selected_stopped_container_clears_selection_and_keeps_scop
     async with app.run_test(size=(80, 24)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
         await pilot.click("#show-all")
-        await until(pilot, lambda: len(keys(app, "#stopped-containers")) == 2)
-        table = app.query_one("#stopped-containers", DataTable)
+        await until(pilot, lambda: "stopped:container:off" in keys(app, "#launch-profiles"))
+        table = app.query_one("#launch-profiles", DataTable)
         table.focus()
-        table.move_cursor(row=1)
+        table.move_cursor(row=table.get_row_index("stopped:container:off"))
         await until(
             pilot, lambda: app.selected_container is not None and app.selected_container.id == "off"
         )
@@ -52,12 +53,12 @@ async def test_hiding_selected_stopped_container_clears_selection_and_keeps_scop
         await pilot.click("#show-all")
         await until(pilot, lambda: app.selected_container is None)
         assert app.selected_project == "demo"
-        assert not app.query_one("#stopped-area").display
+        assert "stopped:container:off" not in keys(app, "#launch-profiles")
         assert app.query_one("#log-entries").region.height > 0
     assert len(docker.closed) == len(docker.opened)
 
 
-async def test_state_change_moves_service_between_areas_without_losing_identity():
+async def test_state_change_rekeys_service_without_losing_identity():
     docker = Docker()
     docker.inventory = [item("api", "demo", "api")]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
@@ -65,10 +66,10 @@ async def test_state_change_moves_service_between_areas_without_losing_identity(
         await until(pilot, lambda: bool(docker.opened))
         await pilot.click("#show-all")
         docker.inventory = [item("api", "demo", "api", "exited")]
-        await until(pilot, lambda: "stopped:container:api" in keys(app, "#stopped-containers"))
+        await until(pilot, lambda: "stopped:container:api" in keys(app, "#launch-profiles"))
         assert app.selected_container.id == "api"
         assert app.selected_container.state == "exited"
-        assert "container:api" not in keys(app, "#containers")
+        assert "container:api" not in keys(app, "#launch-profiles")
 
 
 @pytest.mark.parametrize("entry", ["click", "keyboard"])
@@ -80,15 +81,19 @@ async def test_focusing_first_stopped_group_pins_the_action_target(entry):
         await until(pilot, lambda: bool(docker.opened))
         assert app.selected_project == "gateway"
         await pilot.click("#show-all")
-        table = app.query_one("#stopped-containers", DataTable)
+        table = app.query_one("#launch-profiles", DataTable)
+        await until(pilot, lambda: "project:orders" in keys(app, "#launch-profiles"))
+        row = table.get_row_index("project:orders")
         if entry == "click":
-            await pilot.click("#stopped-containers", offset=(3, 1))
+            await pilot.click("#launch-profiles", offset=(3, row + 1))
         else:
             for _ in range(8):
                 await pilot.press("tab")
                 if table.has_focus:
                     break
-        assert table.has_focus and table.cursor_row == 0
+            table.move_cursor(row=max(0, row - 1))
+            await pilot.press("down" if row else "up")
+        assert table.has_focus and table.cursor_row == row
         await pilot.press("r")
         assert not isinstance(app.screen, ComposeDialog)
         assert app.selected_project == "orders"
@@ -101,7 +106,7 @@ async def test_focusing_first_stopped_group_pins_the_action_target(entry):
 
 
 @pytest.mark.parametrize("size", [(120, 40), (80, 24)])
-async def test_inventory_tables_fit_sidebar_without_horizontal_scroll(size):
+async def test_inventory_tree_fits_sidebar_without_horizontal_scroll(size):
     docker = Docker()
     project = "a-realistic-project-with-a-very-long-descriptive-name"
     docker.inventory = [
@@ -113,11 +118,11 @@ async def test_inventory_tables_fit_sidebar_without_horizontal_scroll(size):
         await until(pilot, lambda: bool(docker.opened))
         await pilot.click("#show-all")
         await pilot.pause()
-        for selector in ("#containers", "#stopped-containers"):
-            table = app.query_one(selector, DataTable)
-            assert table.max_scroll_x == 0
-            assert table.region.width > 0 and table.region.height > 0
+        table = app.query_one("#launch-profiles", DataTable)
+        assert len(app.query_one("#sidebar").query(DataTable)) == 1
+        assert table.max_scroll_x == 0
+        assert table.region.width > 0 and table.region.height > 0
         await pilot.resize_terminal(90, 28)
         await pilot.pause()
-        assert app.query_one("#containers", DataTable).max_scroll_x == 0
-        assert app.query_one("#stopped-containers", DataTable).max_scroll_x == 0
+        assert table.max_scroll_x == 0
+        assert table.region.width > 0 and table.region.height > 0

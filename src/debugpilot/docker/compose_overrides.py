@@ -40,6 +40,8 @@ def validate_service_overrides(overrides):
     accepted. Environment values remain literal (including dollar signs). Errors
     intentionally contain no payload values.
     """
+    if isinstance(overrides, _ValidatedServiceOverrides):
+        return overrides
     if overrides is None or (isinstance(overrides, Mapping) and not overrides):
         return _ValidatedServiceOverrides(())
     if not isinstance(overrides, Mapping) or set(overrides) != {"services"}:

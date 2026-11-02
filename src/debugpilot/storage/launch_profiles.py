@@ -8,11 +8,12 @@ import os
 import re
 import stat
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from debugpilot.core.exceptions import ConfigurationError
+from debugpilot.docker.compose_overrides import validate_service_overrides
 from debugpilot.storage.config import config_path
 
 MAX_LAUNCH_BYTES = 256 * 1024
@@ -37,7 +38,7 @@ class LaunchProfile:
     name: str | None
     project_name: str | None
     pending_reason: str | None
-    raw: dict[str, Any]
+    raw: dict[str, Any] = field(repr=False)
     dynamic: bool = False
 
 
@@ -50,6 +51,7 @@ class ResolvedLaunch:
     project_name: str
     up: dict[str, bool] | None
     environment_files: tuple[Path, ...] = ()
+    service_overrides: Any = field(default=None, repr=False)
 
 
 def _is_reparse(path: Path) -> bool:
@@ -322,6 +324,12 @@ class LaunchProfileStore:
             )
             if any(not path.is_file() for path in env_paths):
                 return None
+            try:
+                service_overrides = validate_service_overrides(raw.get("overrides"))
+            except ValueError:
+                return None
+            if not service_overrides.services:
+                service_overrides = None
             return ResolvedLaunch(
                 workspace=workspace,
                 cwd=cwd,
@@ -330,6 +338,7 @@ class LaunchProfileStore:
                 project_name=project,
                 up=up,
                 environment_files=env_paths,
+                service_overrides=service_overrides,
             )
         except (ConfigurationError, OSError, RuntimeError, TypeError, ValueError):
             return None
@@ -450,6 +459,10 @@ class LaunchProfileStore:
             return "Compose project name is missing."
         if not raw.get("cwd") or not raw.get("files"):
             return "Compose working directory or configuration files are missing."
+        try:
+            validate_service_overrides(raw.get("overrides"))
+        except ValueError:
+            return "Service overrides need attention."
         try:
             if (
                 self.resolve(LaunchProfile(None, raw.get("projectName"), None, copy.deepcopy(raw)))

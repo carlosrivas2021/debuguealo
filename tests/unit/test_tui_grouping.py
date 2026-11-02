@@ -54,7 +54,7 @@ class Docker:
 
 def select_key(app, key):
     table = app.query_one(
-        "#launch-profiles" if key.startswith(("profile:", "profile-child:")) else "#containers",
+        "#launch-profiles",
         DataTable,
     )
     # Enter the table like a user; moving an unfocused cursor is not selection.
@@ -71,7 +71,7 @@ async def test_projects_and_standalone_are_grouped_and_group_selection_merges_lo
     app = DebugPilotApp(engine, refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        table = app.query_one("#containers", DataTable)
+        table = app.query_one("#launch-profiles", DataTable)
         keys = [row.key.value for row in table.ordered_rows]
         assert keys == [
             "project:catalog",
@@ -142,7 +142,8 @@ async def test_selection_identity_survives_refresh_then_disappears_without_wrong
             value for value in docker.inventory if value.compose_project != "orders"
         ]
         await until(pilot, lambda: app.selected_project != "orders")
-        assert app.selected_container is None and docker.opened == opened
+        assert app.selected_container is None
+        assert not any(name.startswith("orders-") for name in docker.opened[len(opened) :])
         select_key(app, "container:standalone")
         await until(
             pilot,
@@ -235,7 +236,7 @@ async def test_shift_r_requests_rebuild_and_typing_never_runs_actions(key, targe
         await pilot.press("r", "R")
         assert app.query_one("#filter-logs", Input).value == "rR"
         assert not isinstance(app.screen, ComposeDialog)
-        app.query_one("#containers", DataTable).focus()
+        app.query_one("#launch-profiles", DataTable).focus()
         select_key(app, target)
         await until(pilot, lambda: app.selected_project == "gateway")
         await pilot.press(key)
@@ -285,7 +286,7 @@ async def test_resize_preserves_visible_cursor_before_selection_event(target):
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
-        table = app.query_one("#containers", DataTable)
+        table = app.query_one("#launch-profiles", DataTable)
         with table.prevent(DataTable.RowHighlighted):
             select_key(app, target)
         assert app.selected_project == "catalog"

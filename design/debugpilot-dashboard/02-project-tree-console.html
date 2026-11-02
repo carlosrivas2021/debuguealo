@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DebugPilot · project tree with output console</title>
+<style>
+:root{color-scheme:dark;--bg:#080b0e;--fg:#d6d9dc;--panel:#101518;--button:#171c20;--focus:#30414c;--white:#fff;--muted:#9ba5aa;--label:#a9c2cc;--line:#2b3439;--stopped:#c5a66f;--confirm:#292316;--mono:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{background:var(--bg);color:var(--fg);font:13px/1.4 var(--mono)}button{font:inherit;background:var(--button);color:var(--fg);border:0;padding:5px 9px;cursor:pointer}button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--white);outline-offset:2px;background:var(--focus);color:var(--white)}.shell{width:min(100%,1440px);height:min(100vh,900px);min-height:520px;margin:auto;display:grid;grid-template-rows:40px minmax(0,1fr) minmax(0,220px) 30px}.bar{display:flex;align-items:center;gap:18px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line)}.grow{flex:1}.muted{color:var(--muted)}main{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:0}.tree{padding:14px;border-right:1px solid var(--line);overflow:auto;overscroll-behavior:contain}.tree h2{font-size:14px;color:var(--label);margin:0 0 12px}.tree details{margin:8px 0}.tree summary{cursor:pointer;padding:5px 2px}.tree .leaf{padding:6px 8px 6px 20px;color:var(--muted);border-left:1px solid var(--line)}.tree button.leaf{display:block;width:100%;text-align:left;background:transparent;cursor:pointer}.tree .leaf small{display:block;font:inherit;color:var(--label)}.tree button.leaf.selected{color:var(--fg);background:var(--panel);border-left:2px solid var(--label)}.tree .leaf.stopped{color:var(--stopped)}.right{display:grid;grid-template-rows:minmax(0,1fr) auto auto;min-width:0;min-height:0;padding:14px 0 0}.container-details[hidden],.service-logs[hidden],.shell-view[hidden]{display:none}.container-details,.shell-view{margin:0 18px;padding:12px;border:1px solid var(--line);background:var(--panel);min-width:0;overflow:auto}.container-details h2,.shell-view h2{font-size:14px;color:var(--label);margin:0 0 12px}.container-details dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 20px}.container-details dt{color:var(--muted)}.container-details dd{margin:0;overflow-wrap:anywhere}.container-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.shell-notice{color:var(--stopped);border-left:2px solid var(--stopped);padding-left:10px}.terminal-output{white-space:pre-wrap;overflow-wrap:anywhere}.service-logs{margin:0 18px;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);border:1px solid var(--line);background:var(--panel);min-width:0}.service-log-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;padding:8px 12px;border-bottom:1px solid var(--line)}.service-log-head h2{margin:0;font-size:14px;color:var(--label)}.service-log-body{padding:10px 12px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.service-log-body p{margin:0 0 6px}.confirm{margin:10px 18px;padding:9px 12px;background:var(--confirm);border-left:2px solid var(--stopped);display:flex;align-items:center;gap:12px}.confirm[hidden]{display:none}.confirm span{flex:1}.confirm p{margin:0}.confirm strong{display:block}.demo-status:empty{display:none}.demo-status{margin:6px 18px;color:var(--muted)}.console{border-top:1px solid var(--line);background:var(--panel);display:grid;grid-template-rows:34px minmax(0,1fr);min-height:0}.console-head{display:flex;align-items:center;padding:0 15px;gap:14px;border-bottom:1px solid var(--line)}.console-body{overflow:auto;padding:10px 15px;white-space:pre-wrap}.console-body p{margin:0 0 5px}#shell-prompt-panel{border-top:1px solid var(--line);padding-top:7px;margin-top:8px}#shell-command-form{display:flex;align-items:baseline;gap:1ch;cursor:text;white-space:normal}#shell-prompt-label{flex:none;white-space:nowrap}#shell-command-input{flex:1;min-width:1ch;width:0;background:transparent;color:var(--fg);border:0;border-radius:0;outline:none;box-shadow:none;appearance:none;font:inherit;line-height:inherit;padding:0;caret-color:var(--white)}#shell-command-form:focus-within #shell-prompt-label{color:var(--white)}.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}#shell-history p{margin:0 0 3px}.shell.output-hidden{grid-template-rows:40px minmax(0,1fr) 34px 30px}.console.output-hidden{grid-template-rows:34px}.console.output-hidden .console-body{display:none}.foot{display:flex;align-items:center;gap:20px;padding:0 16px;color:var(--muted);border-top:1px solid var(--line);white-space:nowrap;overflow:auto}.foot b{color:var(--fg)}
+@media(max-width:760px){.shell{height:100vh;min-height:520px;grid-template-rows:auto minmax(0,1fr) minmax(0,180px) auto}.bar{min-height:40px;flex-wrap:wrap;padding:8px}main{grid-template-columns:minmax(155px,34%) minmax(0,1fr)}.tree{padding:8px}.tree h2{font-size:12px}.tree .leaf{padding:5px 4px 5px 10px}.container-details,.shell-view{margin:0 8px}.container-details dl{grid-template-columns:max-content minmax(0,1fr);gap:6px 10px}.service-logs{margin:0 8px}.console-head{flex-wrap:wrap;padding:6px 10px}.foot{gap:8px 14px;padding:8px;flex-wrap:wrap;white-space:normal}.confirm{margin:8px;flex-wrap:wrap}}
+@media(max-width:460px){body{font-size:12px}.bar{gap:8px}.bar .grow{display:none}main{grid-template-columns:130px minmax(0,1fr)}.tree .leaf small{font-size:10px}.service-log-head{gap:5px}.right{padding-top:8px}.container-details,.shell-view{padding:8px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body><div class="shell" id="app-shell">
+<header class="bar"><strong>DebugPilot</strong><span>Docker: <strong>NOT CONNECTED*</strong></span><span class="muted">Illustrative screen · engine not queried</span><span class="grow"></span><button type="button" aria-label="Open launch file preview">launch.json · Ctrl+O</button></header>
+<main><nav class="tree" aria-label="Compose project tree"><h2>PROJECTS · SAMPLE</h2><div id="project-groups"></div><p class="muted">30 illustrative containers · sidebar scrolls independently.<br>Click a row for logs · D details · S stop · C container shell.</p></nav>
+<section class="right" aria-label="Selected container logs and preview actions">
+<section id="container-details" class="container-details" aria-labelledby="container-detail-title" hidden><h2 id="container-detail-title" tabindex="-1">Container details</h2><p class="muted">Illustrative metadata only — no Docker inspect was executed.</p><dl id="container-detail-fields"></dl><div class="container-actions"><button id="container-shell-action" type="button">Open container shell · C</button><button id="back-to-logs" type="button">Back to logs · Esc</button></div></section>
+<section id="container-logs" class="service-logs" aria-labelledby="service-log-title"><header class="service-log-head"><h2 id="service-log-title">Container logs · Agente / api</h2><span id="log-source" class="muted">agente-api-1 · stdout / stderr</span><span class="grow"></span><span class="muted">Illustrative sample · not live</span></header><div id="container-log-body" class="service-log-body" role="log" aria-label="Illustrative container logs"></div></section>
+<div id="action-confirmation" class="confirm" role="group" aria-labelledby="confirmation-title" aria-describedby="confirmation-description" hidden><span><strong id="confirmation-title">Confirm action · Recreate project</strong><span id="confirmation-description">This is a confirmation preview only. Cancel is the safe default; no Docker action will run.</span></span><button id="cancel-action" type="button">Cancel · default (Esc)</button><button id="confirm-action" type="button">Simulate confirmation</button></div><p id="demo-status" class="demo-status" role="status"></p>
+</section></main>
+<section id="compose-console" class="console" aria-label="Compose output and simulated shell"><div class="console-head"><strong id="console-context-title">Compose execution · Agente</strong><span>up -d --build</span><span class="muted">Illustrative transcript · not observed</span><span class="grow"></span><button id="toggle-output" type="button" aria-controls="console-output" aria-expanded="true">Hide output · O</button></div><div id="console-output" class="console-body"><div id="compose-output" role="log" aria-label="Compose execution transcript"><p>[17:42:08] $ docker compose --project-name agente up -d --build</p><p>[17:42:08] [+] Building 1.4s (8/8) FINISHED</p><p>[17:42:09] =&gt; [api internal] load build definition from Dockerfile</p><p>[17:42:10] [+] Running 2/2</p><p>[17:42:10] ✔ Container agente-api-1 Started</p><p>[17:42:10] ✔ Container agente-redis-1 Started</p><p>[17:42:11] [Compose · Agente] Compose exited 0</p></div><section id="shell-prompt-panel" aria-label="Simulated bash prompt" hidden><p id="shell-context" class="shell-notice">No shell preview selected.</p><p class="muted">Simulation only · commands are not executed. Compose output above remains separate.</p><div id="shell-history" role="log" aria-live="polite" aria-label="Simulated shell transcript"></div><form id="shell-command-form"><label for="shell-command-input" id="shell-prompt-label">$</label> <input id="shell-command-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="shell-safety-note"><span id="shell-safety-note" class="visually-hidden">Press Enter to record a simulated line. No command is executed.</span></form></section></div></section>
+<footer class="foot"><span><b>↑↓</b> Select</span><span><b>Enter</b> Logs</span><span><b>D</b> Details</span><span><b>S</b> Stop preview</span><span><b>C</b> Container shell</span><button id="host-bash-preview" type="button" aria-controls="shell-prompt-panel" aria-keyshortcuts="H"><b>H</b> Host bash</button><span><b>R</b> Recreate preview</span><span><b>O</b> Toggle output</span><span><b>Esc</b> Back / cancel</span><span class="grow"></span><span>*Illustrative only</span></footer>
+</div>
+<script>
+'use strict';
+const sampleSpecs = [
+  ['Agente','api','RUNNING','python:3.12-alpine','127.0.0.1:8080 → 8080/tcp'],['Agente','redis','RUNNING','redis:7-alpine',null],['Agente','worker','STOPPED','python:3.12-alpine',null],['Agente','scheduler','RUNNING','python:3.12-alpine',null],['Agente','migrate','STOPPED','python:3.12-alpine',null],['Agente','proxy','RUNNING','nginx:1.27-alpine','127.0.0.1:8081 → 80/tcp'],['Agente','cache','RUNNING','redis:7-alpine',null],['Agente','events','STOPPED','python:3.12-alpine',null],['Agente','beat','RUNNING','python:3.12-alpine',null],['Agente','monitor','STOPPED','python:3.12-alpine','127.0.0.1:5555 → 5555/tcp'],
+  ['Conversation','web','RUNNING','node:22-alpine','127.0.0.1:3000 → 3000/tcp'],['Conversation','api','RUNNING','node:22-alpine','127.0.0.1:3001 → 3000/tcp'],['Conversation','worker','STOPPED','node:22-alpine',null],['Conversation','postgres','RUNNING','postgres:16-alpine',null],['Conversation','redis','RUNNING','redis:7-alpine',null],['Conversation','proxy','STOPPED','nginx:1.27-alpine',null],['Conversation','scheduler','RUNNING','node:22-alpine',null],['Conversation','search','STOPPED','opensearch:2',null],['Conversation','mailpit','RUNNING','axllent/mailpit:v1.21','127.0.0.1:8025 → 8025/tcp'],['Conversation','migrate','STOPPED','node:22-alpine',null],
+  ['MCP','gateway','RUNNING','node:22-alpine','127.0.0.1:9000 → 9000/tcp'],['MCP','tools','STOPPED','python:3.12-alpine',null],['MCP','registry','RUNNING','node:22-alpine',null],['MCP','browser','STOPPED','mcr.microsoft.com/playwright:v1.49.1',null],['MCP','postgres','RUNNING','postgres:16-alpine',null],['MCP','redis','STOPPED','redis:7-alpine',null],['MCP','filesystem','RUNNING','node:22-alpine',null],['MCP','fetch','STOPPED','node:22-alpine',null],['MCP','proxy','RUNNING','nginx:1.27-alpine','127.0.0.1:9001 → 80/tcp'],['MCP','inspector','STOPPED','node:22-alpine',null]
+];
+const containers = sampleSpecs.map(([project,service,state,image,port],index)=>({project,service,state,image,port,name:`${project.toLowerCase()}-${service}-${index+1}`}));
+const groups = document.getElementById('project-groups');
+const byService = new Map();
+for(const container of containers){const key=`${container.project}/${container.service}`;byService.set(key,container);}
+for(const project of ['Agente','Conversation','MCP']){
+  const details=document.createElement('details');details.open=true;
+  const summary=document.createElement('summary');summary.textContent=`${project} · 10 containers`;details.append(summary);
+  for(const container of containers.filter(item=>item.project===project)){
+    const row=document.createElement('button');row.type='button';row.className=`leaf${container.state==='STOPPED'?' stopped':''}`;row.dataset.container=`${container.project}/${container.service}`;row.setAttribute('aria-pressed','false');row.setAttribute('aria-keyshortcuts','D S C');
+    row.append(document.createTextNode(`${container.service} · ${container.state}*`));
+    if(container.port){const port=document.createElement('small');port.textContent=container.port;row.append(port);}
+    details.append(row);
+  }groups.append(details);
+}
+const rows=Array.from(document.querySelectorAll('[data-container]'));
+const confirmation=document.getElementById('action-confirmation'),cancelButton=document.getElementById('cancel-action'),confirmButton=document.getElementById('confirm-action'),demoStatus=document.getElementById('demo-status');
+const detailPanel=document.getElementById('container-details'),detailTitle=document.getElementById('container-detail-title'),detailFields=document.getElementById('container-detail-fields'),logPanel=document.getElementById('container-logs');
+let selectedRow=rows[0];
+function selectedContainer(row=selectedRow){return byService.get(row.dataset.container);}
+function focusSelected(){if(selectedRow)selectedRow.focus();}
+function showLogs(row,focus=false){
+  if(!confirmation.hidden)confirmation.hidden=true;
+  if(!shellPanel.hidden){closeShellPreview();}
+  selectedRow=row;rows.forEach(item=>{const active=item===row;item.classList.toggle('selected',active);item.setAttribute('aria-pressed',String(active));});
+  const sample=selectedContainer(row);detailPanel.hidden=true;logPanel.hidden=false;
+  document.getElementById('service-log-title').textContent=`Container logs · ${sample.project} / ${sample.service}`;
+  document.getElementById('log-source').textContent=`${sample.name} · stdout / stderr`;
+  const body=document.getElementById('container-log-body');body.replaceChildren();
+  const note=document.createElement('p');note.className='muted';note.textContent='Illustrative sample only. No live output was read.';
+  const line=document.createElement('p');line.textContent=sample.state==='RUNNING'?`[17:42:13] [${sample.service}] INFO Sample service ready`:'Stopped container — no output in this sample.';body.append(note,line);
+  if(focus)focusSelected();
+}
+function showDetails(row){showLogs(row);const sample=selectedContainer(row);detailTitle.textContent=`Container details · ${sample.project} / ${sample.service}`;detailFields.replaceChildren();
+  for(const [label,value] of Object.entries({Container:sample.name,Project:sample.project,Service:sample.service,State:sample.state,Image:sample.image,'Published ports':sample.port||'None configured'})){const term=document.createElement('dt'),description=document.createElement('dd');term.textContent=label;description.textContent=value;detailFields.append(term,description);}
+  document.getElementById('container-shell-action').disabled=sample.state!=='RUNNING';document.getElementById('container-shell-action').textContent=sample.state==='RUNNING'?'Open container shell · C':'Container shell unavailable · stopped';
+  document.getElementById('stopped-shell-note')?.remove();
+  if(sample.state==='STOPPED'){const state=document.createElement('p');state.className='shell-notice';state.id='stopped-shell-note';state.textContent='This sample container is stopped. Select a running container to preview its simulated shell.';detailFields.after(state);}
+  logPanel.hidden=true;detailPanel.hidden=false;detailTitle.focus();
+}
+const shellPanel=document.getElementById('shell-prompt-panel'),shellInput=document.getElementById('shell-command-input'),shellForm=document.getElementById('shell-command-form');
+const hostPrompt='dev@host:/workspace/debugealo$';
+const shellHistories={host:[`${hostPrompt} pwd`,'[HOST SIMULATION ONLY · NOT EXECUTED] Example working directory: /workspace/debugealo','This is the host preview, not a container. No real Bash process is running.'],container:new Map()};let shellContext=null;
+function closeShellPreview(){shellPanel.hidden=true;document.getElementById('console-context-title').textContent='Compose execution · Agente';}
+function openShell(kind){const sample=selectedContainer();if(kind==='container'&&sample.state!=='RUNNING'){demoStatus.textContent=`${sample.project} / ${sample.service} is stopped; its simulated container shell is unavailable.`;return;}
+  shellContext=kind==='host'?{kind,project:sample.project,label:'HOST BASH · host machine · /workspace/debugealo (illustrative; not a container)',prompt:hostPrompt}:{kind,project:sample.project,service:sample.service,name:sample.name,label:`CONTAINER SHELL · ${sample.project} / ${sample.service} · ${sample.name}`,prompt:`${sample.service}$`};
+  shellPanel.hidden=false;if(toggleOutput.getAttribute('aria-expanded')==='false')toggleComposeOutput();
+  document.getElementById('console-context-title').textContent=kind==='host'?'Host Bash · simulated':`Container shell · ${sample.project} / ${sample.service} · simulated`;
+  document.getElementById('shell-context').textContent=shellContext.label;document.getElementById('shell-prompt-label').textContent=shellContext.prompt;
+  const history=shellContext.kind==='host'?shellHistories.host:(shellHistories.container.get(shellContext.name)||[]);renderShellHistory(history);shellInput.value='';shellInput.placeholder='';shellInput.focus();
+  const output=document.getElementById('console-output');output.scrollTop=output.scrollHeight;
+}
+function renderShellHistory(history){const target=document.getElementById('shell-history');target.replaceChildren();for(const entry of history){const line=document.createElement('p');line.textContent=entry;target.append(line);}}
+shellForm.addEventListener('submit',event=>{event.preventDefault();if(!shellContext)return;const text=shellInput.value;if(!text.trim())return;const history=shellContext.kind==='host'?shellHistories.host:(shellHistories.container.get(shellContext.name)||[]);const prefix=shellContext.kind==='host'?'HOST':'CONTAINER';history.push(`${shellContext.prompt} ${text}`,`[${prefix} SIMULATION ONLY · NOT EXECUTED] Example line recorded as text; no command ran.`);if(shellContext.kind==='container')shellHistories.container.set(shellContext.name,history);renderShellHistory(history);shellInput.value='';shellInput.focus();});
+shellInput.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeShellPreview();selectedRow.focus();}});
+function showConfirmation(action='recreate'){
+  const sample=selectedContainer();
+  if(action==='stop'&&sample.state!=='RUNNING'){
+    demoStatus.textContent=`${sample.name} is already stopped. No Docker command was executed.`;
+    return;
+  }
+  document.getElementById('confirmation-title').textContent=action==='stop'?`Confirm action · Stop ${sample.name}`:`Confirm action · Recreate ${sample.project}`;
+  document.getElementById('confirmation-description').textContent=action==='stop'?'Stop would stop only this selected container, not the whole project. Cancel keeps it unchanged. This preview does not execute Docker.':'Recreate would replace this selected project’s containers. Cancel keeps them unchanged. This preview does not execute Docker.';
+  demoStatus.textContent='';confirmation.hidden=false;cancelButton.focus();
+}
+function closeConfirmation(message){confirmation.hidden=true;demoStatus.textContent=message;focusSelected();}
+rows.forEach(row=>{row.addEventListener('click',()=>showLogs(row));row.addEventListener('keydown',event=>{if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||!confirmation.hidden)return;if(event.key==='ArrowDown'||event.key==='ArrowUp'){const visibleRows=rows.filter(item=>item.closest('details')?.open!==false),index=visibleRows.indexOf(row);if(index<0)return;event.preventDefault();visibleRows[(index+(event.key==='ArrowDown'?1:-1)+visibleRows.length)%visibleRows.length].focus();}else if(event.key.toLowerCase()==='d'){event.preventDefault();showDetails(row);}});});
+document.getElementById('back-to-logs').addEventListener('click',()=>showLogs(selectedRow,true));document.getElementById('container-shell-action').addEventListener('click',()=>openShell('container'));cancelButton.addEventListener('click',()=>closeConfirmation('Cancelled. No Docker command was executed.'));confirmButton.addEventListener('click',()=>closeConfirmation('Preview only: confirmation simulated. No Docker command was executed.'));
+const toggleOutput=document.getElementById('toggle-output'),consolePanel=document.getElementById('compose-console'),appShell=document.getElementById('app-shell');
+function toggleComposeOutput(){const hidden=toggleOutput.getAttribute('aria-expanded')==='true';toggleOutput.setAttribute('aria-expanded',String(!hidden));toggleOutput.textContent=hidden?'Show output · O':'Hide output · O';consolePanel.classList.toggle('output-hidden',hidden);appShell.classList.toggle('output-hidden',hidden);}
+toggleOutput.addEventListener('click',toggleComposeOutput);
+function isEditable(target){return !!target?.closest?.('input,textarea,select,[contenteditable="true"],[role="textbox"]');}
+document.addEventListener('keydown',event=>{
+  if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey)return;
+  if(event.key==='Escape'){
+    if(!confirmation.hidden){event.preventDefault();closeConfirmation('Cancelled. No Docker command was executed.');}
+    else if(event.target===shellInput&&!shellPanel.hidden){event.preventDefault();closeShellPreview();selectedRow.focus();}
+    else if(!detailPanel.hidden){event.preventDefault();showLogs(selectedRow,true);}
+    else if(!shellPanel.hidden){event.preventDefault();closeShellPreview();focusSelected();}
+    return;
+  }
+  if(isEditable(event.target))return;
+  if(event.key.toLowerCase()==='o'){event.preventDefault();toggleComposeOutput();return;}
+  if(event.key.toLowerCase()==='r'&&confirmation.hidden){event.preventDefault();const focused=event.target?.closest?.('[data-container]');if(focused)showLogs(focused);showConfirmation();return;}
+  if(!confirmation.hidden)return;
+  if(event.key.toLowerCase()==='d'){const focused=event.target?.closest?.('[data-container]');if(focused)showDetails(focused);else showDetails(selectedRow);}
+  else if(event.key.toLowerCase()==='s'){event.preventDefault();const focused=event.target?.closest?.('[data-container]');if(focused&&focused!==selectedRow)showLogs(focused);showConfirmation('stop');}
+  else if(event.key.toLowerCase()==='c'){event.preventDefault();const focused=event.target?.closest?.('[data-container]');if(focused&&focused!==selectedRow)showLogs(focused);openShell('container');}
+  else if(event.key.toLowerCase()==='h'){openShell('host');}
+});
+document.getElementById('host-bash-preview').addEventListener('click',()=>{
+  if(!confirmation.hidden)return;
+  openShell('host');
+});
+showLogs(selectedRow);
+openShell('host');
+</script></body></html>

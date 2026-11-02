@@ -67,11 +67,13 @@ async def test_primary_rows_are_saved_profiles_and_link_by_project_labels(tmp_pa
             "profile:Catalog staging",
             "profile-child:profile:Catalog staging:catalog-api",
             "profile-child:profile:Catalog staging:catalog-worker",
+            "project:other",
+            "container:unconfigured-api",
         ]
         assert not any(profile.dynamic for profile in app._launch_profiles)
-        assert app.query_one("#containers", DataTable).row_count > 0
+        assert app.query_one("#launch-profiles", DataTable).row_count > 0
         assert (
-            "active containers" in str(app.query_one("#active-containers-title").render()).lower()
+            "projects / containers" in str(app.query_one("#launch-title").render()).lower()
         )
         assert path.exists()
         await until(pilot, lambda: len(docker.opened) >= 2)
@@ -109,12 +111,16 @@ async def test_profiles_own_selectable_children_and_raw_inventory_shows_only_uno
         ]
         assert len(profile_keys) == 2
         child_keys = [
-            row.key.value for row in table.ordered_rows if row.key.value not in profile_keys
+            row.key.value for row in table.ordered_rows
+            if row.key.value.startswith("profile-child:")
         ]
         assert len(child_keys) == 2
         assert len(set(child_keys)) == 2
-        assert app.query_one("#containers", DataTable).row_count == 2
-        assert "unconfigured-api" in str(app.query_one("#containers", DataTable).get_row_at(1))
+        assert [
+            row.key.value for row in table.ordered_rows
+            if not row.key.value.startswith(("profile:", "profile-child:"))
+        ] == ["project:other", "container:unconfigured-api"]
+        assert "unconfigured-api" in str(table.get_row("container:unconfigured-api"))
         table.focus()
         table.move_cursor(
             row=next(
@@ -129,12 +135,13 @@ async def test_profiles_own_selectable_children_and_raw_inventory_shows_only_uno
         await pilot.pause(0.1)
         assert (
             sum(
-                row.key.value not in profile_keys
+                row.key.value.startswith("profile-child:")
                 for row in app.query_one("#launch-profiles", DataTable).ordered_rows
             )
             == 4
         )
-        assert app.query_one("#stopped-containers", DataTable).row_count == 0
+        assert not any(row.key.value.startswith("stopped:") for row in table.ordered_rows)
+        assert len(app.query_one("#sidebar").query(DataTable)) == 1
 
 
 async def test_profile_child_selection_survives_recreated_container_identity(tmp_path):

@@ -329,6 +329,7 @@ class ComposeDialog(ModalScreen):
                     process_cwd=self._profile_project.process_cwd,
                     environment_files=self._profile_project.environment_files,
                     up=self._profile_project.up,
+                    service_overrides=self._profile_project.service_overrides,
                 )
             if (self._resolve_identity or action == "start") and self._profile_project is None:
                 project = await self.service.inspect_project(workspace, files, **extras)

@@ -119,13 +119,13 @@ async def test_show_all_counts_and_displays_owned_and_unowned_stopped(tmp_path, 
         await until(pilot, lambda: len(app._launch_child_rows) == 3)
         assert "s" in {item.id for _, item in app._launch_child_rows.values()}
         assert "stopped:container:t" in {
-            row.key.value for row in app.query_one("#stopped-containers", DataTable).ordered_rows
+            row.key.value for row in app.query_one("#launch-profiles", DataTable).ordered_rows
         }
         assert str(checkbox.label) == "Show all (2 stopped)"
         await pilot.click("#show-all")
         await until(pilot, lambda: len(app._launch_child_rows) == 2)
         assert "stopped:container:t" not in {
-            row.key.value for row in app.query_one("#stopped-containers", DataTable).ordered_rows
+            row.key.value for row in app.query_one("#launch-profiles", DataTable).ordered_rows
         }
 
 

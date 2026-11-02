@@ -82,7 +82,53 @@ for save and exit shortcuts.
 
 `environmentFiles` may list project-local dotenv files when an existing Compose
 project reports explicit `--env-file` metadata. Their paths, not contents, are stored;
-the preview binds their content hashes and refuses execution if they change.
+the preview binds their content hashes and refuses execution if they change. They remain
+Compose interpolation inputs; they are not replaced by direct container environment
+values in `overrides`.
+
+## Direct service environment and port overrides
+
+Add the optional `overrides.services` object to the relevant `docker-compose` entry
+in `configurations`, not to the launch file's top level. It changes values for named
+Compose services without editing the source YAML. The service must exist in the
+canonical Compose model returned by Compose; an unknown service is rejected before any
+mutating Compose operation. The fragment below shows only the override field; keep the
+entry's existing `type`, `projectName`, `cwd`, and `files`:
+
+```json
+{
+  "overrides": {
+    "services": {
+      "api": {
+        "environment": {
+          "MODE": "production",
+          "TOKEN": "replace-with-your-value"
+        },
+        "ports": ["9000:80"]
+      }
+    }
+  }
+}
+```
+
+`environment` must map string keys to string values. Supplied keys replace or add those
+keys, and all other service environment values are preserved. Values are literal JSON
+strings: `$` is passed literally to the container rather than expanded by this profile
+format. This does not change Compose interpolation inputs such as `environmentFiles`.
+There is no `null` deletion syntax, shell expansion, or implicit interpolation.
+
+A supplied `ports` array replaces the service's entire published-port list; it does not
+append to the original list. Use `"ports": []` to clear all published ports. Port
+entries must be strings in the format accepted by Compose. Unknown override keys and
+invalid value types make the profile pending with a generic validation message.
+
+Overrides are applied to a private effective Compose configuration for execution. The
+source YAML and launch JSON are not rewritten. Effective configuration contains
+plaintext environment values temporarily, so avoid committing secrets in launch files
+and protect workspace files. Preview arguments and profile representations do not show
+the values. Recreate (or Build + Recreate) applies changed container environment and
+ports; Restart alone cannot change the existing container configuration. No Compose
+minimum-version requirement or new CLI flag is introduced.
 
 ## Independent external profiles
 

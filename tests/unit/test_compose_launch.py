@@ -38,13 +38,14 @@ async def test_inspection_resolves_declared_name_without_override(project, servi
     assert "--project-name" not in captured["argv"]
     assert captured["argv"][-3:] == ("config", "--format", "json")
     assert "up" not in captured["argv"]
+    assert "--pull" not in captured["argv"]
 
 
 async def test_inspection_validates_files_before_spawn(project, service, monkeypatch):
     captured = fake_process(monkeypatch, Process())
     with pytest.raises(ComposeError):
         await service.inspect_project(project.workspace, (Path("../outside.yaml"),))
-    assert not captured
+    assert captured["calls"] == []
 
 
 @pytest.mark.parametrize(
@@ -121,4 +122,4 @@ async def test_start_without_confirmation_never_spawns(project, service, monkeyp
     captured = fake_process(monkeypatch, Process())
     with pytest.raises(ComposeError, match="confirmation"):
         await service.run(service.preview(project, "start"))
-    assert not captured
+    assert captured["calls"] == []
