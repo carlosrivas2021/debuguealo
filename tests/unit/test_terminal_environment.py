@@ -45,6 +45,12 @@ def adapters(monkeypatch, tmp_path):
             raise control["failure"]
         return Process()
 
+    # Exercise the POSIX adapter without importing platform-only modules or
+    # opening a real terminal. A pipe gives it portable, owned descriptors;
+    # closing the simulated slave also delivers EOF to the reader.
+    monkeypatch.setitem(sys.modules, "pty", SimpleNamespace(openpty=os.pipe))
+    monkeypatch.setitem(sys.modules, "fcntl", SimpleNamespace(ioctl=lambda *_args: None))
+    monkeypatch.setitem(sys.modules, "termios", SimpleNamespace(TIOCSWINSZ=0))
     monkeypatch.setattr(subprocess, "Popen", lambda argv, **kw: capture("posix", argv, kw))
     monkeypatch.setitem(
         sys.modules,
@@ -77,7 +83,9 @@ def inherited(monkeypatch, tmp_path):
     }
     for key, value in values.items():
         monkeypatch.setenv(key, value)
-    return values, config_file, contents
+    # Windows normalizes environment names, so the two context spellings
+    # cannot retain distinct values. Snapshot what was actually installed.
+    return {key: os.environ[key] for key in values}, config_file, contents
 
 
 def assert_dedicated_config(config: Path, temp_root: Path, inherited_directory: str):
