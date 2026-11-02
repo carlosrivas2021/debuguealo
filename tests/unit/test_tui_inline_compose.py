@@ -11,7 +11,6 @@ from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.docker.compose import ComposeProject, ComposeResult
 from debugpilot.storage.config import Settings
 from debugpilot.tui.app import DebugPilotApp
-from debugpilot.tui.log_viewer import LogViewer
 
 
 @pytest.mark.parametrize("key,action", [("r", "recreate"), ("R", "rebuild")])
@@ -173,8 +172,8 @@ async def test_inline_failure_shows_literal_output_and_missing_image_consent(tmp
             lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
         )
         assert app.screen is screen
-        viewer = app.query_one(LogViewer)
-        entries = viewer.buffer.entries()
+        output = app._compose_output_buffer
+        entries = output.entries()
         assert len(service.runs) == 1
         assert service.runs[0][1:] == (True, False)
         assert any("No such image: alpine:3.22" in entry.text for entry in entries)
@@ -183,8 +182,8 @@ async def test_inline_failure_shows_literal_output_and_missing_image_consent(tmp
         await until(pilot, lambda: app._inline_task.done())
         assert len(service.runs) == 2
         assert service.runs[1][1:] == (True, True)
-        assert any("retry failed" in entry.text for entry in viewer.buffer.entries())
-        assert any("retry exited 1" in entry.text for entry in viewer.buffer.entries())
+        assert any("retry failed" in entry.text for entry in output.entries())
+        assert any("retry exited 1" in entry.text for entry in output.entries())
         assert app.screen is screen
         assert app.query_one("#launch-profiles").has_focus
 
@@ -259,12 +258,12 @@ async def test_generic_failure_shows_output_without_download_action(tmp_path, mo
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
         await until(pilot, lambda: app._inline_task.done())
-        viewer = app.query_one(LogViewer)
+        output = app._compose_output_buffer
         assert app.screen is screen
         assert any(
-            "registry authentication failed" in entry.text for entry in viewer.buffer.entries()
+            "registry authentication failed" in entry.text for entry in output.entries()
         )
-        assert any("Compose exited 1" in entry.text for entry in viewer.buffer.entries())
+        assert any("Compose exited 1" in entry.text for entry in output.entries())
         assert not app.query_one("#inline-compose").display
         assert len(service.runs) == 1
 
@@ -310,7 +309,7 @@ async def test_changed_profile_cancels_pending_download_retry(tmp_path, monkeypa
         assert app._inline_plan is None
         assert any(
             "retry cancelled" in entry.text.lower()
-            for entry in app.query_one(LogViewer).buffer.entries()
+            for entry in app._compose_output_buffer.entries()
         )
 
 
@@ -341,7 +340,7 @@ async def test_empty_failure_output_has_actionable_fallback(tmp_path, monkeypatc
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
         await until(pilot, lambda: app._inline_task.done())
-        entries = app.query_one(LogViewer).buffer.entries()
+        entries = app._compose_output_buffer.entries()
         assert any("Compose exited 9" in entry.text for entry in entries)
         assert not any("No output was retained" in entry.text for entry in entries)
 
@@ -384,6 +383,6 @@ async def test_retry_failure_is_shown_without_automatic_loop(tmp_path, monkeypat
         await pilot.click("#inline-compose-confirm")
         await until(pilot, lambda: app._inline_task.done())
         assert len(service.runs) == 2
-        entries = app.query_one(LogViewer).buffer.entries()
+        entries = app._compose_output_buffer.entries()
         assert any("retry failed" in entry.text for entry in entries)
         assert any("retry exited 1" in entry.text for entry in entries)

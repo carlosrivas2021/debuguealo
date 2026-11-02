@@ -20,14 +20,21 @@ async def test_compose_output_is_docked_separate_and_o_restores_control(tmp_path
         assert app.query_one("#compose-console")
         assert not app.query_one("#profile-actions").display
         assert app.query_one("#compose-output-viewer", RichLog) is not app.query_one(LogViewer)
-        assert app.query_one("#compose-output-toggle").display
+        console = app.query_one("#compose-console")
+        assert not console.display
         await pilot.press("o")
         await pilot.pause()
+        assert console.display
+        assert app.query_one("#compose-output-viewer").display
+        assert app.query_one("#compose-output-toggle").visible
+        await pilot.click("#compose-output-toggle")
+        await pilot.pause()
+        assert not console.display
         assert not app.query_one("#compose-output-viewer").display
-        assert app.query_one("#compose-output-toggle").display
-        assert "show" in str(app.query_one("#compose-output-toggle").render()).lower()
+        assert app.query_one("#launch-profiles").has_focus
         await pilot.press("o")
         await pilot.pause()
+        assert console.display
         assert app.query_one("#compose-output-viewer").display
 
 

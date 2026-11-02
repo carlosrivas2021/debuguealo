@@ -126,7 +126,7 @@ async def test_saved_profile_status_distinguishes_inactive_active_and_pending(tm
         await until(pilot, lambda: len(app._launch_profiles) == 3 and bool(docker.opened))
         table = app.query_one("#launch-profiles", DataTable)
         statuses = {
-            row.key.value: table.get_row_at(index)[2]
+            row.key.value: str(table.get_row_at(index)[2])
             for index, row in enumerate(table.ordered_rows)
             if row.key.value.startswith("profile:")
         }

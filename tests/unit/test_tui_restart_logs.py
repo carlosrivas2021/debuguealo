@@ -104,8 +104,10 @@ async def test_success_reconnects_current_execution_and_discards_stale_view(
             if entry.text.startswith(("[api]", "[worker]"))
         ]
         assert set(container_entries) == {"[api] run 1 startup", "[worker] run 1 startup"}
-        assert any("[Compose · Orders] Starting" in e.text for e in viewer.buffer.entries())
-        assert any("[Compose · Orders] Compose exited 0" in e.text for e in viewer.buffer.entries())
+        output = app._compose_output_buffer.entries()
+        assert any("[Compose · Orders] Starting" in e.text for e in output)
+        assert any("[Compose · Orders] Compose exited 0" in e.text for e in output)
+        assert not any("[Compose · Orders]" in e.text for e in viewer.buffer.entries())
         assert all(options.get("current_run") for options in docker.options)
         assert "stream ended" not in str(app.query_one("#log-state", Static).render())
         assert app.selected_project == "orders" and app.selected_container is None
@@ -139,8 +141,9 @@ async def test_failed_or_cancelled_operation_preserves_current_stream(
         entries = viewer.buffer.entries()
         assert all(entry in entries for entry in before)
         if not cancel:
-            assert any("Complete" in entry.text for entry in entries)
-            assert any("Compose exited 1" in entry.text for entry in entries)
+            output = app._compose_output_buffer.entries()
+            assert any("Complete" in entry.text for entry in output)
+            assert any("Compose exited 1" in entry.text for entry in output)
         assert docker.opened == opened and docker.closed == closed
         assert app._compose_store.path.read_bytes() == saved
 

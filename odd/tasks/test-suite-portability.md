@@ -8,9 +8,9 @@ S2. "Review the delivered subagent output and continue."
 
 ## Tasks
 T1 | S1-S2 | delegated | done | Platform test fixes reviewed; focused GREEN: 46 passed, 1 skipped; commit `25496bc`.
-T2 | S1-S2 | delegated | in_progress | Reconcile TUI tests with current UI contracts; 71 passed, 1 failed; demonstrated transcript-isolation production defect under correction; commit pending.
-T3 | S1-S2 | delegated | done | Named pyte dimensions, host/container assertions reviewed; RED: 3 failed, 3 passed; GREEN: 6 passed; commit pending.
-T4 | S1-S2 | inline | pending | Full suite, lint, functional verification and native risk assessment; commit pending.
+T2 | S1-S2 | delegated | done | TUI contracts and transcript isolation reviewed; RED: 71 passed, 1 failed; GREEN: 72 passed; commit pending.
+T3 | S1-S2 | delegated | done | Named pyte dimensions, host/container assertions reviewed; RED: 3 failed, 3 passed; GREEN: 6 passed; commit `a416a5f`.
+T4 | S1-S2 | inline | in_progress | Full suite, lint, functional verification and native risk assessment; commit pending.
 
 ## Log
 L1. User request: "Resuelve los test"
@@ -20,3 +20,5 @@ L4. Workers launched together for disjoint platform tests and TUI tests; termina
 L5. Reviewed platform and geometry diffs after workers completed. Platform: 46 passed, 1 POSIX-only skip; geometry: 6 passed. No production security or lifecycle changes. Baseline Ruff/format command failed with 23 files needing formatting; unrelated baseline cleanup remains out of scope.
 L6. TUI worker preserved documented keyboard-first controls, separate console and terminal-pane contracts. Focused run: 71 passed, 1 failed. Remaining RED shows Orders transcript visible after Catalog selection. Follow-up authorized within S1 to clear only displayed transcript on identity mismatch, retaining original-profile buffer. Initial Ruff lint actually passed; only formatting check failed.
 L7. T1 committed as 25496bc (23 authored changed lines). Native committed assessment unavailable: native rejected the untracked feature document despite committed-only scope; facade returned nativeRisk=unassessable, independentVerifier=false. No review approval claimed; no retry of that assessment.
+L8. T3 committed as a416a5f, native assessment medium, reviewDue=false (under_budget), no separate verifier required.
+L9. Reviewed T2 source correction: display clear precedes unchanged identity guard; retained buffer untouched. Same-profile refresh and switch-back restoration pass. Focused suite: 72 passed in 103.85s. Full suite launched as job-3; final Ruff lint passes, baseline formatting remains failing. No real Docker-dependent proof or native POSIX execution claimed.

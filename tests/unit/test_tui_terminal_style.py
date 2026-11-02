@@ -8,7 +8,9 @@ from debugpilot.tui.app import DebugPilotApp
 
 
 @pytest.mark.parametrize("size", [(120, 40), (80, 24)])
-async def test_shell_layout_keeps_profile_actions_compact_and_focus_visible(size, tmp_path):
+async def test_shell_layout_hides_legacy_actions_and_keeps_primary_controls_focus_visible(
+    size, tmp_path
+):
     config = tmp_path / ".debugpilot" / "launch.json"
     config.parent.mkdir()
     config.write_text(
@@ -23,13 +25,12 @@ async def test_shell_layout_keeps_profile_actions_compact_and_focus_visible(size
     async with app.run_test(size=size) as pilot:
         await pilot.pause()
         actions = app.query_one("#profile-actions")
-        actions.display = True
-        await pilot.pause(0.01)
-        buttons = app.query("#profile-actions Button")
-
-        assert str(actions.styles.layout) == "<horizontal>"
-        assert actions.region.height == 1
-        assert len(buttons) == 2
+        assert not actions.display
+        assert actions.region.height == 0
+        buttons = [
+            app.query_one("#open-launch-file", Button),
+            app.query_one("#stop-selected", Button),
+        ]
         assert all(button.region.height == 1 for button in buttons)
         assert all(button.region.width > 0 for button in buttons)
         assert all(button.region.right <= app.size.width for button in buttons)

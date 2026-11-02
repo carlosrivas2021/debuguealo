@@ -130,7 +130,7 @@ widget construction, inventory refresh, or the Compose-output toggle.
 
 Recreate and Build + Recreate interrupt running services. They use explicit profile
 files and never interpret shell command strings or shell variables. Compose execution
-output streams literally to the existing central log viewer, with start and exit
+output streams literally to the dedicated Compose console, with start and exit
 summaries even when the CLI emits no output. The latest operation output is retained in
 memory with its project/profile identity and restored after same-profile refresh; it is
 not shown when another project/profile is selected, is not persisted, and does not
