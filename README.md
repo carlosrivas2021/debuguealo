@@ -9,7 +9,9 @@ configuration, and real local Docker diagnostics. Docker integration adds discov
 running/stopped containers, Compose metadata, historical/live logs, bounded buffering,
 and controlled reconnect/cancellation. The terminal dashboard adds keyboard selection,
 live logs, bounded search/filter/pause controls and explicit connection errors.
-DAP and the FastAPI example remain pending.
+The **Code** area now registers explicitly configured project folders using a separate
+central `projects/launch.json`; see [code project registration](docs/code-projects.md).
+Code execution, DAP and the FastAPI example remain pending.
 No connection is simulated in the application.
 
 The dashboard also supports explicit, confirmation-gated local Compose restart,

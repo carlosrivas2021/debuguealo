@@ -32,6 +32,14 @@ the dashboard. Focus returns to the project tree; press `O` there to restore the
 Hiding does not clear output or close an active session. Explicitly opening a terminal
 with `H` also reveals the console. `O` does not hide the right-hand container shell.
 
+## Containers / Code
+
+Use the top **Containers** and **Code** buttons to switch without starting or stopping
+processes. Code lists registered project folders and command arguments; container
+shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
+**Open code launch.json** opens the separate central code configuration directly.
+See [code project registration](code-projects.md) for the schema and current limits.
+
 ## Launch profiles
 
 The primary sidebar lists saved profiles from the central user-configuration

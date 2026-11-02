@@ -86,5 +86,3 @@ def test_bad_code_profiles_leave_both_files_unchanged(tmp_path, monkeypatch, doc
     assert store.path.read_bytes() == before
     assert container_store.path.read_bytes() == container_bytes
     assert container_store.profiles() == []
-
-
