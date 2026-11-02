@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import signal
 import sys
@@ -76,7 +77,10 @@ def fake_process(monkeypatch, process, *, config_output=None):
         captured.update(argv=argv, **kwargs)
         captured["calls"].append(argv)
         config = Path(kwargs["env"]["DOCKER_CONFIG"])
-        assert (config / "config.json").read_text() == "{}"
+        assert json.loads((config / "config.json").read_text()) in (
+            {},
+            {"cliPluginsExtraDirs": [str(Path.home() / ".docker" / "cli-plugins")]},
+        )
         captured["private_config"] = config
         command = compose_command(argv)
         if command == "config" and config_output is not None:
@@ -551,3 +555,14 @@ async def test_profile_process_cwd_and_environment_files_are_bound(project, serv
     environment.write_text("MODE=changed\n")
     with pytest.raises(ComposeError, match="changed"):
         service.preview(configured, "start")
+
+
+def test_private_config_exposes_only_user_plugin_directory(monkeypatch, tmp_path):
+    monkeypatch.setattr(compose.Path, "home", lambda: tmp_path)
+    assert compose._private_docker_config() == "{}"
+    plugins = tmp_path / ".docker" / "cli-plugins"
+    plugins.mkdir(parents=True)
+    (tmp_path / ".docker" / "config.json").write_text('{"auths":{"x":"secret"}}')
+    assert json.loads(compose._private_docker_config()) == {
+        "cliPluginsExtraDirs": [str(plugins)]
+    }

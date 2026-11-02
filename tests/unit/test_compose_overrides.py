@@ -148,3 +148,42 @@ def test_secret_does_not_appear_in_validation_error():
 
     assert "fake-secret" not in str(error.value)
     assert payload == original
+
+
+def test_render_appends_literal_environment_and_replacing_ports():
+    from debugpilot.docker.compose_overrides import render_service_overrides
+
+    rendered = render_service_overrides(
+        validate_service_overrides(
+            {
+                "services": {
+                    "api": {
+                        "environment": {"A": 'x$Y "q" \\ é 😀', "EMPTY": ""},
+                        "ports": ["127.0.0.1:9000:80"],
+                    },
+                    "worker": {"ports": []},
+                    "noop": {},
+                }
+            }
+        )
+    )
+
+    assert rendered == (
+        "services:\n"
+        '  "api":\n'
+        "    environment:\n"
+        '      "A": "x$$Y \\"q\\" \\\\ \\u00e9 \\U0001f600"\n'
+        '      "EMPTY": ""\n'
+        "    ports: !override\n"
+        '      - "127.0.0.1:9000:80"\n'
+        '  "worker":\n'
+        "    ports: !override []\n"
+        '  "noop": {}\n'
+    )
+
+
+def test_render_requires_validated_overrides():
+    from debugpilot.docker.compose_overrides import render_service_overrides
+
+    with pytest.raises(ValueError):
+        render_service_overrides({"services": {}})

@@ -91,7 +91,7 @@ values in `overrides`.
 Add the optional `overrides.services` object to the relevant `docker-compose` entry
 in `configurations`, not to the launch file's top level. It changes values for named
 Compose services without editing the source YAML. The service must exist in the
-canonical Compose model returned by Compose; an unknown service is rejected before any
+service list reported by Compose; an unknown service is rejected before any
 mutating Compose operation. The fragment below shows only the override field; keep the
 entry's existing `type`, `projectName`, `cwd`, and `files`:
 
@@ -122,13 +122,18 @@ append to the original list. Use `"ports": []` to clear all published ports. Por
 entries must be strings in the format accepted by Compose. Unknown override keys and
 invalid value types make the profile pending with a generic validation message.
 
-Overrides are applied to a private effective Compose configuration for execution. The
-source YAML and launch JSON are not rewritten. Effective configuration contains
+Overrides are rendered into a private Compose override file (mode 0600, removed after
+the run) that is passed as the last `-f`, after the profile's own files. Compose merges it
+normally: `environment` keys merge by name and `ports` uses `!override`, so the canonical
+model is never serialized and re-read. This keeps source-only syntax such as interpolated
+`build.ssh` entries working, which Compose cannot round-trip through `config --format json`.
+Service names are checked against `docker compose config --services` before any mutating
+operation. The source YAML and launch JSON are not rewritten. The override file contains
 plaintext environment values temporarily, so avoid committing secrets in launch files
 and protect workspace files. Preview arguments and profile representations do not show
 the values. Recreate (or Build + Recreate) applies changed container environment and
-ports; Restart alone cannot change the existing container configuration. No Compose
-minimum-version requirement or new CLI flag is introduced.
+ports; Restart alone cannot change the existing container configuration. The `!override`
+tag requires Docker Compose 2.24.4 or newer.
 
 ## Independent external profiles
 

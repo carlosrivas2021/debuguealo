@@ -129,3 +129,59 @@ def apply_service_overrides(canonical_model, overrides):
     except (TypeError, ValueError, copy.Error) as error:
         raise ValueError("Canonical Compose model cannot be copied.") from error
     return result
+
+
+def _yaml_quoted(value):
+    """Double-quoted YAML scalar using only escapes YAML 1.1 and 1.2 both accept."""
+    parts = ['"']
+    for char in value:
+        code = ord(char)
+        if char == '"':
+            parts.append('\\"')
+        elif char == "\\":
+            parts.append("\\\\")
+        elif 0x20 <= code < 0x7F:
+            parts.append(char)
+        elif code <= 0xFFFF:
+            parts.append(f"\\u{code:04x}")
+        else:
+            parts.append(f"\\U{code:08x}")
+    parts.append('"')
+    return "".join(parts)
+
+
+def _literal(value):
+    """Escape Compose interpolation so the value reaches the container verbatim."""
+    return _yaml_quoted(value.replace("$", "$$"))
+
+
+def render_service_overrides(overrides):
+    """Render validated overrides as a Compose override file applied after the sources.
+
+    Environment keys merge into each service's environment; ``ports`` uses Compose's
+    ``!override`` tag so the supplied list replaces the merged list. The canonical
+    model is never round-tripped, so source-only syntax (for example ``build.ssh``)
+    keeps the exact meaning Compose gives it.
+    """
+    if not isinstance(overrides, _ValidatedServiceOverrides):
+        raise ValueError("Validated service overrides are required.")
+    lines = ["services:"]
+    for name, environment, ports in overrides.services:
+        lines.append(f"  {_yaml_quoted(name)}:")
+        if environment is not None:
+            if environment:
+                lines.append("    environment:")
+                lines.extend(
+                    f"      {_yaml_quoted(key)}: {_literal(value)}" for key, value in environment
+                )
+            else:
+                lines.append("    environment: {}")
+        if ports is not None:
+            if ports:
+                lines.append("    ports: !override")
+                lines.extend(f"      - {_literal(port)}" for port in ports)
+            else:
+                lines.append("    ports: !override []")
+        if environment is None and ports is None:
+            lines[-1] += " {}"
+    return "\n".join(lines) + "\n"

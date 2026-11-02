@@ -41,10 +41,6 @@ def _is_directory(path):
     return path.is_dir()
 
 
-def _read_json(path):
-    return json.loads(path.read_text())
-
-
 @pytest.mark.asyncio
 async def test_profile_json_reaches_fake_compose_runtime_without_mutating_source(
     tmp_path, monkeypatch
@@ -87,25 +83,16 @@ async def test_profile_json_reaches_fake_compose_runtime_without_mutating_source
     overrides["services"]["api"]["environment"]["MODE"] = "changed"
     assert "sensitive-profile-value" not in repr(profile)
 
-    canonical = {
-        "name": "demo",
-        "services": {
-            "api": {
-                "image": "example/api",
-                "environment": {"KEEP": "original", "FROM_FILE": "resolved-value"},
-                "ports": ["8080:80"],
-            }
-        },
-    }
-    effective_payloads = []
+    override_payloads = []
 
     async def create(*argv, **kwargs):
         command = _command(argv)
         if command == "config":
-            return _Process(json.dumps(canonical).encode())
+            return _Process(b"api\n" if "--services" in argv else b"services: {}\n")
         assert _is_directory(Path(kwargs["env"]["DOCKER_CONFIG"]))
-        effective = next(Path(argv[i + 1]) for i, value in enumerate(argv[:-1]) if value == "-f")
-        effective_payloads.append(_read_json(effective))
+        files = [Path(argv[i + 1]) for i, value in enumerate(argv[:-1]) if value == "-f"]
+        assert files[:-1] == [source.resolve()]
+        override_payloads.append(files[-1].read_text())
         return _Process()
 
     monkeypatch.setattr(compose.shutil, "which", lambda _name: "/tools/docker")
@@ -115,14 +102,14 @@ async def test_profile_json_reaches_fake_compose_runtime_without_mutating_source
     result = await service.run(plan, confirmed=True)
 
     assert result == ComposeResult(0, "done\n")
-    service_config = effective_payloads[0]["services"]["api"]
-    assert service_config["environment"] == {
-        "KEEP": "original",
-        "FROM_FILE": "resolved-value",
-        "MODE": "literal-$$VALUE",
-        "TOKEN": "sensitive-profile-value",
-    }
-    assert service_config["ports"] == []
+    assert override_payloads == [
+        "services:\n"
+        '  "api":\n'
+        "    environment:\n"
+        '      "MODE": "literal-$$VALUE"\n'
+        '      "TOKEN": "sensitive-profile-value"\n'
+        "    ports: !override []\n"
+    ]
     assert source.read_bytes() == source_bytes
 
 

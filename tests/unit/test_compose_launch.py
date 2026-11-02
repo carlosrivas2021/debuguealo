@@ -101,7 +101,7 @@ async def test_real_isolated_fake_cli_reads_lab_declared_identity(tmp_path, serv
         "args=sys.argv[1:]\n"
         "assert '--project-name' not in args and args[-3:]==['config','--format','json']\n"
         "config=pathlib.Path(args[args.index('--config')+1])/'config.json'\n"
-        "assert json.loads(config.read_text())=={}\n"
+        "assert set(json.loads(config.read_text())) <= {'cliPluginsExtraDirs'}\n"
         "text=pathlib.Path(args[args.index('-f')+1]).read_text()\n"
         "lines=(line for line in text.splitlines() if line.startswith('name:'))\n"
         "name=next(lines).split(':',1)[1].strip()\n"
