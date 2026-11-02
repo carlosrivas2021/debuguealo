@@ -64,7 +64,8 @@ class TerminalPane(Widget):
         await self.close_session()
         self._terminal_context = context
         self._session_closed = False
-        self._screen = pyte.Screen(*self._screen_size())
+        rows, columns = self._screen_size()
+        self._screen = pyte.Screen(columns=columns, lines=rows)
         self._stream = pyte.Stream(self._screen)
         loop = asyncio.get_running_loop()
         generation = self._generation
