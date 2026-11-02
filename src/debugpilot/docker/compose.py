@@ -19,7 +19,7 @@ from pathlib import Path
 from debugpilot.core.exceptions import DebugPilotError
 from debugpilot.docker.compose_overrides import (
     _ValidatedServiceOverrides,
-    apply_service_overrides,
+    render_service_overrides,
     validate_service_overrides,
 )
 from debugpilot.docker.diagnostics import default_endpoint
@@ -33,6 +33,22 @@ COMPOSE_ENVIRONMENT_KEYS = frozenset(
 _ENV_FILE_KEY = re.compile(r"\benv_file\s*:")
 MAX_CALLBACK_LINE_CHARS = 16_384
 MAX_RETRY_ENV_FILES = 64
+OVERRIDE_FILE_NAME = "debugpilot-overrides.yaml"
+
+
+def _private_docker_config() -> str:
+    """Isolated CLI config that still finds the user's standard Compose plugin.
+
+    The user's DOCKER_CONFIG, contexts and credentials are never inherited; only the
+    conventional per-user plugin directory is exposed, as plain `docker compose` would
+    search it (Docker Desktop/OrbStack install the plugin there via symlink).
+    """
+    try:
+        plugins = Path.home() / ".docker" / "cli-plugins"
+        extra = [str(plugins)] if plugins.is_dir() else []
+    except (OSError, RuntimeError):
+        extra = []
+    return json.dumps({"cliPluginsExtraDirs": extra}) if extra else "{}"
 
 
 class ComposeError(DebugPilotError):
@@ -215,7 +231,7 @@ class ComposeResult:
 @dataclass(frozen=True, repr=False)
 class _RuntimeSnapshot:
     plan: ComposePlan
-    semantic_json: str = field(repr=False)
+    override_yaml: str = field(repr=False)
     fingerprint: str
     direct_inputs: tuple[tuple[str, str], ...]
     environment: tuple[tuple[str, str], ...]
@@ -224,33 +240,23 @@ class _RuntimeSnapshot:
         return "<ComposeRuntimeSnapshot>"
 
 
-def _escaped_interpolation_values(value):
-    if isinstance(value, str):
-        return value.replace("$", "$$")
-    if isinstance(value, list):
-        return [_escaped_interpolation_values(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _escaped_interpolation_values(item) for key, item in value.items()}
-    return value
-
-
 def _effective_arguments(plan: ComposePlan, config: str, *, pull_missing: bool) -> tuple[str, ...]:
+    """Keep the source files and append the private override file as the last ``-f``."""
     arguments = list(plan._arguments(config, pull_missing=pull_missing))
     compose_index = arguments.index("compose")
     index = compose_index + 1
-    first_file = None
+    after_last_file = None
     while index < len(arguments):
         if arguments[index] in {"--project-directory", "--project-name", "--env-file"}:
             index += 2
         elif arguments[index] == "-f":
-            if first_file is None:
-                first_file = index
-            del arguments[index : index + 2]
+            index += 2
+            after_last_file = index
         else:
             break
-    if first_file is None:
+    if after_last_file is None:
         raise ComposeError("Cannot build effective Compose arguments.")
-    arguments[first_file:first_file] = ("-f", str(Path(config) / "effective-compose.json"))
+    arguments[after_last_file:after_last_file] = ("-f", str(Path(config) / OVERRIDE_FILE_NAME))
     return tuple(arguments)
 
 
@@ -353,8 +359,18 @@ def _fingerprint_resolved_env_file(path: Path) -> tuple[str, str]:
     return resolved.as_posix(), hashlib.sha256(data).hexdigest()
 
 
-def _compose_config_arguments(plan: ComposePlan, config: str) -> tuple[str, ...]:
-    arguments = list(plan._arguments(config))
+def _compose_config_arguments(
+    plan: ComposePlan,
+    config: str,
+    *,
+    effective: bool = False,
+    command: tuple[str, ...] = ("config", "--format", "json"),
+) -> tuple[str, ...]:
+    arguments = list(
+        _effective_arguments(plan, config, pull_missing=False)
+        if effective
+        else plan._arguments(config)
+    )
     compose_index = arguments.index("compose")
     command_index = compose_index + 1
     while command_index < len(arguments):
@@ -372,7 +388,7 @@ def _compose_config_arguments(plan: ComposePlan, config: str) -> tuple[str, ...]
     if command_index >= len(arguments):
         raise ComposeError("Cannot build a read-only Compose config probe.")
     del arguments[command_index:]
-    arguments.extend(("config", "--format", "json"))
+    arguments.extend(command)
     return tuple(arguments)
 
 
@@ -508,15 +524,30 @@ class ComposeService:
             raise ComposeError("Compose target changed; review a new preview before confirming.")
         try:
             direct_before = self._direct_retry_inputs(plan)
-            result = await self._run_process(
-                plan.project, lambda config: _compose_config_arguments(plan, config)
+            override_yaml = render_service_overrides(plan.project.service_overrides)
+            # Text probes only: Compose cannot always serialize (or re-read) its own
+            # canonical model, e.g. interpolated build.ssh entries.
+            services = await self._run_process(
+                plan.project,
+                lambda config: _compose_config_arguments(
+                    plan, config, command=("config", "--services")
+                ),
             )
-            if result.exit_code != 0 or len(result.output.encode("utf-8")) > MAX_OUTPUT_BYTES:
+            if services.exit_code != 0 or len(services.output.encode("utf-8")) > MAX_OUTPUT_BYTES:
                 raise ValueError
-            model = json.loads(result.output)
-            if not isinstance(model, dict):
+            known = {line.strip() for line in services.output.splitlines() if line.strip()}
+            targets = {name for name, _env, _ports in plan.project.service_overrides.services}
+            if not targets <= known:
+                raise ValueError("Service overrides target an unknown service.")
+            resolved = await self._run_process(
+                plan.project,
+                lambda config: _compose_config_arguments(
+                    plan, config, effective=True, command=("config",)
+                ),
+                override_yaml=override_yaml,
+            )
+            if resolved.exit_code != 0 or len(resolved.output.encode("utf-8")) > MAX_OUTPUT_BYTES:
                 raise ValueError
-            effective = apply_service_overrides(model, plan.project.service_overrides)
             direct_after = self._direct_retry_inputs(plan)
             if direct_before != direct_after:
                 raise ComposeError("Compose runtime environment changed during consent snapshot.")
@@ -524,12 +555,9 @@ class ComposeService:
                 raise ComposeError("Compose target changed during consent snapshot.")
         except ComposeError:
             raise
-        except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as error:
+        except (OSError, UnicodeError, ValueError, TypeError) as error:
             raise ComposeError("Cannot resolve or apply Compose service overrides.") from error
 
-        semantic_json = json.dumps(
-            effective, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        )
         environment = tuple(
             sorted(
                 (key, value)
@@ -541,7 +569,8 @@ class ComposeService:
         material = json.dumps(
             {
                 "plan": plan._arguments("<private-config>"),
-                "model": semantic_json,
+                "overrides": override_yaml,
+                "resolved_config": hashlib.sha256(resolved.output.encode("utf-8")).hexdigest(),
                 "direct_inputs": direct_inputs,
                 "environment": environment,
             },
@@ -550,7 +579,7 @@ class ComposeService:
         ).encode("utf-8")
         return _RuntimeSnapshot(
             plan,
-            semantic_json,
+            override_yaml,
             hashlib.sha256(material).hexdigest(),
             direct_inputs,
             environment,
@@ -665,7 +694,7 @@ class ComposeService:
             plan.project,
             arguments,
             on_output=on_output,
-            effective_json=snapshot.semantic_json,
+            override_yaml=snapshot.override_yaml,
         )
 
     async def inspect_project(
@@ -728,29 +757,24 @@ class ComposeService:
         arguments,
         *,
         on_output: Callable[[str], None] | None = None,
-        effective_json: str | None = None,
+        override_yaml: str | None = None,
     ) -> ComposeResult:
         """One isolated, bounded, cancellation-safe subprocess path for config and execution."""
         if not math.isfinite(self.timeout_seconds) or not 0 < self.timeout_seconds <= 3600:
             raise ComposeError("Compose timeout must be between 0 and 3600 seconds.")
         process = None
         with tempfile.TemporaryDirectory(prefix="debugpilot-compose-") as directory:
-            (Path(directory) / "config.json").write_text("{}", encoding="utf-8")
-            if effective_json is not None:
-                effective_path = Path(directory) / "effective-compose.json"
+            (Path(directory) / "config.json").write_text(
+                _private_docker_config(), encoding="utf-8"
+            )
+            if override_yaml is not None:
+                override_path = Path(directory) / OVERRIDE_FILE_NAME
                 try:
                     descriptor = os.open(
-                        effective_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+                        override_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
                     )
                     with os.fdopen(descriptor, "w", encoding="utf-8") as private_file:
-                        model = json.loads(effective_json)
-                        private_file.write(
-                            json.dumps(
-                                _escaped_interpolation_values(model),
-                                ensure_ascii=False,
-                                separators=(",", ":"),
-                            )
-                        )
+                        private_file.write(override_yaml)
                         private_file.flush()
                 except OSError:
                     raise ComposeError("Cannot prepare private Compose configuration.") from None

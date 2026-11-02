@@ -1,5 +1,4 @@
 import asyncio
-import json
 import stat
 from pathlib import Path
 
@@ -37,10 +36,6 @@ class _Process:
 
 def _mode(path):
     return stat.S_IMODE(path.stat().st_mode)
-
-
-def _read_json_bytes(data):
-    return json.loads(data)
 
 
 def _exists(path):
@@ -104,10 +99,13 @@ def override_target(tmp_path, monkeypatch):
         config_dir = Path(kwargs["env"]["DOCKER_CONFIG"])
         assert _exists(config_dir)
         if command == "config":
-            return _Process(json.dumps(canonical).encode())
+            if "--services" in argv:
+                return _Process("".join(f"{name}\n" for name in canonical["services"]).encode())
+            return _Process(b"name: demo\nservices: {}\n")
         compose_files = [argv[index + 1] for index, value in enumerate(argv[:-1]) if value == "-f"]
-        config_files.append(Path(compose_files[0]))
-        assert len(compose_files) == 1
+        config_files.append(Path(compose_files[-1]))
+        assert compose_files[:-1] == [str(source)]
+        assert config_files[-1].name == compose.OVERRIDE_FILE_NAME
         assert _exists(config_files[-1])
         assert _mode(config_files[-1]) == 0o600
         config_payloads.append(_read_bytes(config_files[-1]))
@@ -116,9 +114,9 @@ def override_target(tmp_path, monkeypatch):
     monkeypatch.setattr(compose.asyncio, "create_subprocess_exec", create)
     run_process = service._run_process
 
-    async def tracked_process(*args, on_output=None, effective_json=None):
+    async def tracked_process(*args, on_output=None, override_yaml=None):
         process_callbacks.append(on_output)
-        return await run_process(*args, on_output=on_output, effective_json=effective_json)
+        return await run_process(*args, on_output=on_output, override_yaml=override_yaml)
 
     service._run_process = tracked_process
     return (
@@ -133,7 +131,7 @@ def override_target(tmp_path, monkeypatch):
     )
 
 
-async def test_overrides_run_from_private_effective_json_and_retry_reuses_snapshot(override_target):
+async def test_overrides_run_from_private_override_file_and_retry_reuses_snapshot(override_target):
     (
         project,
         service,
@@ -147,12 +145,12 @@ async def test_overrides_run_from_private_effective_json_and_retry_reuses_snapsh
     plan = service.preview(project, "recreate")
     displayed = repr(project) + plan.display
     assert "sensitive-test-value" not in displayed
-    assert str(source) not in plan.display
-    assert "effective-compose.json" in plan.display
+    assert plan.display.index(str(source)) < plan.display.index(compose.OVERRIDE_FILE_NAME)
     callbacks = []
     fingerprint = await service.capture_retry_environment(plan)
-    assert len(calls) == 1 and _command(calls[0][0]) == "config"
-    assert process_callbacks == [None]
+    assert [_command(argv) for argv, _kwargs in calls] == ["config", "config"]
+    assert "--services" in calls[0][0] and "--services" not in calls[1][0]
+    assert process_callbacks == [None, None]
 
     result = await service.run(
         plan,
@@ -163,27 +161,26 @@ async def test_overrides_run_from_private_effective_json_and_retry_reuses_snapsh
     )
 
     assert result == ComposeResult(0, "started\n")
-    assert len(calls) == 2
+    assert len(calls) == 3
     argv, kwargs = calls[-1]
     assert _command(argv) == "up"
     assert argv[argv.index("--pull") + 1] == "missing"
-    assert str(source) not in argv
     assert project.workspace == kwargs["cwd"]
     private_file = config_files[-1]
-    effective = _read_json_bytes(config_payloads[0])
-    assert effective["services"]["api"]["environment"] == {
-        "KEEP": "original",
-        "MODE": "literal-$$VALUE",
-        "$LITERAL_KEY": "$$BASE_VALUE",
-        "TOKEN": "sensitive-test-value",
-    }
-    assert effective["services"]["api"]["ports"] == ["9000:80"]
-    assert effective["services"]["api"]["volumes"] == [f"{project.workspace}/data:/data"]
+    assert config_payloads[0].decode() == (
+        "services:\n"
+        '  "api":\n'
+        "    environment:\n"
+        '      "MODE": "literal-$$VALUE"\n'
+        '      "TOKEN": "sensitive-test-value"\n'
+        "    ports: !override\n"
+        '      - "9000:80"\n'
+    )
     assert not _exists(private_file)
     assert _read_bytes(source) == original
     assert "sensitive-test-value" not in repr(project) + plan.display + repr(callbacks)
     assert callbacks == ["started"]
-    assert len(process_callbacks) == 2 and process_callbacks[1] is not None
+    assert len(process_callbacks) == 3 and process_callbacks[2] is not None
 
 
 async def test_unknown_override_target_fails_before_mutating_spawn(override_target):
@@ -202,7 +199,7 @@ async def test_unknown_override_target_fails_before_mutating_spawn(override_targ
     assert _read_bytes(source) == original
 
 
-async def test_empty_override_ports_clear_canonical_ports(override_target):
+async def test_empty_override_ports_clear_merged_ports(override_target):
     project, service, _calls, _files, source, original, _callbacks, payloads = override_target
     cleared = ComposeProject.create(
         project.workspace,
@@ -213,8 +210,7 @@ async def test_empty_override_ports_clear_canonical_ports(override_target):
 
     await service.run(service.preview(cleared, "recreate"), confirmed=True)
 
-    effective = _read_json_bytes(payloads[0])
-    assert effective["services"]["api"]["ports"] == []
+    assert payloads[0].decode() == 'services:\n  "api":\n    ports: !override []\n'
     assert _read_bytes(source) == original
 
 
@@ -238,7 +234,7 @@ async def test_changed_overrides_invalidate_approved_retry_without_mutating_spaw
         )
 
     assert "different" not in str(error.value)
-    assert len(calls) == 1 and _command(calls[0][0]) == "config"
+    assert [_command(argv) for argv, _kwargs in calls] == ["config", "config"]
     assert _read_bytes(source) == original
 
 
@@ -291,8 +287,8 @@ async def test_private_effective_file_is_removed_when_cancelled(override_target,
         if _command(argv) == "config":
             return await original_create(*argv, **kwargs)
         private_files = [argv[i + 1] for i, value in enumerate(argv[:-1]) if value == "-f"]
-        config_files.append(Path(private_files[0]))
-        temp_directories.append(Path(private_files[0]).parent)
+        config_files.append(Path(private_files[-1]))
+        temp_directories.append(Path(private_files[-1]).parent)
         assert _exists(config_files[-1])
         started.set()
         return CancellableProcess()
@@ -325,7 +321,7 @@ async def test_private_effective_file_prepare_failure_is_generic_and_cleans_up(
     temporary_directories = []
 
     def fail_effective_file(path, flags, mode=0o777, *, dir_fd=None):
-        if Path(path).name == "effective-compose.json":
+        if Path(path).name == compose.OVERRIDE_FILE_NAME:
             temporary_directories.append(Path(path).parent)
             raise OSError("sensitive-test-value private-file failure")
         return original_open(path, flags, mode, dir_fd=dir_fd)
@@ -360,8 +356,8 @@ async def test_private_effective_file_is_removed_when_child_spawn_fails(
     async def fail_mutation(*argv, **kwargs):
         if _command(argv) == "up":
             config = [argv[index + 1] for index, value in enumerate(argv[:-1]) if value == "-f"]
-            config_files.append(Path(config[0]))
-            assert _exists(Path(config[0]))
+            config_files.append(Path(config[-1]))
+            assert _exists(Path(config[-1]))
             raise OSError("spawn failure")
         return await original_create(*argv, **kwargs)
 
@@ -369,4 +365,4 @@ async def test_private_effective_file_is_removed_when_child_spawn_fails(
     with pytest.raises(ComposeError, match="Cannot start"):
         await service.run(plan, confirmed=True)
     assert config_files and not _exists(config_files[-1])
-    assert len(calls) == 1 and _command(calls[0][0]) == "config"
+    assert [_command(argv) for argv, _kwargs in calls] == ["config", "config"]
