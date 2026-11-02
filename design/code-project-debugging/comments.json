@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "comments": [
+    {
+      "id": "uvsvpb4j",
+      "file": "01-sidebar-console.html",
+      "selector": "#code-area > aside > div:nth-of-type(1) > p",
+      "excerpt": "Project / profile",
+      "comment": "Solo con projects es suficiente",
+      "createdAt": "2026-11-02T22:13:26.055Z",
+      "status": "resolved",
+      "sentAt": "2026-11-02T22:13:26.072Z",
+      "resolvedAt": "2026-11-02T22:13:49.638Z"
+    },
+    {
+      "id": "qt7wb8kc",
+      "file": "01-sidebar-console.html",
+      "selector": "#code-area > aside > div:nth-of-type(1) > button:nth-of-type(1)",
+      "excerpt": "▾ ledger-api / Python",
+      "comment": "No entiendo como funciona el cambiar de proyecto",
+      "createdAt": "2026-11-02T22:13:43.788Z",
+      "status": "resolved",
+      "sentAt": "2026-11-02T22:13:43.812Z",
+      "resolvedAt": "2026-11-02T22:14:36.319Z"
+    },
+    {
+      "id": "ysbjs35u",
+      "file": "01-sidebar-console.html",
+      "selector": "#code-area > aside > div:nth-of-type(1) > button:nth-of-type(1)",
+      "excerpt": "› ledger-api / Python",
+      "comment": "Que va dentro de la flecha?",
+      "createdAt": "2026-11-02T22:15:35.376Z",
+      "status": "resolved",
+      "sentAt": "2026-11-02T22:15:35.400Z",
+      "resolvedAt": "2026-11-02T22:16:15.892Z"
+    },
+    {
+      "id": "07e2mchp",
+      "file": "01-sidebar-console.html",
+      "selector": "#code-area > aside > div:nth-of-type(1) > div > h3",
+      "excerpt": "BREAKPOINTS / demo",
+      "comment": "the breakpoints puede estar dentro de la flecha dentro de los archivos como un tree",
+      "createdAt": "2026-11-02T22:16:15.567Z",
+      "status": "resolved",
+      "sentAt": "2026-11-02T22:16:15.589Z",
+      "resolvedAt": "2026-11-02T22:17:05.196Z"
+    }
+  ]
+}
