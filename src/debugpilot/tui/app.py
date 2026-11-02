@@ -1167,6 +1167,17 @@ class DebugPilotApp(App):
     def action_compose(self) -> None:
         self.action_open_launch_file()
 
+    def copy_to_clipboard(self, text: str) -> None:
+        """OSC 52 for terminals that support it, plus the local OS clipboard.
+
+        Some terminals (macOS Terminal, Warp) ignore OSC 52, which made Ctrl+C on
+        a mouse selection appear to do nothing.
+        """
+        super().copy_to_clipboard(text)
+        from debugpilot.tui.clipboard import copy_native
+
+        copy_native(text)
+
     @on(Button.Pressed, "#open-launch-file")
     @on(Button.Pressed, "#welcome-open-launch")
     def action_open_launch_file(self) -> None:
@@ -1207,9 +1218,18 @@ class DebugPilotApp(App):
 
     def _edit_launch_in_terminal(self, editor, path: Path) -> None:
         # Keep terminal ownership on the UI thread. Async refreshes must not
-        # compete with the editor, and suspend restores the UI even on failure.
+        # compete with the editor. Textual's suspend() has no try/finally around
+        # its yield, so an exception escaping the block would skip
+        # resume_application_mode() and leave the dashboard frozen; hold it until
+        # the UI is restored, then re-raise so the caller can report it.
+        failure: BaseException | None = None
         with self.suspend():
-            editor(path)
+            try:
+                editor(path)
+            except BaseException as error:  # noqa: BLE001 - re-raised after resume
+                failure = error
+        if failure is not None:
+            raise failure
 
     def _remember_compose_project(self, project: ComposeProject) -> None:
         self._compose_projects[project.project_name] = project
