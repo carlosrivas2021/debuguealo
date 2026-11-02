@@ -22,6 +22,7 @@ from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.docker.logs import LogBuffer
 from debugpilot.storage.compose_projects import ComposeProjectStore
 from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore
+from debugpilot.tui.code_workspace import CodeWorkspace
 from debugpilot.tui.container_details import ContainerDetails, published_ports
 from debugpilot.tui.container_list import ContainerRow, container_label, container_rows
 from debugpilot.tui.execution_console import ExecutionConsole
@@ -129,6 +130,34 @@ class DebugPilotApp(App):
             self._compose_config_error = str(error)
 
     def compose(self) -> ComposeResult:
+        with Horizontal(id="area-navigation"):
+            yield Button("Containers", id="area-containers", variant="primary")
+            yield Button("Code", id="area-code")
+            yield Button("Open code launch.json", id="open-code-launch")
+        with Vertical(id="container-area"):
+            yield from self._compose_containers()
+        code = CodeWorkspace()
+        code.display = False
+        yield code
+        yield Footer()
+
+    @on(Button.Pressed, "#area-containers")
+    @on(Button.Pressed, "#area-code")
+    def switch_area(self, event: Button.Pressed) -> None:
+        event.stop()
+        code = event.button.id == "area-code"
+        self.query_one("#container-area").display = not code
+        self.query_one(CodeWorkspace).display = code
+        self.query_one("#area-code", Button).variant = "primary" if code else "default"
+        self.query_one("#area-containers", Button).variant = "default" if code else "primary"
+        self.query_one("#code-projects" if code else "#launch-profiles", DataTable).focus()
+
+    @on(Button.Pressed, "#open-code-launch")
+    def open_code_launch(self) -> None:
+        self.query_one("#area-code", Button).press()
+        self._open_area_launch(code=True)
+
+    def _compose_containers(self) -> ComposeResult:
         with Horizontal(id="topbar"):
             yield Static("DebugPilot  ·  Docker: connecting…", id="docker-state", markup=False)
             yield Button("Open launch.json", id="open-launch-file")
@@ -178,7 +207,6 @@ class DebugPilotApp(App):
             yield Static("", id="inline-compose-message", markup=False)
             yield Button("Confirm", id="inline-compose-confirm", variant="warning")
             yield Button("Cancel", id="inline-compose-cancel")
-        yield Footer()
 
     async def on_mount(self) -> None:
         if self._compose_config_error:
@@ -1181,7 +1209,11 @@ class DebugPilotApp(App):
     @on(Button.Pressed, "#open-launch-file")
     @on(Button.Pressed, "#welcome-open-launch")
     def action_open_launch_file(self) -> None:
-        if self._launch_store is None:
+        self._open_area_launch(code=self.query_one(CodeWorkspace).display)
+
+    def _open_area_launch(self, *, code: bool) -> None:
+        store = self.query_one(CodeWorkspace).store if code else self._launch_store
+        if store is None:
             self.notify(
                 f"Launch profiles unavailable: {self._launch_error or 'workspace is unavailable.'}",
                 severity="warning",
@@ -1194,10 +1226,13 @@ class DebugPilotApp(App):
             try:
                 from debugpilot.tui.launch_file import open_launch_file
 
-                path = await asyncio.to_thread(self._launch_store.ensure_launch_file)
+                path = await asyncio.to_thread(store.ensure_launch_file)
                 self._edit_launch_in_terminal(open_launch_file, path)
                 if not self._closing:
-                    self._update_launch_profiles()
+                    if code:
+                        self.query_one(CodeWorkspace).reload_profiles()
+                    else:
+                        self._update_launch_profiles()
                     self.notify(f"Returned from editor: {path}")
             except (ConfigurationError, OSError) as error:
                 if not self._closing:
@@ -1834,6 +1869,13 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if self.is_mounted and self.query_one(CodeWorkspace).display and action in {
+            "focus_logs", "retry_logs", "show_container_details", "toggle_compose_output",
+            "toggle_project", "open_container_terminal", "open_host_terminal",
+            "recreate_selected", "build_selected", "stop_selected", "cancel_compose",
+            "compose", "start_project", "restart_selected", "rebuild_selected",
+        }:
+            return False
         if isinstance(self.focused, TerminalPane):
             return False
         if action in {"open_container_terminal", "open_host_terminal"} and (
