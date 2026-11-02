@@ -1,4 +1,5 @@
 import asyncio
+import os
 import stat
 from pathlib import Path
 
@@ -107,7 +108,8 @@ def override_target(tmp_path, monkeypatch):
         assert compose_files[:-1] == [str(source)]
         assert config_files[-1].name == compose.OVERRIDE_FILE_NAME
         assert _exists(config_files[-1])
-        assert _mode(config_files[-1]) == 0o600
+        if os.name == "posix":
+            assert _mode(config_files[-1]) == 0o600
         config_payloads.append(_read_bytes(config_files[-1]))
         return _Process()
 
@@ -175,7 +177,7 @@ async def test_overrides_run_from_private_override_file_and_retry_reuses_snapsho
         '      "TOKEN": "sensitive-test-value"\n'
         "    ports: !override\n"
         '      - "9000:80"\n'
-    )
+    ).replace("\n", os.linesep)
     assert not _exists(private_file)
     assert _read_bytes(source) == original
     assert "sensitive-test-value" not in repr(project) + plan.display + repr(callbacks)
@@ -210,7 +212,9 @@ async def test_empty_override_ports_clear_merged_ports(override_target):
 
     await service.run(service.preview(cleared, "recreate"), confirmed=True)
 
-    assert payloads[0].decode() == 'services:\n  "api":\n    ports: !override []\n'
+    assert payloads[0].decode() == 'services:\n  "api":\n    ports: !override []\n'.replace(
+        "\n", os.linesep
+    )
     assert _read_bytes(source) == original
 
 
@@ -297,7 +301,7 @@ async def test_private_effective_file_is_removed_when_cancelled(override_target,
         raise AssertionError("fake cancellation must not signal an operating-system process")
 
     monkeypatch.setattr(compose.asyncio, "create_subprocess_exec", create)
-    monkeypatch.setattr(compose.os, "killpg", forbidden_killpg)
+    monkeypatch.setattr(compose.os, "killpg", forbidden_killpg, raising=False)
     operation = asyncio.create_task(service.run(plan, confirmed=True, on_output=callbacks.append))
     await asyncio.wait_for(started.wait(), timeout=1)
     await asyncio.wait_for(read_started.wait(), timeout=1)

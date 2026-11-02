@@ -442,6 +442,7 @@ async def test_repeated_cancellation_cannot_interrupt_child_reaping(project, ser
     assert process.waited and not captured["private_config"].exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Requires POSIX sessions and process groups")
 async def test_cancellation_during_launch_drains_a_real_childs_full_stdout(
     project, service, monkeypatch
 ):
