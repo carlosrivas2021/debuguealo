@@ -9,6 +9,7 @@ dist/
 .coverage
 htmlcov/
 .codegraph/
+.atl/
 .env
 .env.*
 !.env.example
