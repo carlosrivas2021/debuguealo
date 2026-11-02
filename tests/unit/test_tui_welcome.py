@@ -3,7 +3,7 @@ import threading
 from contextlib import contextmanager
 
 from test_tui_grouping import Docker, item, until
-from textual.widgets import Button, DataTable, Static
+from textual.widgets import DataTable, Static
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
@@ -51,17 +51,20 @@ async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
     monkeypatch.setattr(app, "suspend", suspend)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: app._inventory_loaded)
-        assert app.query_one("#empty-welcome").display
+        assert not app.query_one("#empty-welcome").display
         assert "Docker: connected" in str(app.query_one("#docker-state", Static).render())
-        assert app.query_one("#containers", DataTable).row_count > 0
+        assert app.query_one("#launch-profiles", DataTable).row_count > 0
         assert app.query_one("#logs-panel").display
         assert not path.exists()
-        app.query_one("#welcome-open-launch", Button).press()
+        assert await pilot.click("#open-launch-file")
         await until(pilot, lambda: bool(opened))
         assert opened == [(path, opened[0][1])]
         assert opened[0][1] == caller_thread
         assert terminal_owned == []
-        assert app.query_one("#launch-profiles", DataTable).row_count == 1
+        assert [
+            row.key.value for row in app.query_one("#launch-profiles", DataTable).ordered_rows
+            if row.key.value.startswith("profile:")
+        ] == ["profile:Edited"]
         assert not app.query_one("#empty-welcome").display
         assert "unconfigured-api" in docker.opened
 

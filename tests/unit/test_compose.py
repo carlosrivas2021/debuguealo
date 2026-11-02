@@ -1,4 +1,6 @@
 import asyncio
+import os
+import signal
 import sys
 import time
 from dataclasses import replace
@@ -7,7 +9,12 @@ from pathlib import Path
 import pytest
 
 import debugpilot.docker.compose as compose
-from debugpilot.docker.compose import ComposeError, ComposeProject, ComposeService
+from debugpilot.docker.compose import (
+    ComposeError,
+    ComposePlan,
+    ComposeProject,
+    ComposeService,
+)
 from debugpilot.storage.config import Settings
 
 
@@ -55,14 +62,25 @@ class Process:
         return self.returncode
 
 
-def fake_process(monkeypatch, process):
-    captured = {}
+def compose_command(arguments):
+    index = arguments.index("compose") + 1
+    while arguments[index] in {"--project-directory", "--project-name", "--env-file", "-f"}:
+        index += 2
+    return arguments[index]
+
+
+def fake_process(monkeypatch, process, *, config_output=None):
+    captured = {"calls": []}
 
     async def create(*argv, **kwargs):
         captured.update(argv=argv, **kwargs)
+        captured["calls"].append(argv)
         config = Path(kwargs["env"]["DOCKER_CONFIG"])
         assert (config / "config.json").read_text() == "{}"
         captured["private_config"] = config
+        command = compose_command(argv)
+        if command == "config" and config_output is not None:
+            return Process(config_output)
         return process
 
     monkeypatch.setattr(compose.asyncio, "create_subprocess_exec", create)
@@ -97,6 +115,84 @@ async def test_ordered_files_actions_scope_and_explicit_local_target(
     assert str(project.files[0]) in plan.display and action in (plan.action,)
 
 
+async def test_missing_image_retry_is_explicit_and_preserves_up_arguments(
+    project, service, monkeypatch
+):
+    captured = fake_process(monkeypatch, Process(exit_code=1), config_output=b'{"services":{}}')
+    plan = service.preview(project, "recreate")
+    fingerprint = await service.capture_retry_environment(plan)
+    with pytest.raises(ComposeError, match="boolean"):
+        await service.run(plan, confirmed=True, pull_missing="yes")
+    await service.run(plan, confirmed=True)
+    assert captured["argv"][captured["argv"].index("--pull") + 1] == "never"
+    await service.run(plan, confirmed=True, pull_missing=True, retry_fingerprint=fingerprint)
+    argv = captured["argv"]
+    assert argv[argv.index("--pull") + 1] == "missing"
+    assert argv[argv.index("up") + 1] == "-d"
+    assert "--force-recreate" in argv
+    assert argv[argv.index("--pull") + 1] == "missing"
+
+
+async def test_missing_image_retry_revalidates_before_spawn(project, service, monkeypatch):
+    captured = fake_process(monkeypatch, Process(), config_output=b'{"services":{}}')
+    plan = service.preview(project, "rebuild")
+    fingerprint = await service.capture_retry_environment(plan)
+    project.files[0].write_text("services: {changed: {}}\n")
+    with pytest.raises(ComposeError, match="changed"):
+        await service.run(plan, confirmed=True, pull_missing=True, retry_fingerprint=fingerprint)
+    assert not any(compose_command(arguments) == "up" for arguments in captured["calls"])
+
+
+async def test_missing_image_retry_revalidates_environment_files_and_action(
+    project, service, monkeypatch
+):
+    environment = project.workspace / "settings.env"
+    environment.write_text("MODE=local\n")
+    configured = ComposeProject.create(
+        project.workspace, project.files, project.project_name, environment_files=(environment,)
+    )
+    captured = fake_process(monkeypatch, Process(), config_output=b'{"services":{}}')
+    plan = service.preview(configured, "recreate")
+    fingerprint = await service.capture_retry_environment(plan)
+    environment.write_text("MODE=changed\n")
+    with pytest.raises(ComposeError, match="changed"):
+        await service.run(plan, confirmed=True, pull_missing=True, retry_fingerprint=fingerprint)
+    assert not any(compose_command(arguments) == "up" for arguments in captured["calls"])
+
+    restart = service.preview(project, "restart")
+    with pytest.raises(ComposeError, match="up actions"):
+        await service.run(restart, confirmed=True, pull_missing=True)
+    assert not any(compose_command(arguments) == "up" for arguments in captured["calls"])
+
+
+async def test_output_callback_streams_unicode_complete_lines_before_exit(
+    project, service, monkeypatch
+):
+    script = (
+        "import os,time; os.write(1,b'progress\\n'); time.sleep(.3); "
+        "os.write(1,b'caf\\xc3'); time.sleep(.1); os.write(1,b'\\xa9\\n')"
+    )
+    monkeypatch.setattr(
+        ComposePlan, "_arguments", lambda _plan, _config: (sys.executable, "-c", script)
+    )
+    output = []
+    progress_seen = asyncio.Event()
+
+    def receive(line):
+        output.append(line)
+        if line == "progress":
+            progress_seen.set()
+
+    operation = asyncio.create_task(
+        service.run(service.preview(project, "recreate"), confirmed=True, on_output=receive)
+    )
+    await asyncio.wait_for(progress_seen.wait(), 2)
+    assert not operation.done()
+    result = await operation
+    assert output == ["progress", "café"]
+    assert result.output == "progress\ncafé\n"
+
+
 async def test_confirmation_and_revalidation_spawn_nothing(project, service, monkeypatch):
     captured = fake_process(monkeypatch, Process())
     plan = service.preview(project, "rebuild")
@@ -107,7 +203,7 @@ async def test_confirmation_and_revalidation_spawn_nothing(project, service, mon
     project.files[0].write_text("services: {changed: {}}\n")
     with pytest.raises(ComposeError, match="changed"):
         await service.run(plan, confirmed=True)
-    assert not captured
+    assert not captured["calls"]
 
 
 def test_project_directory_and_up_options_are_strict_and_workspace_bound(project, tmp_path):
@@ -210,7 +306,7 @@ async def test_profile_fields_are_revalidated_before_run(project, service, monke
     directory.rename(project.workspace / "moved")
     with pytest.raises(ComposeError):
         await service.run(plan, confirmed=True)
-    assert not captured
+    assert not captured["calls"]
 
 
 async def test_inspection_preserves_profile_identity_and_options(project, service, monkeypatch):
@@ -345,8 +441,8 @@ async def test_repeated_cancellation_cannot_interrupt_child_reaping(project, ser
 async def test_cancellation_during_launch_drains_a_real_childs_full_stdout(
     project, service, monkeypatch
 ):
-    # Harmless Python child, never Docker: reproduce pipe backpressure before
-    # the service obtains the handle. A watchdog releases the pipe on failure.
+    # Harmless Python child in its own session, never Docker. Keep its PID so
+    # failure cleanup can signal only the process group this test created.
     create = asyncio.create_subprocess_exec
     ready, release = asyncio.Event(), asyncio.Event()
     child = None
@@ -360,24 +456,37 @@ async def test_cancellation_during_launch_drains_a_real_childs_full_stdout(
             "sys.stdout.flush(); time.sleep(30)",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,
         )
+        assert os.getpgid(child.pid) == child.pid
         ready.set()
         await release.wait()
         return child
 
     monkeypatch.setattr(compose.asyncio, "create_subprocess_exec", delayed_create)
     task = asyncio.create_task(service.run(service.preview(project, "restart"), confirmed=True))
-    await asyncio.wait_for(ready.wait(), 2)
-    await asyncio.sleep(0.2)
-    task.cancel()
-    release.set()
-    done, _ = await asyncio.wait({task}, timeout=1)
-    if not done:
-        assert child is not None and child.stdout is not None
-        await child.stdout.read()  # Release a hung cleanup before reporting RED.
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    assert done, "Cancellation cleanup hung until the full stdout pipe was drained"
+    try:
+        await asyncio.wait_for(ready.wait(), 2)
+        await asyncio.sleep(0.2)  # Let the child fill its private pipe without reading it here.
+        task.cancel()
+        release.set()
+        done, _ = await asyncio.wait({task}, timeout=1)
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert done, "Cancellation cleanup hung until the full stdout pipe was drained"
+        assert child.returncode is not None
+    finally:
+        release.set()
+        if child is not None and child.returncode is None:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            await asyncio.wait_for(child.wait(), 1)
+        if not task.done():
+            task.cancel()
+            with pytest.raises((asyncio.CancelledError, TimeoutError)):
+                await asyncio.wait_for(task, 1)
 
 
 async def test_timeout_terminates_plugin_descendants_inheriting_stdout(

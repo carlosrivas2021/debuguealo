@@ -43,6 +43,7 @@ class LogViewer(Vertical):
     def compose(self) -> ComposeResult:
         with Horizontal(classes="log-controls"):
             yield Input(placeholder="Filter text", id="filter-logs")
+            yield Input(placeholder="Search · Enter / N", id="search-logs")
             yield Select(
                 [
                     ("All levels", ""),
@@ -55,8 +56,6 @@ class LogViewer(Vertical):
                 allow_blank=False,
                 id="severity-logs",
             )
-        with Horizontal(classes="log-controls"):
-            yield Input(placeholder="Search (Enter / N: next)", id="search-logs")
         yield DataTable(id="log-entries", cursor_type="row", zebra_stripes=True)
         with Horizontal(classes="log-controls"):
             yield Button("Pause", id="pause-logs")

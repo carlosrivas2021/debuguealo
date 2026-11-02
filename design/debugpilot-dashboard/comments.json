@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "comments": [
+    {
+      "id": "iyjmv06k",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > nav",
+      "excerpt": "Agente Conversation MCP ＋ Profile",
+      "comment": "Esta pestana no tiene sentido",
+      "createdAt": "2026-10-31T21:18:26.066Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:18:26.112Z",
+      "resolvedAt": "2026-10-31T21:19:50.153Z"
+    },
+    {
+      "id": "ekkwwtp2",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > main > nav > details:nth-of-type(1) > summary",
+      "excerpt": "▾ Agente",
+      "comment": "No deberian haber dos flechitas",
+      "createdAt": "2026-10-31T21:19:29.704Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:19:29.794Z",
+      "resolvedAt": "2026-10-31T21:20:46.016Z"
+    },
+    {
+      "id": "ftpitpvx",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > main > section",
+      "excerpt": "Agente / services 2 services · 1 illustrative active Play / Recreate · R Service Container State Port mapping api agente-api-1 RUNNING* 8080 → 8080 redis agente-redis-1 STOPPED* — Selected profile · overrides Environment: APP_ENV=development · LOG_LEVEL=debug Published port: 8080:8080 (replaces orig",
+      "comment": "Donde se ven los logs",
+      "createdAt": "2026-10-31T21:20:23.113Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:20:23.161Z",
+      "resolvedAt": "2026-10-31T21:22:12.074Z"
+    },
+    {
+      "id": "xhvs6svh",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > main > section > div:nth-of-type(2)",
+      "excerpt": "Recreate Agente? Existing services may be replaced. Confirmation is illustrative. Cancel · default (Esc) Confirm",
+      "comment": "Esta area para que sirve?",
+      "createdAt": "2026-10-31T21:22:01.056Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:22:01.100Z",
+      "resolvedAt": "2026-10-31T21:23:50.656Z"
+    },
+    {
+      "id": "9brvsqhb",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > main > section > div:nth-of-type(1)",
+      "excerpt": "Agente / services 2 services · 1 illustrative active Play / Recreate · R Service Container State Port mapping api agente-api-1 RUNNING* 8080 → 8080 redis agente-redis-1 STOPPED* — Selected profile · overrides Environment: APP_ENV=development · LOG_LEVEL=debug Published port: 8080:8080 (replaces orig",
+      "comment": "Esto no deberia estar, porque la eleccion de los contenedores tiene que ser del lado izquierdo",
+      "createdAt": "2026-10-31T21:23:31.511Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:23:31.619Z",
+      "resolvedAt": "2026-10-31T21:25:30.066Z"
+    },
+    {
+      "id": "lhujp9bd",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > main > nav > details:nth-of-type(1) > div:nth-of-type(1)",
+      "excerpt": "api · RUNNING*",
+      "comment": "Aqui deberia salir el puerto local si esta configurado, ademas agreguemos la opcion de si presionas la letra d sobre eso en el panel derecho muestre el detalle del contenedor",
+      "createdAt": "2026-10-31T21:25:11.554Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:25:11.633Z",
+      "resolvedAt": "2026-10-31T21:29:10.615Z"
+    },
+    {
+      "id": "ouc5zg3a",
+      "file": "02-project-tree-console.html",
+      "selector": "#recreate-action",
+      "excerpt": "Play / Recreate · R",
+      "comment": "No es necesario este boton, con el comando de teclado es suficiente",
+      "createdAt": "2026-10-31T21:27:01.905Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:27:01.974Z",
+      "resolvedAt": "2026-10-31T21:52:27.841Z"
+    },
+    {
+      "id": "654qynhc",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > main > nav",
+      "excerpt": "PROJECTS · SAMPLE Agente api · RUNNING* redis · STOPPED* Play / Recreate · R Conversation web · RUNNING* worker · STOPPED* MCP gateway · RUNNING* tools · STOPPED* *Sample children only. No live state observed.",
+      "comment": "Si hay 30 como se veria?",
+      "createdAt": "2026-10-31T21:27:52.287Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:27:52.330Z",
+      "resolvedAt": "2026-10-31T21:52:27.841Z"
+    },
+    {
+      "id": "vn8gatkf",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > section > div:nth-of-type(1)",
+      "excerpt": "Compose execution · Agente up -d --build Illustrative transcript · not observed Hide output",
+      "comment": "Como se oculta y se muestra?",
+      "createdAt": "2026-10-31T21:30:04.404Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:30:04.448Z",
+      "resolvedAt": "2026-10-31T21:52:27.841Z"
+    },
+    {
+      "id": "9v0b1qfx",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > main > nav > details:nth-of-type(1) > button:nth-of-type(1)",
+      "excerpt": "api · RUNNING* 127.0.0.1:8080 · D details",
+      "comment": "Que se ve cuando se le da a la d, deberiamos tambien poder acceder a la shell del contenedor",
+      "createdAt": "2026-10-31T21:30:57.777Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:30:57.817Z",
+      "resolvedAt": "2026-10-31T21:52:27.841Z"
+    },
+    {
+      "id": "ab5xl1hp",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > section > div:nth-of-type(1)",
+      "excerpt": "Compose execution · Agente up -d --build Illustrative transcript · not observed Hide output",
+      "comment": "Tabmien podriamos acceder al bash del host",
+      "createdAt": "2026-10-31T21:31:27.521Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:31:27.561Z",
+      "resolvedAt": "2026-10-31T21:52:27.841Z"
+    },
+    {
+      "id": "5qzmwwy9",
+      "file": "02-project-tree-console.html",
+      "selector": "body > div > section > div:nth-of-type(2)",
+      "excerpt": "[17:42:08] $ docker compose --project-name agente up -d --build [17:42:08] [+] Building 1.4s (8/8) FINISHED [17:42:09] => [api internal] load build definition from Dockerfile [17:42:10] [+] Running 2/2 [17:42:10] ✔ Container agente-api-1 Started [17:42:10] ✔ Container agente-redis-1 Started [17:42:1",
+      "comment": "Lo del espacio para escribir en el bash puede ser justo en este espacio,  es como agregar una linea a esto",
+      "createdAt": "2026-10-31T21:34:00.536Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:34:00.579Z",
+      "resolvedAt": "2026-10-31T21:52:27.841Z"
+    },
+    {
+      "id": "j0u1p61g",
+      "file": "02-project-tree-console.html",
+      "selector": "#app-shell > footer > span:nth-of-type(4)",
+      "excerpt": "S Container shell",
+      "comment": "S para stop y para container shelll?",
+      "createdAt": "2026-10-31T21:57:36.773Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:57:36.818Z",
+      "resolvedAt": "2026-10-31T21:59:36.844Z"
+    },
+    {
+      "id": "jjvstlgq",
+      "file": "02-project-tree-console.html",
+      "selector": "#app-shell > footer > span:nth-of-type(5)",
+      "excerpt": "H Host bash",
+      "comment": "Como se veria el host bash?",
+      "createdAt": "2026-10-31T21:57:58.339Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T21:57:58.387Z",
+      "resolvedAt": "2026-10-31T22:02:56.598Z"
+    },
+    {
+      "id": "o36nd474",
+      "file": "02-project-tree-console.html",
+      "selector": "#console-output",
+      "excerpt": "[17:42:08] $ docker compose --project-name agente up -d --build [17:42:08] [+] Building 1.4s (8/8) FINISHED [17:42:09] => [api internal] load build definition from Dockerfile [17:42:10] [+] Running 2/2 [17:42:10] ✔ Container agente-api-1 Started [17:42:10] ✔ Container agente-redis-1 Started [17:42:1",
+      "comment": "Que sea como un terminal normal, no quiero que se vea un campo como para escribir",
+      "createdAt": "2026-10-31T22:04:52.808Z",
+      "status": "resolved",
+      "sentAt": "2026-10-31T22:04:52.849Z",
+      "resolvedAt": "2026-10-31T22:06:23.370Z"
+    }
+  ]
+}

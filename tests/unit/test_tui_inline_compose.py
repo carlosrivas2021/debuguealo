@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 from launch_ui_helpers import save_remembered_profile
@@ -7,9 +8,10 @@ from test_tui_grouping import Docker, select_key, until
 from textual.widgets import Static
 
 from debugpilot.core.engine import DebugPilotEngine
-from debugpilot.docker.compose import ComposeProject
+from debugpilot.docker.compose import ComposeProject, ComposeResult
 from debugpilot.storage.config import Settings
 from debugpilot.tui.app import DebugPilotApp
+from debugpilot.tui.log_viewer import LogViewer
 
 
 @pytest.mark.parametrize("key,action", [("r", "recreate"), ("R", "rebuild")])
@@ -62,7 +64,7 @@ async def test_running_inline_operation_rejects_overlap_and_cancels_cleanly(tmp_
             super().__init__()
             self.closed = asyncio.Event()
 
-        async def run(self, plan, *, confirmed=False):
+        async def run(self, plan, *, confirmed=False, on_output=None):
             self.runs.append((plan, confirmed))
             try:
                 await asyncio.Event().wait()
@@ -132,3 +134,256 @@ async def test_enter_immediately_after_shortcut_confirms_once(
         await until(pilot, lambda: app._inline_task.done())
         await pilot.press("enter")
         assert len(service.runs) == 1
+
+
+async def test_inline_failure_shows_literal_output_and_missing_image_consent(tmp_path, monkeypatch):
+    class FailedService(Service):
+        async def run(
+            self,
+            plan,
+            *,
+            confirmed=False,
+            pull_missing=False,
+            retry_fingerprint=None,
+            on_output=None,
+            retry_preflight=None,
+        ):
+            self.runs.append((plan, confirmed, pull_missing))
+            return ComposeResult(
+                1,
+                "retry failed"
+                if pull_missing
+                else "Error response from daemon: No such image: alpine:3.22\n[red]literal[/red]",
+            )
+
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    service = FailedService()
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
+    docker = Docker()
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        screen = app.screen
+        select_key(app, "profile:Orders")
+        await pilot.press("r", "enter")
+        await until(
+            pilot,
+            lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
+        )
+        assert app.screen is screen
+        viewer = app.query_one(LogViewer)
+        entries = viewer.buffer.entries()
+        assert len(service.runs) == 1
+        assert service.runs[0][1:] == (True, False)
+        assert any("No such image: alpine:3.22" in entry.text for entry in entries)
+        assert any("[red]literal[/red]" in entry.text for entry in entries)
+        await pilot.click("#inline-compose-confirm")
+        await until(pilot, lambda: app._inline_task.done())
+        assert len(service.runs) == 2
+        assert service.runs[1][1:] == (True, True)
+        assert any("retry failed" in entry.text for entry in viewer.buffer.entries())
+        assert any("retry exited 1" in entry.text for entry in viewer.buffer.entries())
+        assert app.screen is screen
+        assert app.query_one("#launch-profiles").has_focus
+
+
+@pytest.mark.parametrize("cancel", ["button", "escape"])
+async def test_missing_image_consent_cancel_never_retries(tmp_path, monkeypatch, cancel):
+    class FailedService(Service):
+        async def run(
+            self,
+            plan,
+            *,
+            confirmed=False,
+            pull_missing=False,
+            retry_fingerprint=None,
+            on_output=None,
+            retry_preflight=None,
+        ):
+            self.runs.append((plan, confirmed, pull_missing))
+            return ComposeResult(1, "Error response from daemon: No such image: alpine:3.22")
+
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    service = FailedService()
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
+    docker = Docker()
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        screen = app.screen
+        select_key(app, "profile:Orders")
+        await pilot.press("r", "enter")
+        await until(
+            pilot,
+            lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
+        )
+        assert app.screen is screen
+        if cancel == "button":
+            await pilot.click("#inline-compose-cancel")
+        else:
+            await pilot.press("escape")
+        await until(pilot, lambda: app._inline_task.done())
+        assert len(service.runs) == 1
+        assert app.query_one("#launch-profiles").has_focus
+
+
+async def test_generic_failure_shows_output_without_download_action(tmp_path, monkeypatch):
+    class FailedService(Service):
+        async def run(
+            self,
+            plan,
+            *,
+            confirmed=False,
+            pull_missing=False,
+            retry_fingerprint=None,
+            on_output=None,
+            retry_preflight=None,
+        ):
+            self.runs.append((plan, confirmed, pull_missing))
+            return ComposeResult(1, "registry authentication failed")
+
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    service = FailedService()
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
+    docker = Docker()
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        screen = app.screen
+        select_key(app, "profile:Orders")
+        await pilot.press("r", "enter")
+        await until(pilot, lambda: app._inline_task.done())
+        viewer = app.query_one(LogViewer)
+        assert app.screen is screen
+        assert any(
+            "registry authentication failed" in entry.text for entry in viewer.buffer.entries()
+        )
+        assert any("Compose exited 1" in entry.text for entry in viewer.buffer.entries())
+        assert not app.query_one("#inline-compose").display
+        assert len(service.runs) == 1
+
+
+async def test_changed_profile_cancels_pending_download_retry(tmp_path, monkeypatch):
+    class FailedService(Service):
+        async def run(
+            self,
+            plan,
+            *,
+            confirmed=False,
+            pull_missing=False,
+            retry_fingerprint=None,
+            on_output=None,
+            retry_preflight=None,
+        ):
+            self.runs.append((plan, confirmed, pull_missing))
+            return ComposeResult(1, "Error response from daemon: No such image: alpine:3.22")
+
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    service = FailedService()
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
+    docker = Docker()
+    app = DebugPilotApp(
+        DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
+    )
+    app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(app._launch_profiles))
+        select_key(app, "profile:Orders")
+        await pilot.press("r", "enter")
+        await until(
+            pilot,
+            lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
+        )
+        document = json.loads(app._launch_store.path.read_text())
+        document["configurations"][0]["custom"] = "changed"
+        app._launch_store.path.write_text(json.dumps(document))
+        await pilot.click("#inline-compose-confirm")
+        await until(pilot, lambda: app._inline_task.done())
+        assert len(service.runs) == 1
+        assert app._inline_plan is None
+        assert any(
+            "retry cancelled" in entry.text.lower()
+            for entry in app.query_one(LogViewer).buffer.entries()
+        )
+
+
+async def test_empty_failure_output_has_actionable_fallback(tmp_path, monkeypatch):
+    class FailedService(Service):
+        async def run(
+            self,
+            plan,
+            *,
+            confirmed=False,
+            pull_missing=False,
+            retry_fingerprint=None,
+            on_output=None,
+            retry_preflight=None,
+        ):
+            self.runs.append((plan, confirmed, pull_missing))
+            return ComposeResult(9, "")
+
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    service = FailedService()
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
+    docker = Docker()
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        select_key(app, "profile:Orders")
+        await pilot.press("r", "enter")
+        await until(pilot, lambda: app._inline_task.done())
+        entries = app.query_one(LogViewer).buffer.entries()
+        assert any("Compose exited 9" in entry.text for entry in entries)
+        assert not any("No output was retained" in entry.text for entry in entries)
+
+
+async def test_retry_failure_is_shown_without_automatic_loop(tmp_path, monkeypatch):
+    class FailedService(Service):
+        async def run(
+            self,
+            plan,
+            *,
+            confirmed=False,
+            pull_missing=False,
+            retry_fingerprint=None,
+            on_output=None,
+            retry_preflight=None,
+        ):
+            self.runs.append((plan, confirmed, pull_missing))
+            return ComposeResult(
+                1,
+                "Error response from daemon: No such image: alpine:3.22"
+                if not pull_missing
+                else "retry failed",
+            )
+
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    service = FailedService()
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: service)
+    docker = Docker()
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
+    app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(docker.opened))
+        select_key(app, "profile:Orders")
+        await pilot.press("r", "enter")
+        await until(
+            pilot,
+            lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
+        )
+        await pilot.click("#inline-compose-confirm")
+        await until(pilot, lambda: app._inline_task.done())
+        assert len(service.runs) == 2
+        entries = app.query_one(LogViewer).buffer.entries()
+        assert any("retry failed" in entry.text for entry in entries)
+        assert any("retry exited 1" in entry.text for entry in entries)

@@ -22,7 +22,19 @@ class Service:
             display=f"docker compose {action} {service or 'ALL'}",
         )
 
-    async def run(self, plan, *, confirmed=False):
+    async def capture_retry_environment(self, plan):
+        return "a" * 64
+
+    async def run(
+        self,
+        plan,
+        *,
+        confirmed=False,
+        pull_missing=False,
+        retry_fingerprint=None,
+        on_output=None,
+        retry_preflight=None,
+    ):
         self.runs.append((plan, confirmed))
         return ComposeResult(0, "Complete")
 

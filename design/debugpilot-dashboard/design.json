@@ -1,0 +1,28 @@
+{
+  "title": "DebugPilot terminal dashboard layouts",
+  "brief": "Three structurally distinct, terminal-realistic TUI dashboard proposals for launch profiles, Compose services, and logs. Preserve the existing palette; prioritize compact hierarchy, separated sections, keyboard operation, and narrow terminal adaptation. Every state and Compose transcript shown is illustrative, not an observation.",
+  "feature": "odd/tasks/launch-service-overrides.md",
+  "artboards": [
+    {
+      "file": "01-context-sidebar.html",
+      "title": "Log workspace + context sidebar (recommended)",
+      "tradeoff": "Best match to the reference: large left log workspace and narrow right status/profile/service cards; keeps context visible but gives the log less horizontal room in narrow terminals.",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "02-project-tree-console.html",
+      "title": "Project tree + docked output console",
+      "tradeoff": "Makes project/service hierarchy and a persistent full-width Compose transcript easy to scan; consumes vertical space and makes output compete with the inventory.",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "03-focus-strip.html",
+      "title": "Focus workspace + status strip",
+      "tradeoff": "Uses a slim profile rail, horizontal service summaries, and a broad log pane with contextual operations; reduces always-visible detail and relies on keyboard-accessible disclosure for less-used actions.",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}

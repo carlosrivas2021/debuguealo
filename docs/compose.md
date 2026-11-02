@@ -36,10 +36,15 @@ previously show a reminder instead of changing screens. `Ctrl+O` opens the edita
 to change the remembered file selection.
 
 While an inline operation runs, Cancel becomes Stop CLI. It cancels the local CLI,
-not the running services or Docker-side changes, and does not roll back. Completion
-is reported as a notification; the inventory and logs stay visible throughout.
+not the running services or Docker-side changes, and does not roll back. Completion is reported as a notification; the inventory and logs stay visible
+throughout. Combined Compose stdout/stderr is streamed literally to the central log
+viewer while the command runs. A bounded in-memory buffer retains only the latest
+operation and its project/profile association, restoring it after same-profile refresh
+but never displaying it for another selected project/profile. Start and final exit
+summaries are recorded even when the CLI emits no output. Compose output is not persisted
+and does not include resolved configuration or environment snapshots.
 
-Dashboard logs are limited to the current execution using Docker's `StartedAt`,
+Dashboard container logs are limited to the current execution using Docker's `StartedAt`,
 including when selecting a service again or retrying with `Ctrl+R`. A successful
 inline restart/rebuild refreshes the inventory and reconnects the affected view,
 discarding its previous buffer while retaining logs from the new startup. Recreated
@@ -111,13 +116,24 @@ and [Compose up](https://docs.docker.com/reference/cli/docker/compose/up/).
   files, or use the network. `--pull never` prevents service-image pulls; it does not
   prevent Dockerfile builds from accessing networks or obtaining base images.
 - Confirmation binds the explicit target and Compose file contents. If those YAML
-  files change before execution, create a new preview. Other workspace files can
-  still change; stop concurrent edits when running an operation.
+  files change before execution, create a new preview. A missing-image retry additionally
+  fingerprints bounded workspace-local `.env`, explicit environment files, literal
+  service `env_file` inputs, and a canonical hash of read-only `compose config --format
+  json` output from the same pinned plan. Compose resolves `extends`/`include`; resolved
+  service env_file paths are separately fingerprinted with file-count/size bounds.
+  Probe failures, truncation, unsupported shapes, or changed inputs cancel retry consent.
+  The probe output, resolved values, and fingerprint are never displayed, streamed, or
+  persisted. Normal actions retain `--pull never`. Other workspace files can still
+  change; stop concurrent edits when running an operation.
 - Recreating containers replaces their writable layers. Mounted volumes are not
   explicitly removed, but important data must already be stored/backed up correctly.
 - Commands use literal arguments without a shell. Output is combined and bounded
-  to 256 KiB, is not persisted by this service, and may contain build/application
-  secrets. Review before copying or sharing it.
+  to 256 KiB, streamed literally to the existing central log viewer, and is not persisted
+  by this service; it may contain build/application secrets. A narrowly recognized
+  `No such image` failure can offer explicit inline consent to retry that same action
+  with `--pull missing`; Cancel is the safe default, and without explicit consent all
+  up actions keep `--pull never`. A retry is attempted once and its failure is shown
+  without another prompt. Review output before copying or sharing it.
 - Nonzero exit codes are preserved. Timeout (10 minutes by default) or cancellation
   stops/reaps the owned local CLI/plugin process tree, **not a transactional rollback**:
   Docker daemon builds

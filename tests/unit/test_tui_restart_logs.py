@@ -61,7 +61,7 @@ class RestartService(Service):
         if not blocked:
             self.release.set()
 
-    async def run(self, plan, *, confirmed=False):
+    async def run(self, plan, *, confirmed=False, on_output=None):
         self.runs.append((plan, confirmed))
         await self.release.wait()
         if self.exit_code == 0:
@@ -98,14 +98,18 @@ async def test_success_reconnects_current_execution_and_discards_stale_view(
         await until(pilot, lambda: app._inline_task is not None and app._inline_task.done())
         await until(pilot, lambda: any("run 1 startup" in e.text for e in viewer.buffer.entries()))
         assert len(service.runs) == 1
-        assert all("run 1 startup" in e.text for e in viewer.buffer.entries())
+        container_entries = [
+            entry.text
+            for entry in viewer.buffer.entries()
+            if entry.text.startswith(("[api]", "[worker]"))
+        ]
+        assert set(container_entries) == {"[api] run 1 startup", "[worker] run 1 startup"}
+        assert any("[Compose · Orders] Starting" in e.text for e in viewer.buffer.entries())
+        assert any("[Compose · Orders] Compose exited 0" in e.text for e in viewer.buffer.entries())
         assert all(options.get("current_run") for options in docker.options)
         assert "stream ended" not in str(app.query_one("#log-state", Static).render())
         assert app.selected_project == "orders" and app.selected_container is None
-        assert {e.text for e in viewer.buffer.entries()} == {
-            "[api] run 1 startup",
-            "[worker] run 1 startup",
-        }
+        assert set(container_entries) == {"[api] run 1 startup", "[worker] run 1 startup"}
         opened = len(docker.opened)
         await pilot.press("ctrl+r")
         await until(pilot, lambda: len(docker.opened) > opened)
@@ -132,7 +136,11 @@ async def test_failed_or_cancelled_operation_preserves_current_stream(
         if cancel:
             await pilot.press("escape")
         await until(pilot, lambda: app._inline_task.done())
-        assert viewer.buffer.entries() == before
+        entries = viewer.buffer.entries()
+        assert all(entry in entries for entry in before)
+        if not cancel:
+            assert any("Complete" in entry.text for entry in entries)
+            assert any("Compose exited 1" in entry.text for entry in entries)
         assert docker.opened == opened and docker.closed == closed
         assert app._compose_store.path.read_bytes() == saved
 

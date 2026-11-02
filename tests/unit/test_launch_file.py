@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 import subprocess
 
 import pytest
@@ -108,7 +110,94 @@ def test_terminal_editor_inherits_terminal_and_waits(tmp_path, monkeypatch, avai
     launch_file.open_launch_file(target)
 
     assert calls == [([expected, str(target.resolve())], {"shell": False, "check": False})]
-    assert json.loads(target.read_text()) == {"version": 1, "configurations": []}
+    assert target.read_bytes() == b'{\n  "version": 1,\n  "configurations": []\n}\n'
+
+
+def test_editor_success_prettifies_valid_json_preserving_order_unknown_fields_and_unicode(
+    tmp_path, monkeypatch
+):
+    target = tmp_path / "launch.json"
+    target.write_bytes('{"z":"café 🐳","custom":{"keep":true},"version":1}'.encode())
+    monkeypatch.setattr(launch_file.shutil, "which", lambda _name: "/tools/nano")
+    monkeypatch.setattr(
+        launch_file.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0),
+    )
+
+    launch_file.open_launch_file(target)
+
+    assert target.read_bytes() == (
+        '{\n  "z": "café 🐳",\n  "custom": {\n    "keep": true\n  },\n  "version": 1\n}\n'
+    ).encode()
+
+
+def test_editor_success_formats_without_fchmod_preserves_mode_and_cleans_temp(
+    tmp_path, monkeypatch
+):
+    target = tmp_path / "launch.json"
+    target.write_bytes(b'{"version":1}')
+    os.chmod(target, 0o640)
+    original_mode = stat.S_IMODE(target.stat().st_mode)
+    monkeypatch.setattr(launch_file.shutil, "which", lambda _name: "/tools/nano")
+    monkeypatch.setattr(
+        launch_file.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0),
+    )
+    monkeypatch.delattr(launch_file.os, "fchmod", raising=False)
+
+    launch_file.open_launch_file(target)
+
+    assert target.read_bytes() == b'{\n  "version": 1\n}\n'
+    assert stat.S_IMODE(target.stat().st_mode) == original_mode
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_invalid_json_after_editor_is_preserved_and_reports_line_and_column_without_content(
+    tmp_path, monkeypatch
+):
+    target = tmp_path / "launch.json"
+    invalid = b'{\n  "secret": "do-not-show",\n  broken\n}'
+    target.write_bytes(b"{}")
+    monkeypatch.setattr(launch_file.shutil, "which", lambda _name: "/tools/nano")
+
+    def edit(args, **kwargs):
+        target.write_bytes(invalid)
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(launch_file.subprocess, "run", edit)
+    with pytest.raises(ConfigurationError) as error:
+        launch_file.open_launch_file(target)
+
+    assert str(error.value) == "Invalid JSON in launch.json at line 3, column 3."
+    assert b"do-not-show" not in str(error.value).encode()
+    assert target.read_bytes() == invalid
+
+
+def test_concurrent_newer_write_is_not_replaced_by_formatted_editor_snapshot(tmp_path, monkeypatch):
+    target = tmp_path / "launch.json"
+    target.write_bytes(b'{"version":1}')
+    newer = b'{"version":2}'
+    monkeypatch.setattr(launch_file.shutil, "which", lambda _name: "/tools/nano")
+    monkeypatch.setattr(
+        launch_file.subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0),
+    )
+    real_formatter = launch_file._pretty_json_tokens
+
+    def write_newer_before_atomic_replace(tokens):
+        formatted = real_formatter(tokens)
+        target.write_bytes(newer)
+        return formatted
+
+    monkeypatch.setattr(launch_file, "_pretty_json_tokens", write_newer_before_atomic_replace)
+
+    with pytest.raises(ConfigurationError, match="newer contents were left untouched"):
+        launch_file.open_launch_file(target)
+
+    assert target.read_bytes() == newer
 
 
 def test_editor_nonzero_exit_is_reported_without_launching_another_editor(tmp_path, monkeypatch):

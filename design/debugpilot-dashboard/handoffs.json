@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "chosen": "02-project-tree-console.html",
+  "handoffs": {
+    "02-project-tree-console.html": {
+      "status": "implemented",
+      "queued": false,
+      "sentAt": "2026-10-31T22:11:36.767Z",
+      "startedAt": "2026-11-02T13:58:12.448Z",
+      "implementedAt": "2026-11-02T16:38:14.771Z",
+      "feature": "odd/tasks/launch-service-overrides.md",
+      "note": "Implementación Linux acotada aceptada: presentación por el usuario, ambos terminales reales en lugares correctos, consola inicialmente oculta, T28 independiente3pass9,58s/Ruff/89SHA, auditoría conjunta de guards PASSED. No Windows ni suite globalGREEN/rootcauseNoneType afirmados. Entrega Git separada aún pendiente: commitbackend a4dc5b3 creado; propietario decidió apagar revisión nativa sólo en clon por permisos incompatibles y debe ejecutar comando. Sin push."
+    }
+  }
+}
