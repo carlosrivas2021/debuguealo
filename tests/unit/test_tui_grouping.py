@@ -287,8 +287,9 @@ async def test_resize_preserves_visible_cursor_before_selection_event(target):
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
         table = app.query_one("#launch-profiles", DataTable)
+        table.focus()
         with table.prevent(DataTable.RowHighlighted):
-            select_key(app, target)
+            table.move_cursor(row=table.get_row_index(target))
         assert app.selected_project == "catalog"
         app._resize_inventory()
         assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value == target

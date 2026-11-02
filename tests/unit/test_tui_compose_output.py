@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from launch_ui_helpers import save_remembered_profile
 from test_tui_grouping import Docker, select_key, until
-from textual.widgets import DataTable
+from textual.widgets import DataTable, RichLog
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.docker.compose import ComposeProject, ComposeResult
@@ -79,15 +79,14 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
         await until(pilot, lambda: bool(docker.opened))
         screen = app.screen
         select_key(app, "profile:Orders")
-        await pilot.press("r")
+        await pilot.press("o", "r")
         await pilot.click("#inline-compose-confirm")
         await until(pilot, service.started.is_set)
-        viewer = app.query_one(LogViewer)
+        output = app._compose_output_buffer
+        transcript = app.query_one("#compose-output-viewer", RichLog)
         await until(
             pilot,
-            lambda: any(
-                "progress [red]literal[/red]" in entry.text for entry in viewer.buffer.entries()
-            ),
+            lambda: any("progress [red]literal[/red]" in line.text for line in transcript.lines),
         )
         assert app.screen is screen
         assert not app._inline_task.done()
@@ -97,8 +96,8 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
             lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
         )
         assert app.query_one("#inline-compose-cancel").has_focus
-        assert any(MISSING in entry.text for entry in viewer.buffer.entries())
-        assert any("exited 1" in entry.text for entry in viewer.buffer.entries())
+        assert any(MISSING in entry.text for entry in output.entries())
+        assert any("exited 1" in entry.text for entry in output.entries())
         if decision == "enter-cancel":
             await pilot.press("enter")
             await until(pilot, lambda: app._inline_task.done())
@@ -109,8 +108,12 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
             await until(pilot, lambda: len(service.runs) == 2)
             await until(pilot, lambda: app._inline_task.done())
             assert service.runs[1][1:] == (True, True, "a" * 64)
-            assert any("retry failed" in entry.text for entry in viewer.buffer.entries())
-            assert any("retry exited 1" in entry.text for entry in viewer.buffer.entries())
+            assert any("retry failed" in entry.text for entry in output.entries())
+            assert any("retry exited 1" in entry.text for entry in output.entries())
+        assert not any(
+            "[Compose · Orders]" in entry.text
+            for entry in app.query_one(LogViewer).buffer.entries()
+        )
         assert app.screen is screen
         assert app.query_one("#inline-compose-confirm").label == "Confirm"
         assert not app.query_one("#inline-compose-confirm").disabled
@@ -127,21 +130,28 @@ async def test_latest_compose_output_survives_same_profile_refresh_not_other_pro
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: bool(docker.opened))
         select_key(app, "profile:Orders")
-        await pilot.press("r")
+        await pilot.press("o", "r")
         await pilot.click("#inline-compose-confirm")
         await until(
             pilot,
             lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
         )
-        viewer = app.query_one(LogViewer)
-        await until(pilot, lambda: any(MISSING in entry.text for entry in viewer.buffer.entries()))
+        output = app._compose_output_buffer
+        await until(pilot, lambda: any(MISSING in entry.text for entry in output.entries()))
+        retained = output.entries()
         app._show_inventory(list(app._inventory.values()), force=True)
-        await until(pilot, lambda: any(MISSING in entry.text for entry in viewer.buffer.entries()))
+        assert output.entries() == retained
         await pilot.press("enter")
         await until(pilot, lambda: app._inline_task.done())
         select_key(app, "project:catalog")
         await until(pilot, lambda: app.selected_project == "catalog")
         await pilot.pause(0.25)
-        assert not any("[Compose · orders]" in entry.text for entry in viewer.buffer.entries())
+        assert not any(
+            "[Compose · Orders]" in entry.text
+            for entry in app.query_one(LogViewer).buffer.entries()
+        )
+        transcript = app.query_one("#compose-output-viewer", RichLog)
+        assert not any(MISSING in line.text for line in transcript.lines)
         select_key(app, "profile:Orders")
-        await until(pilot, lambda: any(MISSING in entry.text for entry in viewer.buffer.entries()))
+        await until(pilot, lambda: any(MISSING in line.text for line in transcript.lines))
+        assert any(MISSING in entry.text for entry in output.entries())

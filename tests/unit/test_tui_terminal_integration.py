@@ -77,9 +77,11 @@ async def test_persistent_terminal_mount_does_not_start_a_session(fake_terminal,
     docker = Docker()
     app = app_for(docker, tmp_path)
     async with app.run_test(size=(120, 40)):
-        pane = app.query_one(TerminalPane)
-        assert pane.is_mounted
-        assert not pane.active
+        panes = [
+            app.query_one("#terminal-pane", TerminalPane),
+            app.query_one("#container-terminal-pane", TerminalPane),
+        ]
+        assert all(pane.is_mounted and not pane.active for pane in panes)
         assert fake_terminal == []
         assert app.query_one("#terminal-context", Static)
 
@@ -113,7 +115,8 @@ async def test_c_opens_pinned_running_child_only_when_left_table_focused(fake_te
         assert session.container[0].id == actual.id
         assert session.container[1] == "unix:///tmp/docker.sock"
         assert session.container[2] == tmp_path.resolve()
-        assert app.query_one(TerminalPane).context.container.id == actual.id
+        pane = app.query_one("#container-terminal-pane", TerminalPane)
+        assert pane.context.container.id == actual.id
         app.query_one("#log-state").focus()
         await pilot.press("c")
         assert len(fake_terminal) == 1
@@ -145,7 +148,7 @@ async def test_terminal_owns_keys_escape_and_does_not_reopen_on_selection(fake_t
         await select_row(app, pilot, "#launch-profiles", "container:demo-api", "demo-api")
         await pilot.press("c")
         await until(pilot, lambda: len(fake_terminal) == 1)
-        pane = app.query_one(TerminalPane)
+        pane = app.query_one("#container-terminal-pane", TerminalPane)
         context = pane.context
         await pilot.press("c", "h", "q", "d", "s", "r", "o", "ctrl+c")
         for character in "CHQDSRO":

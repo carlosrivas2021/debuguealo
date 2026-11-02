@@ -803,10 +803,10 @@ class DebugPilotApp(App):
         )
 
     def _restore_compose_output(self, viewer: LogViewer | None = None) -> None:
-        if not self._compose_output_matches_selection():
-            return
         console = self.query_one(ExecutionConsole)
         console.clear()
+        if not self._compose_output_matches_selection():
+            return
         for entry in self._compose_output_buffer.entries():
             console.append(entry)
 

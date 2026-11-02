@@ -47,7 +47,7 @@ def test_central_profile_root_reaches_preview_and_confirmation(tmp_path, monkeyp
         async with app.run_test(size=(120, 40)) as pilot:
             await until(pilot, lambda: len(app._launch_profiles) == 1)
             select_key(app, "profile:Agente")
-            await pilot.click("#profile-recreate")
+            await pilot.press("r")
             await until(pilot, lambda: bool(service.previews))
             project, _action, _target = service.previews[-1]
             assert project.workspace == project_root.resolve()
