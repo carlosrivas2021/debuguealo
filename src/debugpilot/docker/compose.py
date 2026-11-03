@@ -34,6 +34,8 @@ _ENV_FILE_KEY = re.compile(r"\benv_file\s*:")
 MAX_CALLBACK_LINE_CHARS = 16_384
 MAX_RETRY_ENV_FILES = 64
 OVERRIDE_FILE_NAME = "debugpilot-overrides.yaml"
+MAX_PROFILE_SERVICES = 64
+SERVICE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
 
 def _private_docker_config() -> str:
@@ -80,6 +82,7 @@ class ComposeProject:
     environment_files: tuple[Path, ...] = ()
     environment_fingerprints: tuple[str, ...] = ()
     service_overrides: _ValidatedServiceOverrides | None = field(default=None, repr=False)
+    services: tuple[str, ...] = ()
 
     @classmethod
     def create(
@@ -93,11 +96,21 @@ class ComposeProject:
         process_cwd: Path | None = None,
         environment_files: tuple[Path, ...] = (),
         service_overrides=None,
+        services: tuple[str, ...] = (),
     ):
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", project_name):
             raise ComposeError("Use a lowercase Compose project name with letters, digits, - or _.")
         if not 1 <= len(files) <= 16:
             raise ComposeError("Choose between 1 and 16 ordered Compose files.")
+        if (
+            not isinstance(services, (tuple, list))
+            or len(services) > MAX_PROFILE_SERVICES
+            or any(
+                not isinstance(name, str) or not SERVICE_NAME.fullmatch(name) for name in services
+            )
+            or len(set(services)) != len(services)
+        ):
+            raise ComposeError("Profile services must be unique, valid Compose service names.")
         try:
             workspace = Path(workspace).resolve(strict=True)
             if not workspace.is_dir():
@@ -168,6 +181,7 @@ class ComposeProject:
             tuple(env_paths),
             tuple(env_fingerprints),
             service_overrides,
+            tuple(services),
         )
 
 
@@ -210,7 +224,19 @@ class ComposePlan:
                 arguments.append("--build")
         if self.service is not None:
             arguments.extend(("--no-deps", self.service))
+        elif self.project.services:
+            # Compose still starts declared dependencies of the selected services.
+            arguments.extend(self.project.services)
         return tuple(arguments)
+
+    @property
+    def scope(self) -> str:
+        """Human-readable target: one service, the profile's services, or everything."""
+        if self.service is not None:
+            return self.service
+        if self.project.services:
+            return ", ".join(self.project.services)
+        return "all services"
 
     @property
     def display(self) -> str:
@@ -442,7 +468,7 @@ class ComposeService:
             )
         if action not in {"start", "restart", "recreate", "rebuild"}:
             raise ComposeError("Choose start, restart, recreate or rebuild.")
-        if service is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", service):
+        if service is not None and not SERVICE_NAME.fullmatch(service):
             raise ComposeError("Choose a valid Compose service name, not a container ID or option.")
         current = ComposeProject.create(
             project.workspace,
@@ -453,6 +479,7 @@ class ComposeService:
             process_cwd=project.process_cwd,
             environment_files=project.environment_files,
             service_overrides=project.service_overrides,
+            services=project.services,
         )
         if current != project:
             raise ComposeError("Compose files changed; review a new preview before confirming.")
@@ -537,6 +564,7 @@ class ComposeService:
                 raise ValueError
             known = {line.strip() for line in services.output.splitlines() if line.strip()}
             targets = {name for name, _env, _ports in plan.project.service_overrides.services}
+            targets.update(plan.project.services)
             if not targets <= known:
                 raise ValueError("Service overrides target an unknown service.")
             resolved = await self._run_process(
@@ -584,6 +612,26 @@ class ComposeService:
             direct_inputs,
             environment,
         )
+
+    async def _verify_profile_services(self, plan: ComposePlan) -> None:
+        """Reject unknown profile services before any mutating Compose operation."""
+        try:
+            result = await self._run_process(
+                plan.project,
+                lambda config: _compose_config_arguments(
+                    plan, config, command=("config", "--services")
+                ),
+            )
+            if result.exit_code != 0 or len(result.output.encode("utf-8")) > MAX_OUTPUT_BYTES:
+                raise ValueError
+        except (OSError, UnicodeError, ValueError) as error:
+            raise ComposeError("Cannot list Compose services for the launch profile.") from error
+        known = {line.strip() for line in result.output.splitlines() if line.strip()}
+        unknown = [name for name in plan.project.services if name not in known]
+        if unknown:
+            raise ComposeError(
+                "Launch profile services are not defined in Compose: " + ", ".join(unknown[:8])
+            )
 
     def _approved_override_snapshot(self, plan: ComposePlan, fingerprint: str):
         snapshot = self._retry_snapshot
@@ -677,6 +725,8 @@ class ComposeService:
             snapshot = await self._resolve_override_snapshot(plan)
         elif self.preview(plan.project, plan.action, plan.service) != plan:
             raise ComposeError("Compose target changed; review a new preview before confirming.")
+        if snapshot is None and plan.project.services:
+            await self._verify_profile_services(plan)
 
         if snapshot is None:
             arguments = (

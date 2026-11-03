@@ -21,7 +21,7 @@ from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject,
 from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.docker.logs import LogBuffer
 from debugpilot.storage.compose_projects import ComposeProjectStore
-from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore
+from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore, profile_services
 from debugpilot.tui.container_details import ContainerDetails, published_ports
 from debugpilot.tui.container_list import ContainerRow, container_label, container_rows
 from debugpilot.tui.execution_console import ExecutionConsole
@@ -29,6 +29,17 @@ from debugpilot.tui.log_viewer import LogViewer
 from debugpilot.tui.terminal_view import TerminalPane
 
 ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
+
+
+def _plan_scope(plan) -> str:
+    """Describe a Compose target: one service, the profile's services, or everything."""
+    service = getattr(plan, "service", None)
+    if service:
+        return service
+    services = getattr(getattr(plan, "project", None), "services", ())
+    if isinstance(services, tuple) and services:
+        return ", ".join(services)
+    return "all services"
 
 
 class DebugPilotApp(App):
@@ -531,6 +542,7 @@ class DebugPilotApp(App):
             environment_files=resolved.environment_files,
             up=up,
             service_overrides=resolved.service_overrides,
+            services=resolved.services,
         )
 
     def _profile_selected(self, name: str, project: str) -> None:
@@ -821,7 +833,7 @@ class DebugPilotApp(App):
         )
         self._record_compose_output(
             f"Starting {plan.action}: {plan.project.project_name} / "
-            f"{plan.service or 'all services'}"
+            f"{_plan_scope(plan)}"
         )
 
     def _record_compose_output(self, text: str, *, severity: str = "unknown") -> None:
@@ -843,6 +855,16 @@ class DebugPilotApp(App):
     def _write_compose_output(self, text: str) -> None:
         for line in text.splitlines():
             self._record_compose_output(line)
+
+    def _limit_to_profile_services(self, members):
+        """Keep only the selected profile's explicit services, when it declares any."""
+        profile = self._selected_profile
+        if profile is None or profile.project_name != self.selected_project:
+            return members
+        services = profile_services(profile.raw)
+        if not services:
+            return members
+        return [item for item in members if item.compose_service in services]
 
     def _group_members(self) -> tuple[ContainerInfo, ...]:
         if self.selected_container is not None or not self.selected_project:
@@ -1291,7 +1313,7 @@ class DebugPilotApp(App):
         self._pending_profile_key = self._selected_profile_key
         verb = "Recreate" if action == "recreate" else "Build and recreate"
         self.query_one("#inline-compose-message", Static).update(
-            f"{verb} {profile.name or project.project_name} / all services?"
+            f"{verb} {profile.name or project.project_name} / {_plan_scope(plan)}?"
         )
         self.query_one("#inline-compose").tooltip = plan.display
         self.query_one("#inline-compose").display = True
@@ -1441,6 +1463,8 @@ class DebugPilotApp(App):
             if self.selected_project
             else []
         )
+        if self.selected_container is None:
+            members = self._limit_to_profile_services(members)
         targets = tuple(c.id for c in members if c.state in ACTIVE_STATES)
         if not targets or len(targets) > 32:
             self.notify(
@@ -1510,7 +1534,7 @@ class DebugPilotApp(App):
         self.query_one("#inline-compose-confirm", Button).disabled = True
         self.query_one("#inline-compose-cancel", Button).label = "Stop CLI"
         self.query_one("#inline-compose-message", Static).update(
-            f"Running {plan.action}: {plan.project.project_name} / {plan.service or 'all services'}"
+            f"Running {plan.action}: {plan.project.project_name} / {_plan_scope(plan)}"
         )
         self._inline_task = asyncio.create_task(self._run_inline_compose(plan))
 
@@ -1589,7 +1613,7 @@ class DebugPilotApp(App):
         self._pending_retry_fingerprint = fingerprint
         self.query_one("#inline-compose-message", Static).update(
             f"Missing image for {plan.project.project_name}. Download missing images and "
-            f"retry {plan.action} / {plan.service or 'all services'}?"
+            f"retry {plan.action} / {_plan_scope(plan)}?"
         )
         self.query_one("#inline-compose-confirm", Button).label = "Download and retry"
         self.query_one("#inline-compose-confirm", Button).disabled = False
@@ -1637,7 +1661,7 @@ class DebugPilotApp(App):
                 await self._refresh_compose_logs(plan, selection, project, revision)
                 self.notify(
                     f"Compose exited 0: {plan.project.project_name} / "
-                    f"{plan.service or 'all services'}.",
+                    f"{_plan_scope(plan)}.",
                     severity="information",
                 )
                 return
@@ -1645,7 +1669,7 @@ class DebugPilotApp(App):
             if not self._is_missing_image_failure(result.output):
                 self.notify(
                     f"Compose exited {result.exit_code}: {plan.project.project_name} / "
-                    f"{plan.service or 'all services'}. Inspect the central log viewer.",
+                    f"{_plan_scope(plan)}. Inspect the central log viewer.",
                     severity="warning",
                 )
                 return
@@ -1698,7 +1722,7 @@ class DebugPilotApp(App):
             self.query_one("#inline-compose-cancel", Button).disabled = False
             self.query_one("#inline-compose-message", Static).update(
                 f"Downloading missing images and retrying {plan.action}: "
-                f"{plan.project.project_name} / {plan.service or 'all services'}"
+                f"{plan.project.project_name} / {_plan_scope(plan)}"
             )
             self._record_compose_output(
                 f"Retrying {plan.action} once with missing-image download explicitly authorized."
@@ -1725,13 +1749,13 @@ class DebugPilotApp(App):
                 await self._refresh_compose_logs(plan, selection, project, revision)
                 self.notify(
                     f"Compose retry exited 0: {plan.project.project_name} / "
-                    f"{plan.service or 'all services'}.",
+                    f"{_plan_scope(plan)}.",
                     severity="information",
                 )
             else:
                 self.notify(
                     f"Compose retry exited {retry.exit_code}: {plan.project.project_name} / "
-                    f"{plan.service or 'all services'}. Inspect the central log viewer.",
+                    f"{_plan_scope(plan)}. Inspect the central log viewer.",
                     severity="warning",
                 )
         except asyncio.CancelledError:

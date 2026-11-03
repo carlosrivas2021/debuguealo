@@ -22,6 +22,8 @@ MAX_FILES = 16
 MAX_PATH_LENGTH = 4096
 PROJECT_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 UP_FIELDS = {"build", "detach", "forceRecreate"}
+MAX_SERVICES = 64
+SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 PROJECT_LABEL = "com.docker.compose.project"
 WORKING_DIR_LABEL = "com.docker.compose.project.working_dir"
 CONFIG_FILES_LABEL = "com.docker.compose.project.config_files"
@@ -52,6 +54,22 @@ class ResolvedLaunch:
     up: dict[str, bool] | None
     environment_files: tuple[Path, ...] = ()
     service_overrides: Any = field(default=None, repr=False)
+    services: tuple[str, ...] = ()
+
+
+def profile_services(raw: dict[str, Any]) -> tuple[str, ...] | None:
+    """Return the optional explicit service subset, or None when it is invalid."""
+    value = raw.get("services")
+    if value is None or value == []:
+        return ()
+    if (
+        not isinstance(value, list)
+        or len(value) > MAX_SERVICES
+        or any(not isinstance(name, str) or not SERVICE_NAME.fullmatch(name) for name in value)
+        or len(set(value)) != len(value)
+    ):
+        return None
+    return tuple(value)
 
 
 def _is_reparse(path: Path) -> bool:
@@ -330,6 +348,9 @@ class LaunchProfileStore:
                 return None
             if not service_overrides.services:
                 service_overrides = None
+            services = profile_services(raw)
+            if services is None:
+                return None
             return ResolvedLaunch(
                 workspace=workspace,
                 cwd=cwd,
@@ -339,6 +360,7 @@ class LaunchProfileStore:
                 up=up,
                 environment_files=env_paths,
                 service_overrides=service_overrides,
+                services=services,
             )
         except (ConfigurationError, OSError, RuntimeError, TypeError, ValueError):
             return None
@@ -463,6 +485,8 @@ class LaunchProfileStore:
             validate_service_overrides(raw.get("overrides"))
         except ValueError:
             return "Service overrides need attention."
+        if profile_services(raw) is None:
+            return "Profile services must be a list of unique Compose service names."
         try:
             if (
                 self.resolve(LaunchProfile(None, raw.get("projectName"), None, copy.deepcopy(raw)))
