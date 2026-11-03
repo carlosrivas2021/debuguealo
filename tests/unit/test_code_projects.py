@@ -2,11 +2,32 @@ import json
 
 from test_code_project_store import configure
 from test_tui_grouping import Docker, until
-from textual.widgets import DataTable
+from textual.widgets import Button, DataTable
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
 from debugpilot.tui.app import DebugPilotApp
+
+
+async def test_active_area_indicator_follows_visible_view(tmp_path):
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), workspace=tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        containers = app.query_one("#area-containers", Button)
+        code = app.query_one("#area-code", Button)
+        await pilot.pause()
+        active_background = containers.styles.background
+        inactive_background = code.styles.background
+        assert active_background != inactive_background
+        for target, active, inactive, view in [
+            ("#area-code", code, containers, "#code-workspace"),
+            ("#area-containers", containers, code, "#container-area"),
+        ]:
+            await pilot.click(target)
+            await pilot.pause()
+            assert app.query_one(view).display
+            assert active.styles.background == active_background
+            assert inactive.styles.background == inactive_background
+            assert active.styles.text_style.bold
 
 
 async def test_area_navigation_keeps_container_context_and_isolates_code_errors(
