@@ -11,9 +11,12 @@ and controlled reconnect/cancellation. The terminal dashboard adds keyboard sele
 live logs, bounded search/filter/pause controls and explicit connection errors.
 The **Code** area registers project folders using a separate central `projects/launch.json`
 and runs the selected profile without debug using **F5**, with an interactive console and
-**Stop** control. It also browses read-only source and marks session-local pending
-line breakpoints; see [code projects](docs/code-projects.md).
-DAP debugging and the FastAPI example remain pending.
+**Stop** control. **Shift+F5** debugs Python using the same profile: mark read-only
+source, pause at a breakpoint, inspect stack/variables, step and Continue. Requested
+breakpoints remain separate from adapter verification. Debug mode requires `debugpy`
+in the selected interpreter and currently has no interactive stdin; missing adapters
+never fall back to run. See [code projects](docs/code-projects.md).
+Node/Go debugging and the FastAPI example remain pending.
 No connection is simulated in the application.
 
 The dashboard also supports explicit, confirmation-gated local Compose restart,
@@ -99,7 +102,8 @@ Dependency installation and the eventual example image build may require downloa
 
 `debugpilot` and `debugpilot tui` open the terminal dashboard; see the
 [keyboard workflow](docs/tui.md). The future `gui` command is not registered.
-The FastAPI example and first-breakpoint walkthrough will arrive with the real DAP integration.
+The FastAPI example remains pending. Python's current breakpoint workflow is documented
+in [code projects](docs/code-projects.md#debug-python-with-the-same-profile).
 No license has been selected; no license grant is implied by this source distribution.
 
 Read [Docker integration](docs/docker.md) for limits, logging-driver support, and reconnect semantics.

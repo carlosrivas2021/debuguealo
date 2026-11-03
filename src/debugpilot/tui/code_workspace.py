@@ -10,6 +10,7 @@ from textual.widgets import Button, DataTable, Static
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.code_projects import CodeProjectStore
 from debugpilot.terminal.session import TerminalUnavailable
+from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
 from debugpilot.tui.source_browser import SourceBrowser
 
@@ -23,6 +24,9 @@ class CodeWorkspace(Vertical):
         self._stopping = False
         self._shutting_down = False
         self._run_button = Button("Run (F5)", id="code-run")
+        self._debug_button = Button("Debug (Shift+F5)", id="code-debug-start")
+        self._browser = SourceBrowser()
+        self._debug = CodeDebug(self._browser, self._state, lambda: self._controls(False))
         self._stop_button = Button("Stop", id="code-stop", disabled=True)
         self._run_state = Static(
             "Ready. Select a profile and press F5.", id="code-run-state", markup=False
@@ -38,14 +42,17 @@ class CodeWorkspace(Vertical):
         with Horizontal(id="code-actions"):
             yield Button("Reload code profiles", id="code-reload")
             yield self._run_button
+            yield self._debug_button
             yield self._stop_button
         yield DataTable(id="code-projects", cursor_type="row", zebra_stripes=True)
-        yield SourceBrowser()
+        yield self._browser
         yield self._run_state
+        yield self._debug
         yield self._pane
         yield Static(
             "F5: run without debug · Escape: return to profiles · Stop: end Code process tree. "
-            "Source is read-only; breakpoints are pending. Debug arrives later.",
+            "Shift+F5: Python debug · Continue: button · F10/F11/Shift+F11: step. "
+            "Debug output has no stdin. Source is read-only.",
             id="code-capabilities",
         )
 
@@ -94,12 +101,13 @@ class CodeWorkspace(Vertical):
 
     def _controls(self, running):
         self._run_button.disabled = running
+        self._debug_button.disabled = running
         self._stop_button.disabled = not running
 
     @on(Button.Pressed, "#code-run")
     def run_selected(self):
         pane = self.query_one(CodeTerminal)
-        if self._shutting_down or self._stopping or pane.active or (
+        if self._shutting_down or self._stopping or self._debug.active or pane.active or (
             self._run_task is not None and not self._run_task.done()
         ):
             return
@@ -108,9 +116,34 @@ class CodeWorkspace(Vertical):
             self._state("No Code profile selected. Open code launch.json to add one.")
             return
         profile = self._profiles[table.ordered_rows[table.cursor_row].key.value]
+        self._debug.display = False
+        self._pane.display = True
         self._state(f"Starting: {profile.name}")
         self._controls(True)
         self._run_task = asyncio.create_task(self._start(profile))
+
+    @on(Button.Pressed, "#code-debug-start")
+    def debug_selected(self):
+        if self._shutting_down or self._stopping or self._debug.active or self._pane.active or (
+            self._run_task is not None and not self._run_task.done()
+        ):
+            self.app.notify("A Code session is active. Stop it before starting another.")
+            return
+        table = self.query_one(DataTable)
+        if not table.row_count:
+            self._state("No Code profile selected. Open code launch.json to add one.")
+            return
+        profile = self._profiles[table.ordered_rows[table.cursor_row].key.value]
+        self._pane.display = False
+        self._controls(True)
+        self._debug.start(profile)
+
+    @on(SourceBrowser.BreakpointsChanged)
+    def breakpoints_changed(self, event):
+        self._debug.breakpoints_changed(event)
+
+    def debug_control(self, command):
+        self._debug.resume(command)
 
     async def _start(self, profile):
         try:
@@ -134,6 +167,7 @@ class CodeWorkspace(Vertical):
             if task is not None and not task.done():
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
+            await self._debug.close()
             await self._pane.close_session()
             self._state("Stopped")
         finally:

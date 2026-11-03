@@ -17,6 +17,13 @@ Screen { background: #080b0e; color: #d6d9dc; }
 #source-breakpoint { width: auto; }
 #code-run-state { height: 1; padding: 0 1; color: #a9c2cc; }
 #code-terminal { height: 2fr; min-height: 4; border-top: solid #2b3439; }
+#code-debug { height: 2fr; min-height: 9; border-top: solid #2b3439; }
+#code-debug-controls { height: 1; }
+#code-debug-controls Button { width: auto; min-width: 10; }
+#code-inspection { height: 1fr; min-height: 3; }
+#code-stack { width: 45%; }
+#code-variables { width: 1fr; height: 1fr; overflow: auto; padding: 0 1; }
+#code-debug-output { height: 1fr; min-height: 3; background: #080b0e; }
 Button { height: 1; min-height: 1; border: none; padding: 0 1; background: #171c20; color: #c8cdd1; }
 Button:hover { background: #242c32; }
 Button:focus { background: #30414c; color: #ffffff; text-style: bold; }
@@ -79,6 +86,11 @@ Button:disabled { color: #697279; background: #101417; }
 .compact #terminal-pane { height: 3; min-height: 2; }
 .compact #container-details { max-height: 7; }
 .compact #debugger-state { display: none; }
+.compact #code-status, .compact #code-capabilities { height: 1; max-height: 1; }
+.compact #source-browser { height: 7; min-height: 7; max-height: 7; }
+.compact #code-debug { height: 7; min-height: 7; max-height: 7; }
+.compact #code-inspection { min-height: 2; }
+.compact #code-debug-output { min-height: 2; }
 #launch-state { height: 1; color: #9ba5aa; padding: 0 1; }
 
 /* Compact native controls and the existing artboard palette, not theme defaults. */
