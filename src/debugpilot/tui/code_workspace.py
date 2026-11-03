@@ -11,6 +11,7 @@ from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.code_projects import CodeProjectStore
 from debugpilot.terminal.session import TerminalUnavailable
 from debugpilot.tui.code_terminal import CodeTerminal
+from debugpilot.tui.source_browser import SourceBrowser
 
 
 class CodeWorkspace(Vertical):
@@ -39,11 +40,13 @@ class CodeWorkspace(Vertical):
             yield self._run_button
             yield self._stop_button
         yield DataTable(id="code-projects", cursor_type="row", zebra_stripes=True)
+        yield SourceBrowser()
         yield self._run_state
         yield self._pane
         yield Static(
             "F5: run without debug · Escape: return to profiles · Stop: end Code process tree. "
-            "Debug and source browsing arrive later.", id="code-capabilities",
+            "Source is read-only; breakpoints are pending. Debug arrives later.",
+            id="code-capabilities",
         )
 
     def on_mount(self) -> None:
@@ -76,6 +79,15 @@ class CodeWorkspace(Vertical):
         except ConfigurationError as error:
             message = str(error)
         self.query_one("#code-status", Static).update(message)
+        self.select_source_project()
+
+    @on(DataTable.RowHighlighted, "#code-projects")
+    def select_source_project(self):
+        table = self.query_one(DataTable)
+        profile = None
+        if table.row_count:
+            profile = self._profiles.get(table.ordered_rows[table.cursor_row].key.value)
+        self.query_one(SourceBrowser).set_project(profile.root if profile else None)
 
     def _state(self, message):
         self._run_state.update(message)

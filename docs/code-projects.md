@@ -57,5 +57,24 @@ Windows uses an owned kill-on-close Job Object; POSIX uses an owned process grou
 Remaining descendants are terminated on stop **and when the main command exits**.
 Do not use this runner for detached background services intended to survive the profile.
 
-Shift+F5 debugging, source browsing and breakpoints are **not implemented yet**.
-One profile will serve both run modes; this stage runs without a debugger.
+## Browse source and mark pending breakpoints
+
+1. Select a Code profile. Expand directories in the file tree, then select a file.
+2. Move the cursor to a line in the read-only source pane (mouse or arrow keys).
+3. Click **Toggle breakpoint at cursor (pending)**. Expand the file to see its
+   **Line N · pending** children; selecting one navigates to that line.
+4. Click the same button on that line again to remove the mark.
+
+Source files are never edited by this pane. Breakpoints use 1-based line numbers,
+are isolated by project root and file, and survive switching profiles/areas in the
+current app session. They are not saved across restarts or relocated when external
+edits change line numbers. Two profiles sharing a root share its breakpoint marks.
+**Pending means intent only**: there is no adapter verification or execution pause yet.
+
+Directories load on expansion, with a preview limit of 2,000 entries per directory.
+Symbolic links and junctions are omitted. Source preview supports regular UTF-8 files
+(up to 1 MiB); binary, unreadable, oversized and missing files show an error instead.
+The preview is not an operating-system sandbox; browse trusted local projects.
+
+F5 and the Code console keep their existing run-without-debug behavior. Shift+F5,
+verified breakpoints, variables and stepping remain **not implemented**.

@@ -8,7 +8,13 @@ Screen { background: #080b0e; color: #d6d9dc; }
 #code-reload { width: auto; }
 #code-actions { height: 1; }
 #code-actions Button { width: auto; }
-#code-projects { height: 1fr; min-height: 3; }
+#code-projects { height: 3; min-height: 3; }
+#source-browser { height: 3fr; min-height: 7; }
+#source-status { height: 1; color: #9db5bf; padding: 0 1; }
+#source-content { height: 1fr; }
+#source-tree { width: 22%; background: #101518; color: #c8cdd1; }
+#source-text { width: 1fr; border: none; background: #080b0e; color: #d6d9dc; }
+#source-breakpoint { width: auto; }
 #code-run-state { height: 1; padding: 0 1; color: #a9c2cc; }
 #code-terminal { height: 2fr; min-height: 4; border-top: solid #2b3439; }
 Button { height: 1; min-height: 1; border: none; padding: 0 1; background: #171c20; color: #c8cdd1; }
