@@ -11,7 +11,8 @@ and controlled reconnect/cancellation. The terminal dashboard adds keyboard sele
 live logs, bounded search/filter/pause controls and explicit connection errors.
 The **Code** area registers project folders using a separate central `projects/launch.json`
 and runs the selected profile without debug using **F5**, with an interactive console and
-**Stop** control; see [code project execution](docs/code-projects.md).
+**Stop** control. It also browses read-only source and marks session-local pending
+line breakpoints; see [code projects](docs/code-projects.md).
 DAP debugging and the FastAPI example remain pending.
 No connection is simulated in the application.
 

@@ -162,5 +162,7 @@ entries when those limits are reached. Copy depends on terminal clipboard suppor
 
 ## Not implemented yet
 
-DAP, breakpoints, source navigation, variables and stepping are not implemented. This
-dashboard does not pretend to debug source code or provide a desktop editor.
+Code supports read-only source navigation and session-local **pending** line
+breakpoints nested beneath files. See [source browsing](code-projects.md#browse-source-and-mark-pending-breakpoints).
+DAP, verified breakpoints, variables and stepping are not implemented. This dashboard
+does not pretend to debug source code or provide a desktop editor.
