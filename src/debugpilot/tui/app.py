@@ -51,9 +51,10 @@ class DebugPilotApp(App):
         Binding("s", "stop_selected", "Stop"),
         Binding("ctrl+o,ctrl+n", "open_launch_file", "Open launch.json"),
         Binding("escape", "cancel_compose", show=False),
+        Binding("f5", "run_code", "Run code"),
         *[
             Binding(key, "debugger_unavailable", show=False)
-            for key in ("f5", "f9", "f10", "f11", "shift+f11")
+            for key in ("shift+f5", "f9", "f10", "f11", "shift+f11")
         ],
     ]
 
@@ -1189,6 +1190,13 @@ class DebugPilotApp(App):
                 force=True,
             )
 
+    def action_run_code(self) -> None:
+        workspace = self.query_one(CodeWorkspace)
+        if workspace.display:
+            workspace.run_selected()
+        else:
+            self.action_debugger_unavailable()
+
     def action_debugger_unavailable(self) -> None:
         self.notify("Debugger controls arrive with DAP integration (T4–T5).")
 
@@ -1875,6 +1883,8 @@ class DebugPilotApp(App):
             "recreate_selected", "build_selected", "stop_selected", "cancel_compose",
             "compose", "start_project", "restart_selected", "rebuild_selected",
         }:
+            return False
+        if action == "run_code" and isinstance(self.screen, ModalScreen):
             return False
         if isinstance(self.focused, TerminalPane):
             return False

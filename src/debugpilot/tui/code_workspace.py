@@ -1,27 +1,49 @@
-"""Registration-only Code area; execution and debugger controls are not wired yet."""
+"""Central code profiles and one independently owned local execution."""
+
+import asyncio
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Static
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.code_projects import CodeProjectStore
+from debugpilot.terminal.session import TerminalUnavailable
+from debugpilot.tui.code_terminal import CodeTerminal
 
 
 class CodeWorkspace(Vertical):
     def __init__(self):
         super().__init__(id="code-workspace")
         self.store = CodeProjectStore()
+        self._profiles = {}
+        self._run_task = None
+        self._stopping = False
+        self._shutting_down = False
+        self._run_button = Button("Run (F5)", id="code-run")
+        self._stop_button = Button("Stop", id="code-stop", disabled=True)
+        self._run_state = Static(
+            "Ready. Select a profile and press F5.", id="code-run-state", markup=False
+        )
+        self._pane = CodeTerminal(
+            self._finished, id="code-terminal",
+            escape_hook=lambda: self.query_one(DataTable).focus(),
+        )
 
     def compose(self) -> ComposeResult:
         yield Static("PROJECTS", id="code-title")
         yield Static("", id="code-status", markup=False)
-        yield Button("Reload code profiles", id="code-reload")
+        with Horizontal(id="code-actions"):
+            yield Button("Reload code profiles", id="code-reload")
+            yield self._run_button
+            yield self._stop_button
         yield DataTable(id="code-projects", cursor_type="row", zebra_stripes=True)
+        yield self._run_state
+        yield self._pane
         yield Static(
-            "Registration only. Run (F5), debug (Shift+F5) and source browsing arrive later.",
-            id="code-capabilities",
+            "F5: run without debug · Escape: return to profiles · Stop: end Code process tree. "
+            "Debug and source browsing arrive later.", id="code-capabilities",
         )
 
     def on_mount(self) -> None:
@@ -35,8 +57,10 @@ class CodeWorkspace(Vertical):
         if table.row_count:
             selected = table.ordered_rows[table.cursor_row].key.value
         table.clear()
+        self._profiles = {}
         try:
             profiles = self.store.profiles()
+            self._profiles = {profile.name: profile for profile in profiles}
             for profile in profiles:
                 table.add_row(
                     profile.name, str(profile.root), repr(list(profile.command)), key=profile.name
@@ -52,3 +76,61 @@ class CodeWorkspace(Vertical):
         except ConfigurationError as error:
             message = str(error)
         self.query_one("#code-status", Static).update(message)
+
+    def _state(self, message):
+        self._run_state.update(message)
+
+    def _controls(self, running):
+        self._run_button.disabled = running
+        self._stop_button.disabled = not running
+
+    @on(Button.Pressed, "#code-run")
+    def run_selected(self):
+        pane = self.query_one(CodeTerminal)
+        if self._shutting_down or self._stopping or pane.active or (
+            self._run_task is not None and not self._run_task.done()
+        ):
+            return
+        table = self.query_one(DataTable)
+        if not table.row_count:
+            self._state("No Code profile selected. Open code launch.json to add one.")
+            return
+        profile = self._profiles[table.ordered_rows[table.cursor_row].key.value]
+        self._state(f"Starting: {profile.name}")
+        self._controls(True)
+        self._run_task = asyncio.create_task(self._start(profile))
+
+    async def _start(self, profile):
+        try:
+            await self.query_one(CodeTerminal).open_profile(profile)
+            self._state(f"Running: {profile.name} · {profile.root}")
+        except (TerminalUnavailable, OSError) as error:
+            self._state(f"Unable to run {profile.name}: {error}")
+            self._controls(False)
+
+    def _finished(self, code, error):
+        if not self._stopping and not self._shutting_down:
+            self._state(error or f"Exited: {code}")
+            self._controls(False)
+
+    @on(Button.Pressed, "#code-stop")
+    async def stop(self):
+        self._stopping = True
+        self._controls(True)
+        try:
+            task, self._run_task = self._run_task, None
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            await self._pane.close_session()
+            self._state("Stopped")
+        finally:
+            self._controls(False)
+            self._stopping = False
+
+    async def shutdown(self):
+        self._shutting_down = True
+        await self.stop()
+
+    async def on_unmount(self):
+        await self.shutdown()
