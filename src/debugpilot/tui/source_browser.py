@@ -1,4 +1,4 @@
-"""Read-only project source and session-local, unverified breakpoint intent."""
+"""Read-only project source, requested breakpoints and separate adapter feedback."""
 
 from itertools import islice
 from pathlib import Path
@@ -27,10 +27,16 @@ class SourceText(TextArea):
     def __init__(self, **kwargs):
         super().__init__(read_only=True, show_line_numbers=True, soft_wrap=False, **kwargs)
         self.breakpoint_lines: tuple[int, ...] = ()
+        self.execution_line: int | None = None
 
     def render_line(self, y: int) -> Strip:
         strip = super().render_line(y)
-        if y + self.scroll_offset.y + 1 not in self.breakpoint_lines:
+        line = y + self.scroll_offset.y + 1
+        if line == self.execution_line:
+            strip = Strip.join([
+                Strip([Segment("▶", Style(color="#facc15", bold=True))], 1), strip.crop(1),
+            ])
+        if line not in self.breakpoint_lines:
             return strip
         # Use the gutter's existing margin, preserving line numbers and source geometry.
         column = self.gutter_width - 2
@@ -51,7 +57,12 @@ class SourceText(TextArea):
 
 
 class SourceBrowser(Vertical):
-    """Expand directories lazily; never write source or claim adapter verification."""
+    """Expand files lazily; keep source intent independent of adapter verification."""
+
+    class BreakpointsChanged(Message):
+        def __init__(self, root, path, lines):
+            super().__init__()
+            self.root, self.path, self.lines = root, path, lines
 
     def __init__(self):
         super().__init__(id="source-browser")
@@ -60,6 +71,7 @@ class SourceBrowser(Vertical):
         self._marks: dict[tuple[Path, Path], set[int]] = {}
         self._loaded = set()
         self._file_node = None
+        self._verification = {}
 
     def compose(self) -> ComposeResult:
         yield Static("Select a source file. Breakpoints are pending (no debugger).",
@@ -71,7 +83,7 @@ class SourceBrowser(Vertical):
                      id="source-breakpoint", disabled=True)
 
     def set_project(self, root: Path | None):
-        root = root.resolve() if root is not None else None
+        root = Path(root).absolute() if root is not None else None
         if root == self.root_path:
             return
         self.root_path = root
@@ -90,6 +102,7 @@ class SourceBrowser(Vertical):
         self._file_node = None
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = ()
+        editor.execution_line = None
         editor.load_text("")
         self.query_one(Button).disabled = True
         self.query_one(Static).update(
@@ -103,8 +116,7 @@ class SourceBrowser(Vertical):
         self._loaded.add(path)
         try:
             # Do not follow symbolic links outside the selected project (or into loops).
-            if not path.resolve().is_relative_to(self.root_path):
-                raise OSError("Directory is outside the selected project")
+            self._safe_path(path)
             entries = list(islice(path.iterdir(), 2001))
             if len(entries) > 2000:
                 self.query_one(Static).update("Directory preview limited to 2000 entries.")
@@ -115,7 +127,7 @@ class SourceBrowser(Vertical):
                 child = node.add(Text(entry.name), (entry, None), allow_expand=entry.is_dir())
                 if entry.is_file():
                     self._show_marks(child)
-        except OSError as error:
+        except (OSError, ValueError, RuntimeError) as error:
             self.query_one(Static).update(f"Unable to list {path}: {error}")
 
     @on(Tree.NodeExpanded, "#source-tree")
@@ -132,10 +144,28 @@ class SourceBrowser(Vertical):
         path, line = event.node.data
         if path is None or path.is_dir():
             return
+        self.open_source(self.root_path, path, line, node=event.node)
+
+    def _safe_path(self, path):
+        path = Path(path).absolute()
+        root = self.root_path
+        if root is None or not path.resolve().is_relative_to(root):
+            raise ValueError("File is outside the selected project")
+        # Check every component, including replaced parent directories and the root.
+        for component in (path, *path.parents, root, *root.parents):
+            if component.is_symlink() or component.is_junction():
+                raise ValueError("Source paths cannot contain links or junctions")
+        return path
+
+    def open_source(self, root, path, line=None, *, node=None):
+        """Preview a debugger or tree path through the same bounded read-only checks."""
+        self.set_project(root)
         self._clear_source()
+        path = Path(path)
+        if not path.is_absolute():
+            path = self.root_path / path
         try:
-            if not path.resolve().is_relative_to(self.root_path):
-                raise ValueError("File is outside the selected project")
+            path = self._safe_path(path)
             info = path.stat()
             if not S_ISREG(info.st_mode):
                 raise ValueError("Only regular source files can be previewed")
@@ -148,11 +178,19 @@ class SourceBrowser(Vertical):
             if b"\x00" in data:
                 raise ValueError("Binary files cannot be previewed")
             source = data.decode("utf-8-sig")
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, RuntimeError) as error:
             self.query_one(Static).update(f"Unable to open {path}: {error}")
-            return
-        self.file_path = path
-        self._file_node = event.node.parent if line is not None else event.node
+            return False
+        self.file_path = path.resolve()
+        self._file_node = node.parent if node is not None and line is not None else node
+        if self._file_node is None:
+            current = self.query_one(Tree).root
+            for part in self.file_path.relative_to(self.root_path).parts:
+                self._populate(current)
+                current = next((n for n in current.children if n.data[0].name == part), None)
+                if current is None:
+                    break
+            self._file_node = current
         editor = self.query_one(TextArea)
         editor.load_text(source)
         editor.breakpoint_lines = self.breakpoints(self.root_path, path)
@@ -160,18 +198,64 @@ class SourceBrowser(Vertical):
         if line is not None:
             editor.move_cursor((min(line - 1, editor.document.line_count - 1), 0))
         self.query_one(Button).disabled = False
-        self.query_one(Static).update(f"{path} · Read-only · Breakpoints: pending (no debugger)")
+        self.query_one(Static).update(f"{path} · Read-only · Breakpoints: requested intent")
+        return True
+
+    def show_execution(self, root, path, line):
+        if self.open_source(root, path, line):
+            editor = self.query_one(SourceText)
+            editor.execution_line = line
+            editor.refresh()
+
+    def clear_execution(self):
+        if not self.query(SourceText):
+            return
+        editor = self.query_one(SourceText)
+        editor.execution_line = None
+        editor.refresh()
+
+    def breakpoint_snapshot(self, root):
+        """Detached root-scoped requested intent; adapter responses never modify it."""
+        root = Path(root).resolve()
+        return {str(path): tuple(sorted(lines)) for (owner, path), lines in self._marks.items()
+                if owner == root and lines}
+
+    def set_verification(self, root, responses, requested=None):
+        root = Path(root).resolve()
+        self._verification = {key: value for key, value in self._verification.items()
+                              if key[0] != root}
+        for path, entries in responses.items():
+            lines = (requested.get(str(path), ()) if requested is not None
+                     else self.breakpoints(root, Path(path)))
+            for line, response in zip(lines, entries, strict=False):
+                state = "verified" if response.get("verified") else "unverified"
+                actual = response.get("line", line)
+                if actual != line:
+                    state += f" → Line {actual}"
+                self._verification[(root, Path(path).resolve(), line)] = state
+        if self.root_path == root and self.query(Tree):
+            def refresh_node(node):
+                path, line = node.data
+                if line is None and path is not None and not path.is_dir():
+                    self._show_marks(node)
+                else:
+                    for child in list(node.children):
+                        refresh_node(child)
+            refresh_node(self.query_one(Tree).root)
 
     def breakpoints(self, root: Path, path: Path) -> tuple[int, ...]:
         return tuple(sorted(self._marks.get((root.resolve(), path.resolve()), set())))
 
     def _show_marks(self, node):
+        if node is None:
+            return
         path, _ = node.data
         node.remove_children()
         marks = self.breakpoints(self.root_path, path)
         node.allow_expand = bool(marks)
         for line in marks:
-            node.add_leaf(Text(f"Line {line} · pending"), (path, line))
+            state = self._verification.get((self.root_path, path.resolve(), line), "pending")
+            node.add_leaf(Text(f"Line {line} · {state}"), (path, line))
         if marks:
             node.expand()
 
@@ -191,7 +275,11 @@ class SourceBrowser(Vertical):
             marks.remove(line)
         else:
             marks.add(line)
+        self._verification.pop((self.root_path, self.file_path.resolve(), line), None)
         self._show_marks(self._file_node)
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = tuple(sorted(marks))
         editor.refresh()
+        self.post_message(self.BreakpointsChanged(
+            self.root_path, self.file_path.resolve(), tuple(sorted(marks))
+        ))

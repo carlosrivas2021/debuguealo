@@ -41,7 +41,13 @@ shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch fil
 In Code, **F5** or **Run (F5)** runs the selected profile without debug. Type in its
 terminal; **Escape** returns focus to profiles. **Stop** ends only the Code process
 tree. A running profile survives area changes; repeated F5 does not restart it.
-See [code project execution](code-projects.md) for the schema and current limits.
+**Shift+F5** or **Debug (Shift+F5)** starts Python debugging from that same profile
+and its requested source breakpoints. At a pause, inspect the stack/variables and the
+yellow execution arrow, then use **Continue**, **F10** (over), **F11** (in), or
+**Shift+F11** (out). Continue never repurposes F5. Stop cancels startup or ends the
+active Code run/debug tree. Debug output is internal-console only (no interactive stdin).
+Missing debugpy or unsupported commands report an error without falling back to run.
+See [code project execution and debugging](code-projects.md) for setup and limits.
 
 ## Launch profiles
 
@@ -162,7 +168,7 @@ entries when those limits are reached. Copy depends on terminal clipboard suppor
 
 ## Not implemented yet
 
-Code supports read-only source navigation and session-local **pending** line
-breakpoints nested beneath files. See [source browsing](code-projects.md#browse-source-and-mark-pending-breakpoints).
-DAP, verified breakpoints, variables and stepping are not implemented. This dashboard
-does not pretend to debug source code or provide a desktop editor.
+Code supports read-only source navigation, session-local requested line breakpoints
+nested beneath files, and real Python DAP debugging with separate adapter verification.
+Node/Go debugging, persistent breakpoints, attach, expression evaluation and a desktop
+editor are not implemented. See [Code setup and limits](code-projects.md).

@@ -52,10 +52,11 @@ class DebugPilotApp(App):
         Binding("ctrl+o,ctrl+n", "open_launch_file", "Open launch.json"),
         Binding("escape", "cancel_compose", show=False),
         Binding("f5", "run_code", "Run code"),
-        *[
-            Binding(key, "debugger_unavailable", show=False)
-            for key in ("shift+f5", "f9", "f10", "f11", "shift+f11")
-        ],
+        Binding("shift+f5", "debug_code", "Debug Python"),
+        Binding("f10", "code_step_over", show=False),
+        Binding("f11", "code_step_in", show=False),
+        Binding("shift+f11", "code_step_out", show=False),
+        Binding("f9", "debugger_unavailable", show=False),
     ]
 
     def __init__(
@@ -1197,6 +1198,18 @@ class DebugPilotApp(App):
         else:
             self.action_debugger_unavailable()
 
+    def action_debug_code(self) -> None:
+        self.query_one(CodeWorkspace).debug_selected()
+
+    def action_code_step_over(self) -> None:
+        self.query_one(CodeWorkspace).debug_control("step_over")
+
+    def action_code_step_in(self) -> None:
+        self.query_one(CodeWorkspace).debug_control("step_in")
+
+    def action_code_step_out(self) -> None:
+        self.query_one(CodeWorkspace).debug_control("step_out")
+
     def action_debugger_unavailable(self) -> None:
         self.notify("Debugger controls arrive with DAP integration (T4–T5).")
 
@@ -1883,6 +1896,11 @@ class DebugPilotApp(App):
             "recreate_selected", "build_selected", "stop_selected", "cancel_compose",
             "compose", "start_project", "restart_selected", "rebuild_selected",
         }:
+            return False
+        if action in {"debug_code", "code_step_over", "code_step_in", "code_step_out"} and (
+            not self.is_mounted or not self.query_one(CodeWorkspace).display
+            or isinstance(self.screen, ModalScreen)
+        ):
             return False
         if action == "run_code" and isinstance(self.screen, ModalScreen):
             return False

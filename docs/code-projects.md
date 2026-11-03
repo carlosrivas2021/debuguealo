@@ -1,4 +1,4 @@
-# Register and run code projects centrally
+# Register, run and debug code projects centrally
 
 Choose **Code**, then **Open code launch.json** (or Ctrl+O / Ctrl+N while in Code).
 The terminal editor creates the file only when explicitly requested. Add your profiles,
@@ -68,18 +68,55 @@ Do not use this runner for detached background services intended to survive the 
    unmarked line to add one. The original toggle button still works.
 
 The red dot stays aligned while scrolling and reappears when you reopen the marked
-file during the same session. Red indicates a pending mark, **not debugger verification**.
+file during the same session. Red indicates requested intent, **not debugger verification**.
 
 Source files are never edited by this pane. Breakpoints use 1-based line numbers,
 are isolated by project root and file, and survive switching profiles/areas in the
 current app session. They are not saved across restarts or relocated when external
 edits change line numbers. Two profiles sharing a root share its breakpoint marks.
-**Pending means intent only**: there is no adapter verification or execution pause yet.
+**Pending means intent only** until an active Python debugger responds. The file tree
+labels adapter feedback separately as **verified**, **unverified**, or a relocated line.
+The original requested line and red gutter dot never move to the adapter's returned line.
 
 Directories load on expansion, with a preview limit of 2,000 entries per directory.
 Symbolic links and junctions are omitted. Source preview supports regular UTF-8 files
 (up to 1 MiB); binary, unreadable, oversized and missing files show an error instead.
 The preview is not an operating-system sandbox; browse trusted local projects.
 
-F5 and the Code console keep their existing run-without-debug behavior. Shift+F5,
-verified breakpoints, variables and stepping remain **not implemented**.
+## Debug Python with the same profile
+
+1. Use a Python script or module command, for example `["python", "main.py"]` or
+   `["python", "-u", "-m", "package.module"]`. Install `debugpy` yourself in that
+   profile's interpreter before launching; DebugPilot never installs it at runtime.
+2. Mark an executable source line, then press **Shift+F5** or **Debug (Shift+F5)**.
+   The initial requested breakpoints are sent before the program runs.
+3. At a pause, inspect the **Frame / Source / Line** stack and the variables pane.
+   Select a stack row (Enter or click) to preview its source and non-expensive scopes.
+   A yellow **▶** identifies the execution line independently of red breakpoint dots.
+4. Use **Over F10**, **In F11**, **Out Shift+F11**, or **Continue**. Continue is a
+   button, not F5. **F5 always runs without debug**; it never resumes a debugger.
+5. **Stop** ends the owned adapter and target tree, including pending startup.
+   Quitting also cancels startup and closes the owned session.
+
+Only one Code run **or** debug session is active. Stop before changing modes or
+starting another profile. Selecting another profile, reloading configuration, or
+switching areas never retargets the running session, its output, or Stop. Stack
+navigation returns to the started profile's root, even if another row is selected.
+Breakpoint edits synchronize only when they belong to that started root; marks in
+other roots remain local pending intent for the next launch. Switching to Containers
+preserves Code work but disables Code launch/step shortcuts there. Focused interactive
+terminals and modal dialogs retain their existing shortcut guards.
+
+Debug output is Code-only, attributed to the started profile, and bounded to 2,000
+rendered lines. Debug mode uses `internalConsole`: **interactive stdin is not supported**;
+use F5 for interactive run-without-debug. Frames, variables and the execution arrow
+are invalidated on resume/Stop/exit. Requested breakpoint marks survive.
+Stack source paths use the same containment, no-links/junctions, regular UTF-8 and
+1 MiB preview checks as file-tree navigation; unsafe or unavailable paths show an error.
+This is a preview safeguard, not a sandbox or protection against concurrent filesystem changes.
+
+Unsupported commands (including npm, Go and Python `-c`) and missing adapters show
+an actionable warning with **no run-mode fallback**, no profile rewrites and no
+source edits. Python script/module grammar and installation guidance are in the
+[backend API and limits](python-debugging.md). Node/Go debugging, persistent
+breakpoints, attach, expression evaluation and interactive debug stdin remain deferred.

@@ -54,6 +54,26 @@ async def test_f5_runs_only_code_and_preserves_session_across_areas(monkeypatch,
         assert 'Stopped' in str(app.query_one('#code-run-state').render())
 
 
+async def test_f5_from_source_keeps_run_mode_and_pending_marks(monkeypatch, tmp_path):
+    from debugpilot.tui.source_browser import SourceBrowser
+
+    app = setup_app(monkeypatch, tmp_path, "print('RUN_ONLY', flush=True)")
+    source = tmp_path / 'main.py'
+    source.write_text('answer = 41\n', encoding='utf-8')
+    async with app.run_test(size=(120, 45)) as pilot:
+        await pilot.click('#area-code')
+        browser = app.query_one(SourceBrowser)
+        assert browser.open_source(tmp_path, source, 1)
+        await pilot.click('#source-breakpoint')
+        browser.query_one('#source-text').focus()
+        await pilot.press('f5')
+        await until(pilot, lambda: 'Exited: 0' in str(app.query_one('#code-run-state').render()))
+        assert 'RUN_ONLY' in app.query_one('#code-terminal').render().plain
+        assert browser.breakpoints(tmp_path, source) == (1,)
+        assert '●' in browser.query_one('#source-text').render_line(0).text
+        assert not app.query_one('#code-debug').display
+
+
 async def test_stop_during_startup_and_shutdown(monkeypatch, tmp_path):
     from debugpilot.terminal.code_session import CodeSession
 
