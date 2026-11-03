@@ -61,9 +61,14 @@ Do not use this runner for detached background services intended to survive the 
 
 1. Select a Code profile. Expand directories in the file tree, then select a file.
 2. Move the cursor to a line in the read-only source pane (mouse or arrow keys).
-3. Click **Toggle breakpoint at cursor (pending)**. Expand the file to see its
+3. Click **Toggle breakpoint at cursor (pending)**. A red **●** appears in the
+   gutter beside that line number, before the code. Expand the file to see its
    **Line N · pending** children; selecting one navigates to that line.
-4. Click the same button on that line again to remove the mark.
+4. Click the red **●** to remove the mark, or click that gutter position on an
+   unmarked line to add one. The original toggle button still works.
+
+The red dot stays aligned while scrolling and reappears when you reopen the marked
+file during the same session. Red indicates a pending mark, **not debugger verification**.
 
 Source files are never edited by this pane. Breakpoints use 1-based line numbers,
 are isolated by project root and file, and survive switching profiles/areas in the
