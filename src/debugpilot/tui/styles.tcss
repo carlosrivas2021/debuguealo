@@ -1,6 +1,7 @@
 Screen { background: #080b0e; color: #d6d9dc; }
 #area-navigation { height: 1; background: #101518; }
 #area-navigation Button { width: auto; min-width: 12; }
+#area-navigation Button.-primary { background: #30414c; color: #ffffff; text-style: bold; }
 #container-area, #code-workspace { height: 1fr; }
 #code-title, #code-status, #code-capabilities { height: auto; padding: 0 1; }
 #code-title { color: #a9c2cc; }
