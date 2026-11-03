@@ -6,7 +6,11 @@ Screen { background: #080b0e; color: #d6d9dc; }
 #code-title, #code-status, #code-capabilities { height: auto; padding: 0 1; }
 #code-title { color: #a9c2cc; }
 #code-reload { width: auto; }
-#code-projects { height: 1fr; }
+#code-actions { height: 1; }
+#code-actions Button { width: auto; }
+#code-projects { height: 1fr; min-height: 3; }
+#code-run-state { height: 1; padding: 0 1; color: #a9c2cc; }
+#code-terminal { height: 2fr; min-height: 4; border-top: solid #2b3439; }
 Button { height: 1; min-height: 1; border: none; padding: 0 1; background: #171c20; color: #c8cdd1; }
 Button:hover { background: #242c32; }
 Button:focus { background: #30414c; color: #ffffff; text-style: bold; }

@@ -38,7 +38,10 @@ Use the top **Containers** and **Code** buttons to switch without starting or st
 processes. Code lists registered project folders and command arguments; container
 shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
-See [code project registration](code-projects.md) for the schema and current limits.
+In Code, **F5** or **Run (F5)** runs the selected profile without debug. Type in its
+terminal; **Escape** returns focus to profiles. **Stop** ends only the Code process
+tree. A running profile survives area changes; repeated F5 does not restart it.
+See [code project execution](code-projects.md) for the schema and current limits.
 
 ## Launch profiles
 

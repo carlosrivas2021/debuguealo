@@ -69,21 +69,27 @@ class TerminalPane(Widget):
         self._stream = pyte.Stream(self._screen)
         loop = asyncio.get_running_loop()
         generation = self._generation
-        self._session = TerminalSession(
+        self._session = self._make_session(
             on_output=lambda text: loop.call_soon_threadsafe(self._accept_output, generation, text),
             on_exit=lambda: loop.call_soon_threadsafe(self._accept_exit, generation),
         )
         try:
-            if context.kind == "host":
-                await self._session.open_host(context.cwd, *self._screen_size())
-            else:
-                await self._session.open_container(
-                    context.container, context.endpoint, context.cwd, *self._screen_size()
-                )
+            await self._start_session(context)
         except BaseException:
             await self.close_session()
             raise
         self.focus()
+
+    def _make_session(self, **callbacks):
+        return TerminalSession(**callbacks)
+
+    async def _start_session(self, context: TerminalContext) -> None:
+        if context.kind == "host":
+            await self._session.open_host(context.cwd, *self._screen_size())
+        else:
+            await self._session.open_container(
+                context.container, context.endpoint, context.cwd, *self._screen_size()
+            )
 
     async def on_unmount(self) -> None:
         await self.close_session()
