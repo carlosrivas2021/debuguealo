@@ -42,6 +42,38 @@ Opening or creating the file never runs Compose.
 
 `workspaceFolder` is required in central mode and must name an existing, non-symlink absolute directory; it is the project root, never inferred from cwd or Docker metadata. `cwd` is where relative file paths are resolved, while `${workspaceFolder}` expands to that profile's root. `projectDirectory` is optional; without it, Compose uses the first file's parent. No shell command, inherited environment, or other variable expansion is performed. `up` flags are optional strict booleans; omitted values remain unspecified.
 
+## Limiting a profile to some services
+
+Add the optional `services` array to run a profile against only part of its Compose
+project, for example a shared database defined beside application services:
+
+```json
+{
+  "name": "Shared database",
+  "type": "docker-compose",
+  "projectName": "platform",
+  "workspaceFolder": "/path/to/project",
+  "cwd": "${workspaceFolder}",
+  "files": ["local/platform/docker-compose.yaml"],
+  "services": ["database"],
+  "up": {"build": true, "detach": true, "forceRecreate": true}
+}
+```
+
+**Play / Recreate** and **Build + Recreate** append the names to `docker compose up`
+(and to `restart`), so only those services are created or recreated. Compose still starts
+their declared `depends_on` dependencies; `--no-deps` is not added. The confirmation
+shows the service names instead of "all services". **Stop** on the profile row pins only
+active containers whose Compose service is listed; selecting an individual child
+container still stops just that container.
+
+`services` must be an array of unique Compose service names (letters, digits, `.`,
+`_`, `-`, starting with a letter or digit); anything else leaves the profile pending.
+Names are checked against `docker compose config --services` before any mutating
+operation, and an unknown name fails without running `up`. Omitting the field or
+setting `"services": []` keeps acting on every service in the project. Containers of unlisted services still
+appear under the profile because grouping uses the Compose project label.
+
 ## Discovery and safety
 
 Discovery groups containers by Compose project label, not container ID. Saved profiles
