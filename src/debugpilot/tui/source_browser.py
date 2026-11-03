@@ -4,11 +4,50 @@ from itertools import islice
 from pathlib import Path
 from stat import S_ISREG
 
+from rich.segment import Segment
+from rich.style import Style
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.events import Click
+from textual.message import Message
+from textual.strip import Strip
 from textual.widgets import Button, Static, TextArea, Tree
+
+
+class SourceText(TextArea):
+    """Read-only source with clickable pending breakpoint dots in the line gutter."""
+
+    class BreakpointClicked(Message):
+        def __init__(self, line: int):
+            super().__init__()
+            self.line = line
+
+    def __init__(self, **kwargs):
+        super().__init__(read_only=True, show_line_numbers=True, soft_wrap=False, **kwargs)
+        self.breakpoint_lines: tuple[int, ...] = ()
+
+    def render_line(self, y: int) -> Strip:
+        strip = super().render_line(y)
+        if y + self.scroll_offset.y + 1 not in self.breakpoint_lines:
+            return strip
+        # Use the gutter's existing margin, preserving line numbers and source geometry.
+        column = self.gutter_width - 2
+        return Strip.join([
+            strip.crop(0, column),
+            Strip([Segment("●", Style(color="#ef4444", bold=True))], 1),
+            strip.crop(column + 1),
+        ])
+
+    def on_click(self, event: Click):
+        offset = event.get_content_offset(self)
+        if event.button != 1 or offset is None or offset.x != self.gutter_width - 2:
+            return
+        line = offset.y + self.scroll_offset.y + 1
+        if 1 <= line <= self.document.line_count:
+            self.post_message(self.BreakpointClicked(line))
+            event.stop()
 
 
 class SourceBrowser(Vertical):
@@ -27,8 +66,7 @@ class SourceBrowser(Vertical):
                      id="source-status", markup=False)
         with Horizontal(id="source-content"):
             yield Tree("Files", id="source-tree")
-            yield TextArea(read_only=True, show_line_numbers=True, soft_wrap=False,
-                           id="source-text")
+            yield SourceText(id="source-text")
         yield Button("Toggle breakpoint at cursor (pending)",
                      id="source-breakpoint", disabled=True)
 
@@ -50,7 +88,9 @@ class SourceBrowser(Vertical):
     def _clear_source(self):
         self.file_path = None
         self._file_node = None
-        self.query_one(TextArea).load_text("")
+        editor = self.query_one(SourceText)
+        editor.breakpoint_lines = ()
+        editor.load_text("")
         self.query_one(Button).disabled = True
         self.query_one(Static).update(
             "Select a source file. Breakpoints are pending (no debugger)."
@@ -115,6 +155,8 @@ class SourceBrowser(Vertical):
         self._file_node = event.node.parent if line is not None else event.node
         editor = self.query_one(TextArea)
         editor.load_text(source)
+        editor.breakpoint_lines = self.breakpoints(self.root_path, path)
+        editor.refresh()
         if line is not None:
             editor.move_cursor((min(line - 1, editor.document.line_count - 1), 0))
         self.query_one(Button).disabled = False
@@ -133,6 +175,12 @@ class SourceBrowser(Vertical):
         if marks:
             node.expand()
 
+    @on(SourceText.BreakpointClicked)
+    def gutter_breakpoint(self, event):
+        if self.file_path is not None:
+            self.query_one(TextArea).move_cursor((event.line - 1, 0))
+            self.toggle_breakpoint()
+
     @on(Button.Pressed, "#source-breakpoint")
     def toggle_breakpoint(self):
         if self.file_path is None:
@@ -144,3 +192,6 @@ class SourceBrowser(Vertical):
         else:
             marks.add(line)
         self._show_marks(self._file_node)
+        editor = self.query_one(SourceText)
+        editor.breakpoint_lines = tuple(sorted(marks))
+        editor.refresh()
