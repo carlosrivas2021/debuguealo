@@ -174,6 +174,9 @@ class TerminalSession:
                         text = chunk
                     else:
                         await asyncio.sleep(0.015)
+                        # Closing may release the PTY while this reader is asleep.
+                        if self._closed or self._fd is None:
+                            break
                         try:
                             data = os.read(self._fd, MAX_READ)
                         except BlockingIOError:
