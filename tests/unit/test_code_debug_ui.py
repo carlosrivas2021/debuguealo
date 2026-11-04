@@ -384,6 +384,40 @@ async def test_unsupported_debug_command_never_falls_back(monkeypatch, tmp_path,
         assert not app.query_one('#code-run').disabled
 
 
+async def test_npm_f5_original_argv_shift_f5_explicit_node_target(monkeypatch, tmp_path):
+    from debugpilot.tui import code_debug
+
+    app, roots, store = debug_app(monkeypatch, tmp_path)
+    config = json.loads(store.path.read_text())
+    config['configurations'][0].update(command=['npm', 'run', 'dev'],
+                                      nodeDebug=['node', 'server.js', 'literal'])
+    store.path.write_text(json.dumps(config))
+    original = store.path.read_bytes()
+    launched = []
+
+    async def run(profile):
+        launched.append(profile.command)
+
+    FakeDebug.instances = []
+    FakeDebug.gate = None
+    FakeDebug.failure = None
+    monkeypatch.setattr(code_debug, 'NodeDebugSession', FakeDebug)
+    async with app.run_test(size=(120, 45)) as pilot:
+        workspace = app.query_one('#code-workspace')
+        monkeypatch.setattr(workspace, '_start', run)
+        await pilot.click('#area-code')
+        await pilot.press('f5')
+        await until(pilot, lambda: bool(launched))
+        assert launched == [('npm', 'run', 'dev')]
+        await pilot.press('shift+f5')
+        await until(pilot, lambda: bool(FakeDebug.instances))
+        assert FakeDebug.instances[0].profile.node_debug == ('node', 'server.js', 'literal')
+        assert FakeDebug.instances[0].profile.command == ('npm', 'run', 'dev')
+        await pilot.click('#code-stop')
+        assert FakeDebug.instances[0].closed
+        assert store.path.read_bytes() == original
+
+
 async def test_adapter_stack_path_is_rejected_by_public_preview(monkeypatch, tmp_path, fake):
     outside = tmp_path / 'outside.py'
     outside.write_text('NOT_TRUSTED', encoding='utf-8')

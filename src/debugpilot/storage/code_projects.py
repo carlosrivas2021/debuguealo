@@ -15,6 +15,22 @@ class CodeProject:
     name: str
     root: Path
     command: tuple[str, ...]
+    node_debug: tuple[str, ...] | None = None
+
+
+def is_node_command(command):
+    return bool(command) and Path(command[0]).name.lower() in {'node', 'node.exe'}
+
+
+def is_npm_command(command):
+    return bool(command) and Path(command[0]).name.lower() in {'npm', 'npm.cmd', 'npm.exe'}
+
+
+def valid_node_target(command):
+    return (isinstance(command, (list, tuple)) and 2 <= len(command) <= 128
+            and all(CodeProjectStore._text(arg) for arg in command)
+            and is_node_command(command) and not command[1].startswith('-')
+            and Path(command[1]).suffix.lower() in {'.js', '.cjs', '.mjs'})
 
 
 class CodeProjectStore:
@@ -78,7 +94,17 @@ class CodeProjectStore:
                     raise ValueError
                 if any(not self._text(arg) for arg in command):
                     raise ValueError
-                profiles.append(CodeProject(name, root.resolve(strict=True), tuple(command)))
+                node_debug = None
+                if 'nodeDebug' in entry:
+                    target = entry['nodeDebug']
+                    if not is_npm_command(command) or not valid_node_target(target):
+                        raise ConfigurationError(
+                            "Invalid nodeDebug: use a Node script argv array only for npm "
+                            "profiles: [node, server.js, args...], without runtime flags."
+                        )
+                    node_debug = tuple(target)
+                profiles.append(CodeProject(name, root.resolve(strict=True), tuple(command),
+                                            node_debug))
                 names.add(name)
             return profiles
         except (ValueError, TypeError, UnicodeError, OSError, RuntimeError, RecursionError):

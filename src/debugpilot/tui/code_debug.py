@@ -8,7 +8,8 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, RichLog, Static
 
-from debugpilot.debugger import DebugError, PythonDebugSession
+from debugpilot.debugger import DebugError, NodeDebugSession, PythonDebugSession
+from debugpilot.storage.code_projects import is_node_command, is_npm_command
 
 
 class CodeDebug(Vertical):
@@ -74,7 +75,10 @@ class CodeDebug(Vertical):
             if self._current(generation):
                 self.query_one(RichLog).write(f'[{profile.name} · {category}] {text.rstrip()}')
 
-        session = self.session = PythonDebugSession(on_event=event, on_output=output)
+        backend = (NodeDebugSession if is_node_command(profile.command)
+                   or (is_npm_command(profile.command) and profile.node_debug is not None)
+                   else PythonDebugSession)
+        session = self.session = backend(on_event=event, on_output=output)
         intent = self.browser.breakpoint_snapshot(profile.root)
         self.state_changed(f'Starting debug: {profile.name} · {profile.root}')
         self._start_task = self._spawn(self._start(session, generation, intent))
