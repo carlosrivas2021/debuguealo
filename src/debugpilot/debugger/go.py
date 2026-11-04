@@ -1,0 +1,130 @@
+"""Owned Delve DAP session for a deliberately bounded Go command grammar."""
+
+import asyncio
+import contextlib
+import shutil
+import socket
+import tempfile
+from pathlib import Path
+
+from debugpilot.debugger.dap import DAPClient, DebugError
+from debugpilot.debugger.python import PythonDebugSession, _breakpoints
+from debugpilot.storage.code_projects import CodeProject
+from debugpilot.terminal.code_session import CodeSession, command_argv
+
+_GRAMMAR = (
+    'Supported Go commands: go run main.go [args...] or go run . [args...]. '
+    'Other Go forms are unsupported; F5 remains unchanged. No run-mode fallback.'
+)
+
+
+def _target(profile):
+    command = profile.command
+    if len(command) < 3 or Path(command[0]).name.lower() != 'go' or command[1] != 'run':
+        raise DebugError(_GRAMMAR)
+    target = command[2]
+    if target not in {'main.go', '.'}:
+        raise DebugError(_GRAMMAR)
+    args = command[3:]
+    if any(arg.endswith('.go') for arg in args):
+        raise DebugError(_GRAMMAR)
+    try:
+        argv = command_argv(command)
+    except RuntimeError as error:
+        message = f'{error}. Select an installed Go runtime. No run-mode fallback.'
+        raise DebugError(message) from error
+    program = str(profile.root / target) if target == 'main.go' else str(profile.root)
+    return argv[0], program, args
+
+
+class GoDebugSession(PythonDebugSession):
+    """One Go/Delve session with the same events and inspection API as Python debug."""
+
+    def __init__(self, on_event=None, on_output=None, *, timeout=15):
+        super().__init__(on_event, on_output, timeout=timeout)
+        self._build_dir = None
+
+    async def start(self, profile, breakpoints):
+        if self.state not in {'idle', 'closed'}:
+            raise DebugError('A debug session is already active; Stop before starting again.')
+        _, program, args = _target(profile)
+        dlv = shutil.which('dlv')
+        if not dlv:
+            message = ('Delve (dlv) is required for Go debugging; install it and add it to PATH. '
+                       'No run-mode fallback.')
+            raise DebugError(message)
+        intent = dict(_breakpoints(profile.root, source, lines)
+                      for source, lines in breakpoints.items())
+        self.profile = CodeProject(profile.name, Path(profile.root), tuple(profile.command))
+        self.requested_breakpoints = intent
+        self.verified_breakpoints = {}
+        self.exit_code = None
+        self.thread_id = None
+        self.events = asyncio.Queue()
+        self._initialized.clear()
+        self._diagnostic = ''
+        self._starting = asyncio.current_task()
+        self._state('starting')
+        launch = None
+        try:
+            async with asyncio.timeout(self.timeout):
+                with socket.socket() as reservation:
+                    reservation.bind(('127.0.0.1', 0))
+                    port = reservation.getsockname()[1]
+                self._build_dir = tempfile.TemporaryDirectory(prefix='debugpilot-go-build-')
+                output = str(Path(self._build_dir.name) / 'debugpilot-target')
+                self._adapter = CodeSession(self._adapter_output, self._adapter_exit)
+                await self._adapter.open_command(
+                    (dlv, 'dap', '--listen', f'127.0.0.1:{port}'), self.profile.root)
+                self._emit({'event': 'adapterStarted', 'body': {}})
+                while True:
+                    if self._adapter.process is None:
+                        raise DebugError(self._startup_error(dlv))
+                    try:
+                        reader, writer = await asyncio.open_connection('127.0.0.1', port)
+                        break
+                    except OSError:
+                        await asyncio.sleep(0.03)
+                self._client = DAPClient(reader, writer, self._event, timeout=self.timeout)
+                await self._client.request('initialize', {
+                    'clientID': 'debugpilot', 'adapterID': 'go', 'pathFormat': 'path',
+                    'linesStartAt1': True, 'columnsStartAt1': True,
+                    'supportsRunInTerminalRequest': False,
+                })
+                launch = asyncio.create_task(self._client.request('launch', {
+                    'name': self.profile.name, 'type': 'go', 'request': 'launch',
+                    'mode': 'debug', 'program': program, 'cwd': str(self.profile.root),
+                    'args': list(args), 'output': output, 'outputMode': 'remote',
+                    'stopOnEntry': False,
+                }))
+                await self._initialized.wait()
+                for source, lines in intent.items():
+                    await self.set_breakpoints(source, lines)
+                await self._client.request('configurationDone')
+                await launch
+                if self.state == 'starting':
+                    self._state('running')
+        except BaseException as error:
+            if launch is not None:
+                launch.cancel()
+                with contextlib.suppress(asyncio.CancelledError, DebugError):
+                    await launch
+            await self._cleanup()
+            if isinstance(error, TimeoutError):
+                raise DebugError(self._startup_error(dlv)) from None
+            if isinstance(error, (OSError, RuntimeError)) and not isinstance(error, DebugError):
+                raise DebugError(f'Unable to debug Go: {error}') from error
+            raise
+        finally:
+            self._starting = None
+
+    def _startup_error(self, dlv):
+        return (f'Unable to start Go debugging with Delve at {dlv}. Check Go/Delve compatibility '
+                f'and local same-user process permissions. No run-mode fallback. Diagnostics: '
+                f'{self._diagnostic.strip() or "startup timed out"}')
+
+    async def _cleanup(self):
+        await super()._cleanup()
+        if self._build_dir is not None:
+            self._build_dir.cleanup()
+            self._build_dir = None
