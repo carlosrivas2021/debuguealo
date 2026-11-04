@@ -74,7 +74,7 @@ Source files are never edited by this pane. Breakpoints use 1-based line numbers
 are isolated by project root and file, and survive switching profiles/areas in the
 current app session. They are not saved across restarts or relocated when external
 edits change line numbers. Two profiles sharing a root share its breakpoint marks.
-**Pending means intent only** until an active Python debugger responds. The file tree
+**Pending means intent only** until an active Python or Node debugger responds. The file tree
 labels adapter feedback separately as **verified**, **unverified**, or a relocated line.
 The original requested line and red gutter dot never move to the adapter's returned line.
 
@@ -115,8 +115,39 @@ Stack source paths use the same containment, no-links/junctions, regular UTF-8 a
 1 MiB preview checks as file-tree navigation; unsafe or unavailable paths show an error.
 This is a preview safeguard, not a sandbox or protection against concurrent filesystem changes.
 
-Unsupported commands (including npm, Go and Python `-c`) and missing adapters show
+Unsupported commands (including Go, Python `-c`, and npm without an explicit debug target)
+and missing adapters show
 an actionable warning with **no run-mode fallback**, no profile rewrites and no
 source edits. Python script/module grammar and installation guidance are in the
-[backend API and limits](python-debugging.md). Node/Go debugging, persistent
-breakpoints, attach, expression evaluation and interactive debug stdin remain deferred.
+[backend API and limits](python-debugging.md). Go debugging, persistent breakpoints,
+attach, expression evaluation and interactive debug stdin remain deferred.
+
+## Debug server-side Node
+
+Use the same breakpoint, stack, variables, step and Continue controls described above.
+Node must already be installed; Inspector is built in, so no adapter installation is needed.
+Direct commands support `["node", "server.js", "arg"]` (also `.cjs` and `.mjs`),
+without Node runtime flags.
+
+For an npm profile, explicitly identify the server script:
+
+```json
+{
+  "name": "Node API",
+  "workspaceFolder": "C:/work/api",
+  "command": ["npm", "run", "dev"],
+  "nodeDebug": ["node", "server.js", "arg"]
+}
+```
+
+**F5** runs the original npm command. **Shift+F5** runs the explicit `nodeDebug`
+target with an owned loopback Inspector; it does not debug npm itself or infer its scripts.
+The optional `nodeDebug` field is accepted only for npm profiles and uses the direct
+Node script grammar above. Other profiles need no schema changes.
+
+Node output comes from a PTY: stdout and stderr are merged in order into the debug console.
+Interactive debug stdin is not exposed; use F5 when input is required.
+Stop and app exit close the owned process tree, including startup in progress.
+Browser debugging, TypeScript/source maps, attach and debugging child processes are
+not supported. An unsupported target or unavailable runtime reports an error without
+silently running without debug.

@@ -16,7 +16,9 @@ source, pause at a breakpoint, inspect stack/variables, step and Continue. Reque
 breakpoints remain separate from adapter verification. Debug mode requires `debugpy`
 in the selected interpreter and currently has no interactive stdin; missing adapters
 never fall back to run. See [code projects](docs/code-projects.md).
-Node/Go debugging and the FastAPI example remain pending.
+Server-side Node debugging supports direct scripts and explicit npm debug targets;
+see [code projects](docs/code-projects.md#debug-server-side-node).
+Go debugging and the FastAPI example remain pending.
 No connection is simulated in the application.
 
 The dashboard also supports explicit, confirmation-gated local Compose restart,
