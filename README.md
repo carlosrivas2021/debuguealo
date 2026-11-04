@@ -11,14 +11,14 @@ and controlled reconnect/cancellation. The terminal dashboard adds keyboard sele
 live logs, bounded search/filter/pause controls and explicit connection errors.
 The **Code** area registers project folders using a separate central `projects/launch.json`
 and runs the selected profile without debug using **F5**, with an interactive console and
-**Stop** control. **Shift+F5** debugs Python using the same profile: mark read-only
-source, pause at a breakpoint, inspect stack/variables, step and Continue. Requested
-breakpoints remain separate from adapter verification. Debug mode requires `debugpy`
-in the selected interpreter and currently has no interactive stdin; missing adapters
-never fall back to run. See [code projects](docs/code-projects.md).
-Server-side Node debugging supports direct scripts and explicit npm debug targets;
-see [code projects](docs/code-projects.md#debug-server-side-node).
-Go debugging and the FastAPI example remain pending.
+**Stop** control. **Shift+F5** debugs Python and supported Go profiles with the same
+profile: mark read-only source, pause at a breakpoint, inspect stack/variables, step and
+Continue. Requested breakpoints remain separate from adapter verification. Python debug
+requires `debugpy` in the selected interpreter; Go debug requires Delve (`dlv`) on the
+application PATH. Debug mode has no interactive stdin, and missing adapters never fall
+back to run. See [code projects](docs/code-projects.md). Server-side Node debugging
+supports direct scripts and explicit npm debug targets; see [code projects](docs/code-projects.md#debug-server-side-node).
+The FastAPI example remains pending.
 No connection is simulated in the application.
 
 The dashboard also supports explicit, confirmation-gated local Compose restart,
