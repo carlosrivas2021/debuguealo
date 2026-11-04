@@ -115,12 +115,13 @@ Stack source paths use the same containment, no-links/junctions, regular UTF-8 a
 1 MiB preview checks as file-tree navigation; unsafe or unavailable paths show an error.
 This is a preview safeguard, not a sandbox or protection against concurrent filesystem changes.
 
-Unsupported commands (including Go, Python `-c`, and npm without an explicit debug target)
-and missing adapters show
-an actionable warning with **no run-mode fallback**, no profile rewrites and no
-source edits. Python script/module grammar and installation guidance are in the
-[backend API and limits](python-debugging.md). Go debugging, persistent breakpoints,
-attach, expression evaluation and interactive debug stdin remain deferred.
+Unsupported commands (including Python `-c` and npm without an explicit debug target)
+and missing adapters show an actionable warning with **no run-mode fallback**, no profile
+rewrites and no source edits. Python script/module grammar and installation guidance are in
+the [Python backend API and limits](python-debugging.md). Go debugging supports only
+`go run main.go [args...]` and `go run . [args...]`; install Delve separately and make
+`dlv` available on the application PATH. See the [Go debugging walkthrough and limits](go-debugging.md).
+Persistent breakpoints, attach, expression evaluation and interactive debug stdin remain deferred.
 
 ## Debug server-side Node
 

@@ -8,7 +8,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, RichLog, Static
 
-from debugpilot.debugger import DebugError, NodeDebugSession, PythonDebugSession
+from debugpilot.debugger import DebugError, GoDebugSession, NodeDebugSession, PythonDebugSession
 from debugpilot.storage.code_projects import is_node_command, is_npm_command
 
 
@@ -75,9 +75,15 @@ class CodeDebug(Vertical):
             if self._current(generation):
                 self.query_one(RichLog).write(f'[{profile.name} · {category}] {text.rstrip()}')
 
-        backend = (NodeDebugSession if is_node_command(profile.command)
-                   or (is_npm_command(profile.command) and profile.node_debug is not None)
-                   else PythonDebugSession)
+        command_name = Path(profile.command[0]).name.lower() if profile.command else ""
+        backend = (
+            GoDebugSession
+            if command_name in {"go", "go.exe"}
+            else NodeDebugSession
+            if is_node_command(profile.command)
+            or (is_npm_command(profile.command) and profile.node_debug is not None)
+            else PythonDebugSession
+        )
         session = self.session = backend(on_event=event, on_output=output)
         intent = self.browser.breakpoint_snapshot(profile.root)
         self.state_changed(f'Starting debug: {profile.name} · {profile.root}')
@@ -125,8 +131,14 @@ class CodeDebug(Vertical):
             if state == 'closed':
                 self.active = False
                 self.browser.set_verification(self.profile.root, {})
+                result = (
+                    "finalizado; código de salida no disponible"
+                    if self.session.exit_code is None
+                    and Path(self.profile.command[0]).name.lower() in {"go", "go.exe"}
+                    else f"Exited: {self.session.exit_code}"
+                )
                 self.state_changed(
-                    f'Exited: {self.session.exit_code} · {self.profile.name} · {self.profile.root}'
+                    f'{result} · {self.profile.name} · {self.profile.root}'
                 )
                 self.finished()
         elif name == 'stopped':
