@@ -1,9 +1,19 @@
 # Debug Go projects with Shift+F5
 
-Go debugging uses Delve's DAP adapter. Install Delve separately and ensure `dlv` is on
-the application PATH before launching DebugPilot; the application does not install tools.
-If Delve is missing or startup fails, Code reports an actionable warning and never falls
-back to a normal run.
+Go debugging uses Delve's DAP adapter. Start the application normally with
+`uv run debugpilot`; no `PATH`, `PYTHONPATH`, or `GOFLAGS` override is required. The
+project virtual environment must be able to find the already-installed `dlv`. When Delve
+is already present at `.tools/bin/dlv`, expose it to `uv run` by creating this project-local
+link from the repository root (only when the destination does not already exist):
+
+```sh
+test -x .tools/bin/dlv && test ! -e .venv/bin/dlv && ln -s ../../.tools/bin/dlv .venv/bin/dlv
+```
+
+The link points to the existing tool; it installs nothing and changes no global settings.
+Recreate it with the same command if the project virtual environment is replaced. Confirm
+the application entrypoint with `uv run debugpilot version`. If Delve is missing or startup
+fails, Code reports an actionable warning and never falls back to a normal run.
 
 ```python
 from debugpilot.debugger import DebugError, GoDebugSession
@@ -37,9 +47,12 @@ because events such as `stopped` may precede completion.
 Target arguments are literal argv, not shell text. Unsupported forms (including `go test`,
 flags, other source files, package patterns, and direct `dlv` commands) produce an
 actionable `DebugError`. The original profile command tuple is retained unchanged, so the
-regular F5 run command remains as configured. Delve must already be installed and available
-as `dlv` on the application PATH; the backend does not install or update tools. Missing
-Delve has an explicit error and does not launch Go in run mode.
+regular F5 run command remains as configured. Go debug launch alone sets Delve's
+`buildFlags` to `-buildvcs=false`, preventing a missing or unavailable Git repository from
+blocking the debug build. This does not set `GOFLAGS`, alter the user's environment, or
+change F5's existing run command. Delve must already be installed and available as `dlv`
+on the application PATH; the backend does not install or update tools. Missing Delve has
+an explicit error and does not launch Go in run mode.
 
 ## Code UI walkthrough
 
