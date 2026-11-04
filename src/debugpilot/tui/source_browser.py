@@ -15,6 +15,9 @@ from textual.message import Message
 from textual.strip import Strip
 from textual.widgets import Button, Static, TextArea, Tree
 
+from debugpilot.core.exceptions import ConfigurationError
+from debugpilot.storage.breakpoints import BreakpointStore
+
 
 class SourceText(TextArea):
     """Read-only source with clickable pending breakpoint dots in the line gutter."""
@@ -68,7 +71,15 @@ class SourceBrowser(Vertical):
         super().__init__(id="source-browser")
         self.root_path: Path | None = None
         self.file_path: Path | None = None
-        self._marks: dict[tuple[Path, Path], set[int]] = {}
+        self.breakpoint_store = BreakpointStore()
+        self._persistence_error = None
+        try:
+            self._marks: dict[tuple[Path, Path], set[int]] = {
+                key: set(lines) for key, lines in self.breakpoint_store.load().items()
+            }
+        except ConfigurationError as error:
+            self._marks = {}
+            self._persistence_error = str(error)
         self._loaded = set()
         self._file_node = None
         self._verification = {}
@@ -105,9 +116,7 @@ class SourceBrowser(Vertical):
         editor.execution_line = None
         editor.load_text("")
         self.query_one(Button).disabled = True
-        self.query_one(Static).update(
-            "Select a source file. Breakpoints are pending (no debugger)."
-        )
+        self._set_status("Select a source file. Breakpoints are pending (no debugger).")
 
     def _populate(self, node):
         path, _ = node.data
@@ -128,7 +137,7 @@ class SourceBrowser(Vertical):
                 if entry.is_file():
                     self._show_marks(child)
         except (OSError, ValueError, RuntimeError) as error:
-            self.query_one(Static).update(f"Unable to list {path}: {error}")
+            self._set_status(f"Unable to list {path}: {error}")
 
     @on(Tree.NodeExpanded, "#source-tree")
     def expand_directory(self, event):
@@ -179,7 +188,7 @@ class SourceBrowser(Vertical):
                 raise ValueError("Binary files cannot be previewed")
             source = data.decode("utf-8-sig")
         except (OSError, ValueError, RuntimeError) as error:
-            self.query_one(Static).update(f"Unable to open {path}: {error}")
+            self._set_status(f"Unable to open {path}: {error}")
             return False
         self.file_path = path.resolve()
         self._file_node = node.parent if node is not None and line is not None else node
@@ -198,7 +207,7 @@ class SourceBrowser(Vertical):
         if line is not None:
             editor.move_cursor((min(line - 1, editor.document.line_count - 1), 0))
         self.query_one(Button).disabled = False
-        self.query_one(Static).update(f"{path} · Read-only · Breakpoints: requested intent")
+        self._set_status(f"{path} · Read-only · Breakpoints: requested intent")
         return True
 
     def show_execution(self, root, path, line):
@@ -280,6 +289,19 @@ class SourceBrowser(Vertical):
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = tuple(sorted(marks))
         editor.refresh()
+        try:
+            self.breakpoint_store.save(self._marks)
+            self._persistence_error = None
+        except ConfigurationError as error:
+            self._persistence_error = str(error)
+        self._set_status(
+            f"{self.file_path} · Read-only · Breakpoints: requested intent"
+        )
         self.post_message(self.BreakpointsChanged(
             self.root_path, self.file_path.resolve(), tuple(sorted(marks))
         ))
+
+    def _set_status(self, message):
+        if self._persistence_error:
+            message = f"{message} · {self._persistence_error}"
+        self.query_one(Static).update(message)
