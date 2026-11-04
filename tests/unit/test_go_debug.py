@@ -3,10 +3,12 @@
 import asyncio
 import shutil
 import socket
+from pathlib import Path
 
 import pytest
 
 from debugpilot.debugger import DebugError, GoDebugSession
+from debugpilot.debugger.go import DAPClient
 from debugpilot.storage.code_projects import CodeProject
 
 
@@ -24,7 +26,7 @@ def project(tmp_path, target='main.go', args=()):
 
 
 @pytest.mark.parametrize('target', ['main.go', '.'])
-async def test_real_breakpoint_stack_locals_steps_and_exit(tmp_path, target):
+async def test_real_breakpoint_stack_locals_steps_and_exit(tmp_path, target, monkeypatch):
     source = tmp_path / 'main.go'
     source.write_text(
         'package main\nimport "fmt"\n'
@@ -32,9 +34,23 @@ async def test_real_breakpoint_stack_locals_steps_and_exit(tmp_path, target):
         'func main() {\n answer := 41\n answer = calculate(answer)\n'
         ' fmt.Printf("RESULT:%d\\n", answer)\n}\n'
     )
+    # A broken Git marker makes Go's automatic VCS metadata probe fail unless the
+    # debug-only launch explicitly opts out of build metadata.
+    (tmp_path / '.git').mkdir()
+    (tmp_path / '.git' / 'HEAD').write_text('not a valid Git ref\n')
     profile = project(tmp_path, target)
-    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    before = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
     output = []
+    launch_requests = []
+    request = DAPClient.request
+
+    async def capture_request(client, command, arguments=None):
+        if command == 'launch':
+            launch_requests.append(arguments.copy())
+        return await request(client, command, arguments)
+
+    monkeypatch.setattr(
+        'debugpilot.debugger.go.DAPClient.request', capture_request)
     session = GoDebugSession(on_output=lambda c, t: output.append((c, t)))
     try:
         await session.start(profile, {source: [9, 9]})
@@ -42,6 +58,11 @@ async def test_real_breakpoint_stack_locals_steps_and_exit(tmp_path, target):
         assert session.state == 'stopped'
         assert session.profile == profile
         assert profile.command == ('go', 'run', target)
+        assert len(launch_requests) == 1
+        assert launch_requests[0]['buildFlags'] == '-buildvcs=false'
+        assert Path(launch_requests[0]['output']).name == 'debugpilot-target'
+        assert launch_requests[0]['outputMode'] == 'remote'
+        assert 'env' not in launch_requests[0]
         assert session.requested_breakpoints == {str(source): (9,)}
         assert session.verified_breakpoints[str(source)][0]['verified'] is True
         frames = await session.stack()
@@ -73,7 +94,8 @@ async def test_real_breakpoint_stack_locals_steps_and_exit(tmp_path, target):
         await session.close()
     assert session.thread_id is None
     assert session.verified_breakpoints == {}
-    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+    after = {p.relative_to(tmp_path): p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
+    assert after == before
 
 
 @pytest.mark.parametrize('command', [

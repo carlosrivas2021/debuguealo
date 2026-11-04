@@ -95,7 +95,7 @@ class GoDebugSession(PythonDebugSession):
                     'name': self.profile.name, 'type': 'go', 'request': 'launch',
                     'mode': 'debug', 'program': program, 'cwd': str(self.profile.root),
                     'args': list(args), 'output': output, 'outputMode': 'remote',
-                    'stopOnEntry': False,
+                    'buildFlags': '-buildvcs=false', 'stopOnEntry': False,
                 }))
                 await self._initialized.wait()
                 for source, lines in intent.items():
