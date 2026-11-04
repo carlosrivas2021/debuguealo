@@ -74,6 +74,48 @@ operation, and an unknown name fails without running `up`. Omitting the field or
 setting `"services": []` keeps acting on every service in the project. Containers of unlisted services still
 appear under the profile because grouping uses the Compose project label.
 
+## Refreshing AWS credentials
+
+Profiles whose containers read AWS session credentials from a dotenv file can declare
+where those credentials go:
+
+```json
+{
+  "name": "Worker",
+  "type": "docker-compose",
+  "projectName": "worker",
+  "workspaceFolder": "/path/to/project",
+  "cwd": "${workspaceFolder}",
+  "files": ["local/worker/docker-compose.yaml"],
+  "awsCredentials": {
+    "envFiles": ["local/.env.aws"],
+    "profile": "dev"
+  }
+}
+```
+
+`envFiles` lists 1–16 files, resolved like `files` (relative to `cwd`, confined to
+`workspaceFolder`). A file may be missing, but its directory must exist. `profile` is
+an optional AWS CLI profile name; without it the default credential chain is used.
+An invalid `awsCredentials` object leaves the profile pending.
+
+Press **a** in the dashboard, or run `debugpilot credentials refresh`, to refresh every
+saved profile that declares `awsCredentials`. DebugPilot runs
+`aws configure export-credentials --format process [--profile NAME]` without a shell,
+once per AWS profile, and writes each distinct file once. Only `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` are replaced (or appended); other lines
+such as `AWS_REGION` are kept. A stale session token is removed when the CLI issues
+none. Files are written atomically with mode 0600 and symlinks are refused. Credential
+values are never printed, logged or written to temporary files outside the target
+directory.
+
+If the SSO session expired, the AWS CLI fails and DebugPilot asks you to run
+`aws sso login` (with `--profile` when set); it never opens a browser itself. Containers
+keep their old environment until recreated, so after a successful refresh the dashboard
+offers **Recreate** for the refreshed profiles that have running containers. Confirm to
+recreate them one after another, or press Escape to skip. The CLI command only lists
+the profiles to recreate.
+
 ## Discovery and safety
 
 Discovery groups containers by Compose project label, not container ID. Saved profiles

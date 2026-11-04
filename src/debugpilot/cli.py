@@ -179,3 +179,38 @@ def logs(
                     )
 
     _run_docker(consume)
+
+
+credentials_app = typer.Typer(help="Refresh credentials used by launch profiles.")
+app.add_typer(credentials_app, name="credentials")
+
+
+@credentials_app.command("refresh")
+def refresh_credentials() -> None:
+    """Write fresh AWS credentials into every launch profile's awsCredentials files."""
+    from debugpilot.storage.aws_credentials import refresh_targets
+    from debugpilot.storage.launch_profiles import LaunchProfileStore
+
+    try:
+        targets = LaunchProfileStore().aws_credential_targets()
+    except ConfigurationError as error:
+        console.print(f"Configuration error: {error}", style="red")
+        raise typer.Exit(2) from None
+    if not targets:
+        console.print("No launch profiles declare awsCredentials.")
+        raise typer.Exit(1)
+    result = refresh_targets(
+        (profile.name or profile.project_name or "profile", target) for profile, target in targets
+    )
+    for path in result.updated_files:
+        console.print(f"Updated {path}")
+    for label, expiration in result.expirations.items():
+        console.print(f"AWS profile {label} credentials expire at {expiration}.")
+    for error in result.errors:
+        console.print(error, style="red")
+    if result.profiles:
+        console.print(
+            "Recreate these profiles to apply the new credentials: " + ", ".join(result.profiles)
+        )
+    if result.errors:
+        raise typer.Exit(1)

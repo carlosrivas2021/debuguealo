@@ -59,6 +59,7 @@ class DebugPilotApp(App):
         Binding("r", "recreate_selected", "Recreate"),
         Binding("R,shift+r", "build_selected", "Build + Recreate"),
         Binding("s", "stop_selected", "Stop"),
+        Binding("a", "refresh_aws_credentials", "AWS creds"),
         Binding("ctrl+o,ctrl+n", "open_launch_file", "Open launch.json"),
         Binding("escape", "cancel_compose", show=False),
         *[
@@ -100,6 +101,7 @@ class DebugPilotApp(App):
         self._compose_projects: dict[str, ComposeProject] = {}
         self._inline_plan: ComposePlan | None = None
         self._pending_stop: tuple[str, ...] = ()
+        self._pending_credential_recreates: list = []
         self._inline_service = None
         self._inline_task: asyncio.Task | None = None
         self._pending_retry_plan: ComposePlan | None = None
@@ -1437,6 +1439,7 @@ class DebugPilotApp(App):
         self._pending_retry_fingerprint = None
         self._inline_plan = None
         self._pending_stop = ()
+        self._pending_credential_recreates = []
         self._pending_profile = None
         self._pending_profile_key = None
         self.query_one("#inline-compose-confirm", Button).label = "Confirm"
@@ -1487,6 +1490,21 @@ class DebugPilotApp(App):
 
     @on(Button.Pressed, "#inline-compose-confirm")
     def confirm_inline_compose(self) -> None:
+        if self._pending_credential_recreates and (
+            self._inline_task is None or self._inline_task.done()
+        ):
+            batch, self._pending_credential_recreates = self._pending_credential_recreates, []
+            if not self._credential_batch_is_current(batch):
+                self._dismiss_inline_compose()
+                self.notify(
+                    "Launch profiles changed after the credential refresh. Recreate manually.",
+                    severity="warning",
+                )
+                return
+            self.query_one("#inline-compose-confirm", Button).disabled = True
+            self.query_one("#inline-compose-cancel", Button).label = "Stop CLI"
+            self._inline_task = asyncio.create_task(self._run_credential_recreates(batch))
+            return
         if self._pending_stop and (self._inline_task is None or self._inline_task.done()):
             targets, self._pending_stop = self._pending_stop, ()
             self.query_one("#inline-compose-confirm", Button).disabled = True
@@ -1537,6 +1555,133 @@ class DebugPilotApp(App):
             f"Running {plan.action}: {plan.project.project_name} / {_plan_scope(plan)}"
         )
         self._inline_task = asyncio.create_task(self._run_inline_compose(plan))
+
+    def action_refresh_aws_credentials(self) -> None:
+        if self._inline_task is not None and not self._inline_task.done():
+            self.notify("An operation is already running.", severity="warning")
+            return
+        if self._launch_store is None or self._launch_error:
+            self.notify(
+                f"Fix launch profiles first: {self._launch_error or 'unavailable'}",
+                severity="warning",
+            )
+            return
+        try:
+            targets = self._launch_store.aws_credential_targets()
+        except (ConfigurationError, OSError) as error:
+            self.notify(f"Cannot read launch profiles: {error}", severity="warning")
+            return
+        if not targets:
+            self.notify(
+                "No launch profile declares awsCredentials. Add it in launch.json.",
+                severity="warning",
+            )
+            return
+        self._dismiss_inline_compose()
+        self.query_one("#inline-compose-message", Static).update(
+            f"Refreshing AWS credentials for {len(targets)} profile(s)…"
+        )
+        self.query_one("#inline-compose").tooltip = None
+        self.query_one("#inline-compose").display = True
+        self.query_one("#inline-compose-confirm", Button).disabled = True
+        self._inline_task = asyncio.create_task(self._run_credential_refresh(targets))
+
+    async def _run_credential_refresh(self, targets) -> None:
+        from debugpilot.storage.aws_credentials import refresh_targets
+
+        named = [(profile.name or profile.project_name or "profile", t) for profile, t in targets]
+        result = await asyncio.to_thread(refresh_targets, named)
+        if self._closing:
+            return
+        for error in result.errors:
+            self.notify(error[:500], severity="error", timeout=15)
+        if not result.profiles:
+            self._dismiss_inline_compose()
+            return
+        updated = {name for name in result.profiles}
+        batch = self._credential_recreate_batch(
+            [profile for profile, _target in targets if
+             (profile.name or profile.project_name or "profile") in updated]
+        )
+        expiry = "; ".join(f"{k} until {v}" for k, v in result.expirations.items())
+        summary = f"AWS credentials updated in {len(result.updated_files)} file(s)" + (
+            f" ({expiry})" if expiry else ""
+        )
+        if not batch:
+            self._dismiss_inline_compose()
+            self.notify(summary + ". No affected profile is running.", severity="information")
+            return
+        self._pending_credential_recreates = batch
+        names = ", ".join(name for name, _key, _plan, _service, _raw in batch)
+        self.query_one("#inline-compose-message", Static).update(
+            f"{summary}. Recreate {names} to apply them?"
+        )
+        self.query_one("#inline-compose").tooltip = "\n".join(
+            plan.display for _name, _key, plan, _service, _raw in batch
+        )
+        self.query_one("#inline-compose-confirm", Button).disabled = False
+        self.query_one("#inline-compose-cancel", Button).label = "Skip"
+        self.query_one("#inline-compose-confirm", Button).focus()
+
+    def _credential_recreate_batch(self, profiles) -> list:
+        """Recreate plans for refreshed profiles whose project has active containers."""
+        from debugpilot.docker.compose import ComposeService
+
+        active = {
+            item.compose_project
+            for item in self._inventory.values()
+            if item.state in ACTIVE_STATES and item.compose_project
+        }
+        batch = []
+        for profile in profiles:
+            if profile.project_name not in active or profile.pending_reason:
+                continue
+            index = next(
+                (
+                    i
+                    for i, current in enumerate(self._launch_profiles)
+                    if not current.dynamic and current.raw == profile.raw
+                ),
+                None,
+            )
+            if index is None:
+                continue
+            try:
+                service = ComposeService(self.engine.settings)
+                plan = service.preview(self._project_from_profile(profile), "recreate")
+            except (ConfigurationError, ComposeError):
+                continue
+            batch.append(
+                (
+                    profile.name or profile.project_name,
+                    self._launch_profile_key(self._launch_profiles[index], index),
+                    plan,
+                    service,
+                    profile,
+                )
+            )
+        return batch
+
+    def _credential_batch_is_current(self, batch) -> bool:
+        try:
+            current = [p for p in self._launch_store.profiles() if not p.dynamic]
+            for _name, _key, plan, _service, profile in batch:
+                match = next((p for p in current if p.raw == profile.raw), None)
+                if match is None or self._project_from_profile(match) != plan.project:
+                    return False
+        except (ConfigurationError, ComposeError, OSError):
+            return False
+        return True
+
+    async def _run_credential_recreates(self, batch) -> None:
+        for _name, key, plan, service, profile in batch:
+            self._inline_service = service
+            self._pending_profile = profile
+            self._pending_profile_key = key
+            self.query_one("#inline-compose-message", Static).update(
+                f"Running recreate: {plan.project.project_name} / {_plan_scope(plan)}"
+            )
+            await self._run_inline_compose(plan)
 
     def _selection_table_selector(self) -> str:
         return "#launch-profiles"
