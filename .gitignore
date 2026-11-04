@@ -13,3 +13,6 @@ htmlcov/
 .env
 .env.*
 !.env.example
+
+# Launch profiles are per-user configuration
+launch.json
