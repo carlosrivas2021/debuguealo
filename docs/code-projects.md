@@ -68,15 +68,19 @@ Do not use this runner for detached background services intended to survive the 
    unmarked line to add one. The original toggle button still works.
 
 The red dot stays aligned while scrolling and reappears when you reopen the marked
-file during the same session. Red indicates requested intent, **not debugger verification**.
+file. Red indicates requested intent, **not debugger verification**.
 
-Source files are never edited by this pane. Breakpoints use 1-based line numbers,
-are isolated by project root and file, and survive switching profiles/areas in the
-current app session. They are not saved across restarts or relocated when external
-edits change line numbers. Two profiles sharing a root share its breakpoint marks.
-**Pending means intent only** until an active Python or Node debugger responds. The file tree
-labels adapter feedback separately as **verified**, **unverified**, or a relocated line.
-The original requested line and red gutter dot never move to the adapter's returned line.
+Source files and `launch.json` are never edited by this pane. Requested breakpoints use
+1-based line numbers, are isolated by project root and file, and persist in the central
+`projects/breakpoints.json` beside the Code `launch.json`. Two profiles sharing a root
+share its marks. Closing and reopening DebugPilot restores marks as **pending**; only an
+active debugger's current response appears as verified or unverified. Verification is
+session-only and is never saved. Marks are not relocated when external edits change line
+numbers. Invalid or inaccessible saved state is shown in the source status and is not
+overwritten; a failed save leaves the current in-memory marks usable but unsaved.
+The original requested line and red gutter dot never move to an adapter's returned line.
+This store supports one application writer at a time; concurrent-process coordination
+is not provided.
 
 Directories load on expansion, with a preview limit of 2,000 entries per directory.
 Symbolic links and junctions are omitted. Source preview supports regular UTF-8 files
@@ -121,7 +125,7 @@ rewrites and no source edits. Python script/module grammar and installation guid
 the [Python backend API and limits](python-debugging.md). Go debugging supports only
 `go run main.go [args...]` and `go run . [args...]`; install Delve separately and make
 `dlv` available on the application PATH. See the [Go debugging walkthrough and limits](go-debugging.md).
-Persistent breakpoints, attach, expression evaluation and interactive debug stdin remain deferred.
+Attach, expression evaluation and interactive debug stdin remain deferred.
 
 ## Debug server-side Node
 

@@ -18,6 +18,10 @@ def isolate_compose_project_configuration(tmp_path, monkeypatch, request):
         "debugpilot.storage.code_projects.config_path",
         lambda: tmp_path / ".debugpilot" / "config.toml",
     )
+    monkeypatch.setattr(
+        "debugpilot.storage.breakpoints.config_path",
+        lambda: tmp_path / ".debugpilot" / "config.toml",
+    )
 
     # Both central defaults remain isolated under this test's temporary root.
 
