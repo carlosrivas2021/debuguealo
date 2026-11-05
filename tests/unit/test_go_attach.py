@@ -119,6 +119,32 @@ async def test_attach_handshake_maps_sources_inspects_steps_and_continues(tmp_pa
     assert not any(item['command'] in {'terminate', 'launch'} for item in peer.requests)
 
 
+async def test_disconnect_clears_mapped_sources_then_resumes_without_changing_intent(
+        tmp_path, peer):
+    from debugpilot.debugger import GoAttachSession
+
+    source = tmp_path / 'main.go'
+    source.write_text('package main\n')
+    session = GoAttachSession(timeout=2)
+    await session.start(profile(tmp_path, peer.port), {source: [4]})
+    intent = dict(session.requested_breakpoints)
+    await asyncio.gather(session.close(), session.close())
+
+    requests = [item for item in peer.requests if item['type'] == 'request']
+    cleanup = [item for item in requests if item['command'] in {
+        'setBreakpoints', 'continue', 'disconnect'}]
+    assert [item['command'] for item in cleanup] == [
+        'setBreakpoints', 'setBreakpoints', 'continue', 'disconnect']
+    assert cleanup[0]['arguments']['source']['path'] == '/app/main.go'
+    assert cleanup[1]['arguments'] == {
+        'source': {'path': '/app/main.go'}, 'breakpoints': [], 'sourceModified': False,
+    }
+    assert cleanup[2]['arguments'] == {'threadId': 1}
+    assert cleanup[3]['arguments'] == {'terminateDebuggee': False}
+    assert session.requested_breakpoints == intent == {str(source.resolve()): (4,)}
+    assert not any(item['command'] in {'terminate', 'launch'} for item in requests)
+
+
 async def test_disconnect_and_reconnect_never_terminate_external_target(tmp_path, peer):
     from debugpilot.debugger import GoAttachSession
 

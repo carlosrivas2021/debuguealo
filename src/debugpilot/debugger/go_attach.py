@@ -17,6 +17,12 @@ class GoAttachSession(PythonDebugSession):
         self._disconnect_sent = False
         self._remote_root = None
         self._local_root = None
+        self._registered_sources = {}
+        self._configured = False
+        self._target_stopped = False
+        self._target_thread_id = None
+        self._go_cleanup_lock = asyncio.Lock()
+        self.disconnect_warning = None
 
     @staticmethod
     def _configuration(profile):
@@ -54,6 +60,11 @@ class GoAttachSession(PythonDebugSession):
         self._initialized.clear()
         self._diagnostic = ''
         self._disconnect_sent = False
+        self._registered_sources = {}
+        self._configured = False
+        self._target_stopped = False
+        self._target_thread_id = None
+        self.disconnect_warning = None
         self._starting = asyncio.current_task()
         self._state('starting')
         attach_request = None
@@ -77,6 +88,7 @@ class GoAttachSession(PythonDebugSession):
                     await self.set_breakpoints(source, lines)
                 await self._client.request('configurationDone')
                 await attach_request
+                self._configured = True
                 if self.state == 'starting':
                     self._state('running')
         except BaseException as error:
@@ -115,6 +127,10 @@ class GoAttachSession(PythonDebugSession):
             'breakpoints': [{'line': line} for line in validated], 'sourceModified': False,
         })
         key = str(local_path)
+        if validated:
+            self._registered_sources[remote_path] = key
+        else:
+            self._registered_sources.pop(remote_path, None)
         self.requested_breakpoints[key] = validated
         self.verified_breakpoints[key] = result.get('breakpoints', [])
         self._emit({'event': 'breakpoints', 'body': {'path': key,
@@ -145,12 +161,61 @@ class GoAttachSession(PythonDebugSession):
             return None
         return local
 
+    def _event(self, message):
+        name, body = message.get('event'), message.get('body', {})
+        if name == 'stopped':
+            self._target_stopped = True
+            self._target_thread_id = body.get('threadId')
+        elif name == 'continued':
+            self._target_stopped = False
+            self._target_thread_id = None
+        if self.state in {'closing', 'closed'} and name in {'stopped', 'continued'}:
+            self._emit(message)
+            return
+        super()._event(message)
+
     async def _cleanup(self):
-        client = self._client
-        if client is not None and not self._disconnect_sent:
-            self._disconnect_sent = True
-            with contextlib.suppress(DebugError, OSError, TimeoutError):
-                await client.request('disconnect', {'terminateDebuggee': False})
-        await super()._cleanup()
-        self._remote_root = None
-        self._local_root = None
+        async with self._go_cleanup_lock:
+            if self.state == 'closed':
+                return
+            self._state('closing')
+            client = self._client
+            failure = None
+            if client is not None and self._configured:
+                for remote_path in tuple(self._registered_sources):
+                    try:
+                        await client.request('setBreakpoints', {
+                            'source': {'path': remote_path}, 'breakpoints': [],
+                            'sourceModified': False,
+                        })
+                    except (DebugError, OSError, TimeoutError) as error:
+                        failure = f'Unable to clear Go session breakpoints: {error}'
+                        break
+                if failure is None and self._target_stopped and self._target_thread_id is not None:
+                    try:
+                        await client.request('continue', {
+                            'threadId': self._target_thread_id,
+                        })
+                        self._target_stopped = False
+                        self._target_thread_id = None
+                    except (DebugError, OSError, TimeoutError) as error:
+                        failure = f'Unable to resume the Go target on disconnect: {error}'
+            if client is not None and not self._disconnect_sent:
+                self._disconnect_sent = True
+                try:
+                    await client.request('disconnect', {'terminateDebuggee': False})
+                except (DebugError, OSError, TimeoutError) as error:
+                    if failure is None:
+                        failure = f'Unable to confirm Go target disconnect: {error}'
+            if failure is not None:
+                self.disconnect_warning = failure
+                self._emit({'event': 'warning', 'body': {'message': failure}})
+                if self.on_output is not None:
+                    self.on_output('stderr', f'Warning: {failure}\n')
+            await super()._cleanup()
+            self._registered_sources.clear()
+            self._configured = False
+            self._target_stopped = False
+            self._target_thread_id = None
+            self._remote_root = None
+            self._local_root = None

@@ -181,12 +181,17 @@ class CodeWorkspace(Vertical):
             if task is not None and not task.done():
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-            await self._debug.close()
+            warning = await self._debug.close()
             await self._pane.close_session()
-            self._state(
-                "Disconnected; target remains managed by Containers"
-                if disconnecting else "Stopped"
-            )
+            if disconnecting and warning:
+                message = f"Disconnected; target state UNKNOWN: {warning}"
+                self._state(message)
+                self.app.notify(message, severity="warning")
+            else:
+                self._state(
+                    "Disconnected; target remains managed by Containers"
+                    if disconnecting else "Stopped"
+                )
         finally:
             self._controls(False)
             self._stopping = False

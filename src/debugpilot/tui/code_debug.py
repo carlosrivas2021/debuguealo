@@ -157,10 +157,16 @@ class CodeDebug(Vertical):
                         f'{result} · {self.profile.name} · {self.profile.root}'
                     )
                 else:
-                    self.state_changed(
-                        f'Disconnected: {self.profile.name} · {self.profile.root} · '
-                        'target remains managed by Containers'
-                    )
+                    warning = getattr(self.session, 'disconnect_warning', None)
+                    if warning:
+                        message = f'Disconnected; target state UNKNOWN: {warning}'
+                        self.state_changed(message)
+                        self.app.notify(message, severity='warning')
+                    else:
+                        self.state_changed(
+                            f'Disconnected: {self.profile.name} · {self.profile.root} · '
+                            'target remains managed by Containers'
+                        )
                 self.finished()
         elif name == 'stopped':
             self._invalidate()
@@ -275,7 +281,12 @@ class CodeDebug(Vertical):
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        if self.session is not None:
-            await self.session.close()
+        session = self.session
+        if session is not None:
+            await session.close()
+        warning = getattr(session, 'disconnect_warning', None)
+        if warning and self.profile is not None and self.query(RichLog):
+            self.query_one(RichLog).write(f'[{self.profile.name} · stderr] Warning: {warning}')
         if self.profile is not None:
             self.browser.set_verification(self.profile.root, {})
+        return warning

@@ -161,11 +161,16 @@ reuses the Python debugger's inspection and stepping methods. It supports breakp
 stack, scopes, variables, stepping, and continue, but not expression evaluation or
 interactive debug stdin.
 
-`close()` and startup cancellation send DAP `disconnect` with
-`terminateDebuggee: false`; they never send `terminate` and do not own the remote process.
-This allows the target to continue and the session to reconnect. Delve must already be
-running and reachable on the configured endpoint. The backend does not start or stop Delve,
-manage the container, or modify the target's source tree.
+`close()` clears only this session's registered remote breakpoints, then resumes the target
+if it is stopped before sending DAP `disconnect` with `terminateDebuggee: false`. Requested
+local breakpoint intent is unchanged and is reapplied on reconnect. Startup cancellation
+before attach configuration completes avoids breakpoint-clear and resume commands. Neither
+close nor cancellation sends `terminate`; the target process remains externally owned. If
+clearing breakpoints or resuming fails because the transport is unavailable, cleanup still
+finishes and emits a visible warning; the UI reports the target state as unknown rather
+than claiming it resumed. Delve must already be running and reachable on the configured
+endpoint. The backend does not start or stop Delve, manage the container, or modify the
+target's source tree.
 
 Go launch support does not include tests, binary targets, persistent breakpoints,
 expression evaluation or interactive debug stdin.
