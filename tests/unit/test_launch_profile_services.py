@@ -194,3 +194,12 @@ async def test_compose_receives_ssh_agent_socket_but_not_other_variables(
     (environment,) = environments
     assert environment["SSH_AUTH_SOCK"] == "/tmp/agent.sock"
     assert "AWS_SECRET_ACCESS_KEY" not in environment
+
+
+def test_compose_timeout_defaults_to_one_hour_and_is_configurable():
+    assert ComposeService(Settings()).timeout_seconds == 3600
+    assert ComposeService(Settings(compose_timeout_seconds=900)).timeout_seconds == 900
+    assert ComposeService(Settings(), timeout_seconds=5).timeout_seconds == 5
+    for invalid in (59, 3601):
+        with pytest.raises(ValueError):
+            Settings(compose_timeout_seconds=invalid)
