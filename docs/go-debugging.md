@@ -163,7 +163,12 @@ interactive debug stdin.
 
 `close()` clears only this session's registered remote breakpoints, then resumes the target
 if it is stopped before sending DAP `disconnect` with `terminateDebuggee: false`. Requested
-local breakpoint intent is unchanged and is reapplied on reconnect. Startup cancellation
+local breakpoint intent is unchanged and is reapplied on reconnect. If the Go attach transport
+is lost unexpectedly, Code reports **Unexpected disconnect; target state UNKNOWN** and offers
+an explicit **Reconnect** action pinned to the same profile. Breakpoints remain requested but
+return to pending until Delve confirms them after reconnection. There are no automatic retries,
+target restarts, or local Python/Node recovery actions; the target's actual state must be checked
+in Containers. Startup cancellation
 before attach configuration completes avoids breakpoint-clear and resume commands. Neither
 close nor cancellation sends `terminate`; the target process remains externally owned. If
 clearing breakpoints or resuming fails because the transport is unavailable, cleanup still

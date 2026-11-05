@@ -33,6 +33,7 @@ class CodeDebug(Vertical):
         self._start_task = None
         self._frames = []
         self._update_lock = asyncio.Lock()
+        self._unexpected_disconnect = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id='code-debug-controls'):
@@ -65,6 +66,7 @@ class CodeDebug(Vertical):
         generation = self._generation
         self.active = True
         self.profile = profile  # Frozen CodeProject, never the current table selection.
+        self._unexpected_disconnect = False
         self.display = True
         self.query_one(RichLog).clear()
         self._invalidate()
@@ -131,7 +133,15 @@ class CodeDebug(Vertical):
         if not self._current(generation):
             return
         name, body = message.get('event'), message.get('body', {})
-        if name == 'state':
+        if name == 'transportClosed' and self.profile.go_attach is not None:
+            self._unexpected_disconnect = True
+            reason = body.get('message')
+            detail = f': {reason}' if reason else ''
+            self.state_changed(
+                f'Unexpected disconnect; target state UNKNOWN{detail} · '
+                f'{self.profile.name} · {self.profile.root}'
+            )
+        elif name == 'state':
             state = body.get('state')
             if state != 'stopped':
                 self._invalidate()
@@ -158,7 +168,13 @@ class CodeDebug(Vertical):
                     )
                 else:
                     warning = getattr(self.session, 'disconnect_warning', None)
-                    if warning:
+                    if self._unexpected_disconnect:
+                        detail = f': {warning}' if warning else ''
+                        self.state_changed(
+                            f'Unexpected disconnect; target state UNKNOWN{detail} · '
+                            f'{self.profile.name} · {self.profile.root}'
+                        )
+                    elif warning:
                         message = f'Disconnected; target state UNKNOWN: {warning}'
                         self.state_changed(message)
                         self.app.notify(message, severity='warning')
@@ -167,7 +183,7 @@ class CodeDebug(Vertical):
                             f'Disconnected: {self.profile.name} · {self.profile.root} · '
                             'target remains managed by Containers'
                         )
-                self.finished()
+                self.finished(self._unexpected_disconnect)
         elif name == 'stopped':
             self._invalidate()
             for button in self.query(Button):
