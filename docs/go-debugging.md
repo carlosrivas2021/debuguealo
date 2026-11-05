@@ -113,5 +113,59 @@ from other processes running as the same user. Delve build output is directed to
 system temporary directory and removed at session teardown, rather than being written into
 the project source tree. Go's normal build cache may still be used by the Go toolchain.
 
-Go support does not include attach, tests, binary targets, persistent breakpoints,
-expression evaluation, source maps or interactive debug stdin.
+## Attach to an existing headless Delve target
+
+`GoAttachSession` connects directly to an existing Delve DAP endpoint. It does not start a
+local adapter, build a program, or launch another copy of the target. The externally owned
+process and its container lifecycle remain under Containers.
+
+Register an attach profile in Code's `projects/launch.json`:
+
+```json
+{
+  "name": "Go remote",
+  "workspaceFolder": "/local/path/to/go-debug",
+  "goAttach": {
+    "host": "127.0.0.1",
+    "port": 2345,
+    "remoteRoot": "/app"
+  }
+}
+```
+
+`command` may be omitted for an attach-only profile (internally its argv is empty). If
+present, the command remains the existing F5 run command; attach never executes it. The
+`goAttach` object requires exactly these fields: `host` must be `127.0.0.1`, `port` an
+integer from 1 through 65535 (booleans are not integers here), and `remoteRoot` an absolute
+POSIX path with no backslashes or `..` segments. Invalid profiles are rejected without
+rewriting the launch file. The backend connects only to the validated loopback endpoint.
+
+```python
+from debugpilot.debugger import DebugError, GoAttachSession
+
+session = GoAttachSession(on_event=handle_debug_event)
+try:
+    await session.start(selected_profile, {local_source_path: {9}})
+except DebugError as error:
+    show_error(str(error))
+# At a stopped event, use stack(), scopes(frame_id), and variables(reference).
+# Also available: set_breakpoints(), step_over(), step_in(), step_out(),
+# and continue_execution().
+await session.close()
+```
+
+The attach request uses DAP `mode: "remote"` and maps the local `workspaceFolder` to
+`remoteRoot`. Breakpoints are sent using mapped remote paths; stack-frame sources are mapped
+back to local workspace paths and checked for containment before Code opens them. The API
+reuses the Python debugger's inspection and stepping methods. It supports breakpoints,
+stack, scopes, variables, stepping, and continue, but not expression evaluation or
+interactive debug stdin.
+
+`close()` and startup cancellation send DAP `disconnect` with
+`terminateDebuggee: false`; they never send `terminate` and do not own the remote process.
+This allows the target to continue and the session to reconnect. Delve must already be
+running and reachable on the configured endpoint. The backend does not start or stop Delve,
+manage the container, or modify the target's source tree.
+
+Go launch support does not include tests, binary targets, persistent breakpoints,
+expression evaluation or interactive debug stdin.

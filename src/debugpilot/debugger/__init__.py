@@ -2,7 +2,9 @@
 
 from debugpilot.debugger.dap import DebugError
 from debugpilot.debugger.go import GoDebugSession
+from debugpilot.debugger.go_attach import GoAttachSession
 from debugpilot.debugger.node import NodeDebugSession
 from debugpilot.debugger.python import PythonDebugSession
 
-__all__ = ['DebugError', 'PythonDebugSession', 'NodeDebugSession', 'GoDebugSession']
+__all__ = ['DebugError', 'PythonDebugSession', 'NodeDebugSession', 'GoDebugSession',
+           'GoAttachSession']

@@ -4,10 +4,32 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.config import config_path
+
+
+@dataclass(frozen=True)
+class GoAttach:
+    host: str
+    port: int
+    remote_root: str
+
+
+def parse_go_attach(value: object) -> GoAttach:
+    """Validate the intentionally loopback-only attach schema."""
+    if (not isinstance(value, dict) or set(value) != {'host', 'port', 'remoteRoot'}
+            or value.get('host') != '127.0.0.1'
+            or type(value.get('port')) is not int or not 1 <= value['port'] <= 65535
+            or not CodeProjectStore._text(value.get('remoteRoot'))):
+        raise ValueError
+    raw_root = value['remoteRoot']
+    remote_root = PurePosixPath(raw_root)
+    if ('\\' in raw_root or not remote_root.is_absolute() or '..' in remote_root.parts
+            or str(remote_root) != raw_root):
+        raise ValueError
+    return GoAttach('127.0.0.1', value['port'], str(remote_root))
 
 
 @dataclass(frozen=True)
@@ -16,6 +38,7 @@ class CodeProject:
     root: Path
     command: tuple[str, ...]
     node_debug: tuple[str, ...] | None = None
+    go_attach: GoAttach | None = None
 
 
 def is_node_command(command):
@@ -90,9 +113,23 @@ class CodeProjectStore:
                 root = Path(folder)
                 if not root.is_absolute() or not root.is_dir():
                     raise ValueError
-                if not isinstance(command, list) or not command or len(command) > 128:
+                go_attach = None
+                if 'goAttach' in entry:
+                    try:
+                        go_attach = parse_go_attach(entry['goAttach'])
+                    except ValueError:
+                        raise ConfigurationError(
+                            'Invalid goAttach: use host 127.0.0.1, integer port 1..65535, '
+                            'and an absolute POSIX remoteRoot without parent segments.'
+                        ) from None
+                if command is None and go_attach is None:
                     raise ValueError
-                if any(not self._text(arg) for arg in command):
+                if command is None:
+                    command = []
+                if not isinstance(command, list) or len(command) > 128:
+                    raise ValueError
+                if (not command and go_attach is None) or any(
+                        not self._text(arg) for arg in command):
                     raise ValueError
                 node_debug = None
                 if 'nodeDebug' in entry:
@@ -104,7 +141,7 @@ class CodeProjectStore:
                         )
                     node_debug = tuple(target)
                 profiles.append(CodeProject(name, root.resolve(strict=True), tuple(command),
-                                            node_debug))
+                                            node_debug, go_attach))
                 names.add(name)
             return profiles
         except (ValueError, TypeError, UnicodeError, OSError, RuntimeError, RecursionError):
