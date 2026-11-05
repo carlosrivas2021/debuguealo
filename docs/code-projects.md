@@ -167,8 +167,12 @@ Shift+F5 and does not launch a local process.
    leave the target running, even when it was paused. The target is not terminated and the UI
    does not report it as exited. Local requested marks and their stored data are preserved
    and reapplied on reconnect; a transport failure while clearing, resuming, or disconnecting
-   shows a warning and reports the target state as unknown. Reconnect with **Shift+F5** after
-   ensuring the Delve endpoint is still available.
+   shows a warning and reports the target state as unknown. If the transport is lost
+   unexpectedly, Code shows **Unexpected disconnect; target state UNKNOWN** and offers an
+   explicit **Reconnect** action pinned to the same profile. Marks remain pending until the
+   new Delve connection confirms them. No automatic retries or target restarts occur; check
+   the endpoint in Containers and click **Reconnect** only when it is available. Deliberate
+   Disconnect and local Python/Node debugging do not offer this recovery action.
    Containers independently reports and controls the container lifecycle.
 
 Local `workspaceFolder` maps to remote `remoteRoot` (for example, local `main.go` maps to

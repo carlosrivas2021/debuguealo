@@ -25,8 +25,10 @@ class CodeWorkspace(Vertical):
         self._shutting_down = False
         self._run_button = Button("Run (F5)", id="code-run")
         self._debug_button = Button("Debug (Shift+F5)", id="code-debug-start")
+        self._reconnect_button = Button("Reconnect", id="code-reconnect")
+        self._reconnect_button.display = False
         self._browser = SourceBrowser()
-        self._debug = CodeDebug(self._browser, self._state, lambda: self._controls(False))
+        self._debug = CodeDebug(self._browser, self._state, self._debug_finished)
         self._stop_button = Button("Stop", id="code-stop", disabled=True)
         self._run_state = Static(
             "Ready. Select a profile and press F5.", id="code-run-state", markup=False
@@ -43,6 +45,7 @@ class CodeWorkspace(Vertical):
             yield Button("Reload code profiles", id="code-reload")
             yield self._run_button
             yield self._debug_button
+            yield self._reconnect_button
             yield self._stop_button
         yield DataTable(id="code-projects", cursor_type="row", zebra_stripes=True)
         yield self._browser
@@ -52,7 +55,8 @@ class CodeWorkspace(Vertical):
         yield Static(
             "F5: run without debug · Escape: return to profiles · Stop: end owned Code process. "
             "Shift+F5: debug/attach · Continue: button · F10/F11/Shift+F11: step. "
-            "Attach Disconnect leaves the target to Containers; debug output has no stdin. "
+            "Attach Disconnect leaves the target to Containers; Reconnect explicitly retries "
+            "a lost Go attach; debug output has no stdin. "
             "Source is read-only.",
             id="code-capabilities",
         )
@@ -100,6 +104,10 @@ class CodeWorkspace(Vertical):
     def _state(self, message):
         self._run_state.update(message)
 
+    def _debug_finished(self, unexpected_disconnect=False):
+        self._controls(False)
+        self._reconnect_button.display = bool(unexpected_disconnect)
+
     def _controls(self, running):
         self._run_button.disabled = running
         self._debug_button.disabled = running
@@ -133,8 +141,27 @@ class CodeWorkspace(Vertical):
         self._controls(True)
         self._run_task = asyncio.create_task(self._start(profile))
 
+    @on(Button.Pressed, "#code-reconnect")
+    def reconnect(self):
+        if (
+            self._shutting_down
+            or self._stopping
+            or self._debug.active
+            or self._pane.active
+            or (self._run_task is not None and not self._run_task.done())
+            or self._debug.profile is None
+            or self._debug.profile.go_attach is None
+        ):
+            return
+        profile = self._debug.profile
+        self._reconnect_button.display = False
+        self._controls(True)
+        self._debug.start(profile)
+        self._stop_button.label = "Disconnect"
+
     @on(Button.Pressed, "#code-debug-start")
     def debug_selected(self):
+        self._reconnect_button.display = False
         if self._shutting_down or self._stopping or self._debug.active or self._pane.active or (
             self._run_task is not None and not self._run_task.done()
         ):
@@ -193,6 +220,7 @@ class CodeWorkspace(Vertical):
                     if disconnecting else "Stopped"
                 )
         finally:
+            self._reconnect_button.display = False
             self._controls(False)
             self._stopping = False
 

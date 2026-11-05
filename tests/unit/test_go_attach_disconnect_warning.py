@@ -63,5 +63,6 @@ async def test_stop_surfaces_breakpoint_clear_transport_warning(monkeypatch, tmp
             commands = [request['command'] for request in peer.requests]
             assert not any(command in {'launch', 'terminate'} for command in commands)
             assert status != 'Disconnected; target remains managed by Containers'
+            assert not app.query_one('#code-reconnect').display
     finally:
         await peer.close()
