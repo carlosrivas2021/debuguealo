@@ -1,8 +1,8 @@
 # Workspace Compose launch profiles
 
-DebugPilot shows detected Compose configurations immediately, including services started
+debugealo shows detected Compose configurations immediately, including services started
 outside the app. These dynamic profiles live only in memory. By default, saved configurations live in the stable central `launch.json` beside
-DebugPilot's user `config.toml`, independent of the process working directory. Profiles
+debugealo's user `config.toml`, independent of the process working directory. Profiles
 in this central file must declare an existing absolute `workspaceFolder`; that directory
 is the confinement root for `cwd`, Compose files, `projectDirectory`, and
 `environmentFiles`. The optional explicitly selected `LaunchProfileStore(workspace=...)`
@@ -12,9 +12,9 @@ central mode. Discovery does not create or rewrite launch files.
 
 ## Quick path
 
-1. Start DebugPilot from any directory; the default application uses the same central launch file.
+1. Start debugealo from any directory; the default application uses the same central launch file.
 2. From the empty welcome, choose **Open launch.json** to edit the central configuration with nano or vi in the same terminal.
-3. On first open, DebugPilot creates the file only if it is missing, with an empty `configurations` array. Add profiles with an explicit `workspaceFolder`. Only explicit local-workspace mode generates a catalog starter when that workspace contains the real example.
+3. On first open, debugealo creates the file only if it is missing, with an empty `configurations` array. Add profiles with an explicit `workspaceFolder`. Only explicit local-workspace mode generates a catalog starter when that workspace contains the real example.
 4. Existing files, including malformed ones, are passed through unchanged so they can be repaired in the editor.
 
 Dynamic profiles are rediscovered from inventory rather than restored from a cache.
@@ -73,7 +73,7 @@ Conflicting detection metadata stays pending until a trusted mapping is supplied
 
 The default application uses the central configuration location; each central profile
 selects its own project root. Explicit local-workspace mode remains available to callers.
-DebugPilot suspends its TUI and runs `nano`, or `vi` if nano is unavailable, in the
+debugealo suspends its TUI and runs `nano`, or `vi` if nano is unavailable, in the
 same terminal without a shell. It waits for the editor to exit, restores the dashboard,
 and reloads the profiles. Install nano or vi on PATH, including on Windows; the tool
 does not use graphical editors or system file associations. A nonzero editor exit

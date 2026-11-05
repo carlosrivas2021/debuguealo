@@ -4,7 +4,7 @@ Choose **Code**, then **Open code launch.json** (or Ctrl+O / Ctrl+N while in Cod
 The terminal editor creates the file only when explicitly requested. Add your profiles,
 save and exit; the table reloads. **Reload code profiles** picks up external edits.
 
-The dedicated file is `projects/launch.json` beside DebugPilot's central container
+The dedicated file is `projects/launch.json` beside debugealo's central container
 `launch.json` and `config.toml`. It never uses the application working directory or
 modifies container profiles, including when an explicit local Docker workspace is used.
 The UI shows the full path. No configuration migration or automatic project scan occurs.
@@ -47,7 +47,7 @@ launch another process. Changing the selected profile or switching areas does no
 retarget or stop the active execution. Reload affects the next run only.
 The status line reports `Running`, `Exited: <code>`, `Stopped`, or a startup error.
 The terminal retains the last screen after exit; a new run starts with a fresh screen.
-Quitting DebugPilot also stops Code execution, including startup in progress.
+Quitting debugealo also stops Code execution, including startup in progress.
 
 Commands inherit the environment and run in their configured folder, using argv rather
 than a host shell. On Windows, npm's standard `npm.cmd` entry is resolved to Node plus
@@ -73,7 +73,7 @@ file. Red indicates requested intent, **not debugger verification**.
 Source files and `launch.json` are never edited by this pane. Requested breakpoints use
 1-based line numbers, are isolated by project root and file, and persist in the central
 `projects/breakpoints.json` beside the Code `launch.json`. Two profiles sharing a root
-share its marks. Closing and reopening DebugPilot restores marks as **pending**; only an
+share its marks. Closing and reopening debugealo restores marks as **pending**; only an
 active debugger's current response appears as verified or unverified. Verification is
 session-only and is never saved. Marks are not relocated when external edits change line
 numbers. Invalid or inaccessible saved state is shown in the source status and is not
@@ -91,7 +91,7 @@ The preview is not an operating-system sandbox; browse trusted local projects.
 
 1. Use a Python script or module command, for example `["python", "main.py"]` or
    `["python", "-u", "-m", "package.module"]`. Install `debugpy` yourself in that
-   profile's interpreter before launching; DebugPilot never installs it at runtime.
+   profile's interpreter before launching; debugealo never installs it at runtime.
 2. Mark an executable source line, then press **Shift+F5** or **Debug (Shift+F5)**.
    The initial requested breakpoints are sent before the program runs.
 3. At a pause, inspect the **Frame / Source / Line** stack and the variables pane.

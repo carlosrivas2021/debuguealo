@@ -7,9 +7,9 @@ protocol. Domain diagnostics and bounded events are Pydantic models, not widgets
 ```python
 import asyncio
 
-from debugpilot.core.engine import DebugPilotEngine
-from debugpilot.docker.diagnostics import DockerDiagnostics
-from debugpilot.storage.config import load_settings
+from debugealo.core.engine import DebugPilotEngine
+from debugealo.docker.diagnostics import DockerDiagnostics
+from debugealo.storage.config import load_settings
 
 
 async def main():

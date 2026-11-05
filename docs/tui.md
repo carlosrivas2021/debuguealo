@@ -1,7 +1,7 @@
 # Terminal dashboard
 
-Run `uv run debugpilot` or `uv run debugpilot tui` to open the local Docker dashboard.
-Use `uv run debugpilot tui --config path/to/config.toml` for explicit settings. Docker
+Run `uv run debugealo` or `uv run debugealo tui` to open the local Docker dashboard.
+Use `uv run debugealo tui --config path/to/config.toml` for explicit settings. Docker
 connection status is shown separately from saved launch configuration state.
 
 The dashboard presents saved profiles, their containers, and unowned Docker inventory
@@ -64,7 +64,7 @@ Choose a profile and use **Play / Recreate** to apply its Compose files, or **Bu
 Recreate** when code changed. Both actions require confirmation. `r` previews Play /
 Recreate; `Shift+R` previews Build + Recreate. There is no plain Restart action in the
 TUI. `Ctrl+O` or `Ctrl+N` opens `launch.json` directly; neither key opens a Compose file
-picker or starts a service. Editing stays in the same terminal: DebugPilot suspends
+picker or starts a service. Editing stays in the same terminal: debugealo suspends
 the dashboard, runs `nano` (falling back to `vi` when nano is not installed), and
 restores the TUI after the editor exits. After a successful editor exit, valid JSON is
 formatted with two-space indentation while preserving field order and unknown fields. Invalid

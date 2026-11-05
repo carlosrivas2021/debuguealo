@@ -1,16 +1,16 @@
 # Inspect local Docker containers and logs
 
-DebugPilot only reads the configured local Engine. It does not start, stop, execute commands
+debugealo only reads the configured local Engine. It does not start, stop, execute commands
 inside, or remove containers. Compose is discovered from labels, without invoking Compose.
 
 ## Quick path
 
 ```console
-uv run debugpilot doctor
-uv run debugpilot containers
-uv run debugpilot containers --json
-uv run debugpilot logs payments-api --tail 100
-uv run debugpilot logs payments-api --follow
+uv run debugealo doctor
+uv run debugealo containers
+uv run debugealo containers --json
+uv run debugealo logs payments-api --tail 100
+uv run debugealo logs payments-api --follow
 ```
 
 `containers` includes stopped containers. `--json` exposes ID, name, image, state, UTC creation
