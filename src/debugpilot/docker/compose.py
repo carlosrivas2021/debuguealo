@@ -27,8 +27,10 @@ from debugpilot.storage.config import Settings
 
 MAX_FILE_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 256 * 1024
+# SSH_AUTH_SOCK lets BuildKit forward the user's SSH agent for `build.ssh: [default]`,
+# as a plain `docker compose build` would; it is a socket path, not a secret.
 COMPOSE_ENVIRONMENT_KEYS = frozenset(
-    {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PROGRAMFILES", "PROGRAMDATA"}
+    {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PROGRAMFILES", "PROGRAMDATA", "SSH_AUTH_SOCK"}
 )
 _ENV_FILE_KEY = re.compile(r"\benv_file\s*:")
 MAX_CALLBACK_LINE_CHARS = 16_384

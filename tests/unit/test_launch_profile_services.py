@@ -173,3 +173,24 @@ async def test_unknown_profile_service_fails_before_mutating(tmp_path, docker):
     with pytest.raises(ComposeError, match="database"):
         await service.run(service.preview(project, "recreate"), confirmed=True)
     assert [_command(argv) for argv in calls] == ["config"]
+
+
+async def test_compose_receives_ssh_agent_socket_but_not_other_variables(
+    tmp_path, docker, monkeypatch
+):
+    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "never-forwarded")
+    environments = []
+
+    async def create(*argv, **kwargs):
+        environments.append(kwargs["env"])
+        return _Process()
+
+    monkeypatch.setattr(compose.asyncio, "create_subprocess_exec", create)
+    (tmp_path / "compose.yaml").write_text("services: {}\n")
+    project = ComposeProject.create(tmp_path, ("compose.yaml",), "platform")
+    service = ComposeService(Settings())
+    await service.run(service.preview(project, "rebuild"), confirmed=True)
+    (environment,) = environments
+    assert environment["SSH_AUTH_SOCK"] == "/tmp/agent.sock"
+    assert "AWS_SECRET_ACCESS_KEY" not in environment
