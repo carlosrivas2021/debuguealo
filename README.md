@@ -1,4 +1,4 @@
-# DebugPilot
+# debugealo
 
 Local-first Docker debugging in Python. **Implementation is in progress; this is not the completed MVP.**
 
@@ -29,7 +29,7 @@ recreate and rebuild actions for a service or project, using ordered override fi
 Press Ctrl+O to open launch.json; read [Compose safety and limits](docs/compose.md) before running actions.
 
 The primary sidebar lists saved configurations from a central `launch.json` beside
-DebugPilot's user `config.toml`, independent of the working directory. Each central
+debugealo's user `config.toml`, independent of the working directory. Each central
 profile explicitly names its project root with `workspaceFolder`; the previous
 `.debugpilot/launch.json` local-workspace mode remains supported for explicit callers
 and is not auto-migrated. Running containers are linked by the explicit Compose `projectName`,
@@ -68,14 +68,14 @@ in a separate section. See [file-based startup](docs/starting-projects.md).
 
 ```console
 uv sync --locked
-uv run debugpilot
-uv run debugpilot tui
-uv run debugpilot version
-uv run debugpilot doctor
-uv run debugpilot containers
-uv run debugpilot containers --json
-uv run debugpilot logs payments-api --tail 100
-uv run debugpilot logs payments-api --follow
+uv run debugealo
+uv run debugealo tui
+uv run debugealo version
+uv run debugealo doctor
+uv run debugealo containers
+uv run debugealo containers --json
+uv run debugealo logs payments-api --tail 100
+uv run debugealo logs payments-api --follow
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
@@ -84,7 +84,7 @@ uv run ruff format --check .
 ```powershell
 $uv = 'C:\path\to\uv.exe'
 & $uv sync --locked
-& $uv run debugpilot doctor
+& $uv run debugealo doctor
 ```
 
 
@@ -92,7 +92,7 @@ Install Python 3.12+ and [uv](https://docs.astral.sh/uv/getting-started/installa
 On Windows, use PowerShell and Docker Desktop in Linux-container mode. On macOS,
 use Docker Desktop; on Linux, use Docker Engine and grant your account socket access
 according to your organization's policy. Docker access is privileged; do not expose its
-socket, make it world-writable, or run DebugPilot as administrator to mask configuration errors.
+socket, make it world-writable, or run debugealo as administrator to mask configuration errors.
 
 `doctor` exits 0 when all checks pass, 1 for an unavailable/denied Docker daemon,
 and 2 for invalid configuration. It reports Python, configuration, platform, local endpoint,
@@ -105,10 +105,30 @@ Dependency installation and the eventual example image build may require downloa
 
 ## Not available yet
 
-`debugpilot` and `debugpilot tui` open the terminal dashboard; see the
+`debugealo` and `debugealo tui` open the terminal dashboard; see the
 [keyboard workflow](docs/tui.md). The future `gui` command is not registered.
 The FastAPI example remains pending. Python's current breakpoint workflow is documented
 in [code projects](docs/code-projects.md#debug-python-with-the-same-profile).
 No license has been selected; no license grant is implied by this source distribution.
+
+The installed distribution, primary Python package and command are named `debugealo`. The
+legacy `debugpilot` command, `python -m debugpilot`, and `debugpilot.*` imports remain
+supported aliases; both import paths resolve to the same implementation and state. Existing
+`debugpilot` configuration and workspace data paths are intentionally unchanged.
+
+### Upgrade an existing checkout
+
+After switching an existing checkout from the `debugpilot` distribution to `debugealo`,
+reinstall the local project while preserving packages outside the lockfile:
+
+```console
+uv sync --inexact --frozen --reinstall-package debugealo
+```
+
+The rename makes the new and old distributions share the `debugpilot` console-script name;
+a regular sync during the transition can remove the old script. Reinstalling the current
+project restores both commands. `--frozen` uses the checkout's existing lockfile and
+`--inexact` retains unrelated installed tools. No configuration, profiles, or breakpoints
+need to be renamed, copied, or migrated.
 
 Read [Docker integration](docs/docker.md) for limits, logging-driver support, and reconnect semantics.

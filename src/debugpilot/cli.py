@@ -20,9 +20,10 @@ from debugpilot.docker.service import DockerService
 from debugpilot.storage.config import load_settings
 
 app = typer.Typer(
+    name="debugealo",
     no_args_is_help=False,
     invoke_without_command=True,
-    help="Local Docker debugging toolkit. Inspect containers, logs, and environment health.",
+    help="debugealo: local Docker debugging. Inspect containers, logs, and environment health.",
     pretty_exceptions_enable=False,
 )
 console = Console(markup=False)
@@ -58,8 +59,8 @@ def tui(
 
 @app.command()
 def version() -> None:
-    """Print the installed DebugPilot version."""
-    console.print(f"DebugPilot {__version__}")
+    """Print the installed debugealo version."""
+    console.print(f"debugealo {__version__}")
 
 
 @app.command()
