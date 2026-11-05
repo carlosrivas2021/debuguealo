@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "debugpilot"
+name = "debugealo"
 version = "0.1.0"
 description = "Local-first Docker debugging, with a UI-independent Python engine."
 readme = "README.md"
@@ -20,10 +20,14 @@ dependencies = [
 ]
 
 [project.scripts]
+debugealo = "debugpilot.cli:app"
 debugpilot = "debugpilot.cli:app"
 
 [dependency-groups]
 dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.9,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/debugealo", "src/debugpilot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

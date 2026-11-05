@@ -35,7 +35,7 @@ ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
 class DebugPilotApp(App):
     """The terminal owns its UI tasks; Docker operations stay behind the engine."""
 
-    TITLE = "DebugPilot"
+    TITLE = "debugealo"
     CSS_PATH = "styles.tcss"
     BINDINGS = [
         Binding("q", "quit", "Quit"),
@@ -161,7 +161,7 @@ class DebugPilotApp(App):
 
     def _compose_containers(self) -> ComposeResult:
         with Horizontal(id="topbar"):
-            yield Static("DebugPilot  ·  Docker: connecting…", id="docker-state", markup=False)
+            yield Static("debugealo  ·  Docker: connecting…", id="docker-state", markup=False)
             yield Button("Open launch.json", id="open-launch-file")
             yield Button("Stop", id="stop-selected", variant="warning")
         yield Static("Launch profiles: loading…", id="launch-state", markup=False)
@@ -322,7 +322,7 @@ class DebugPilotApp(App):
                 self._update_launch_profiles(inventory)
                 active = sum(item.state in ACTIVE_STATES for item in inventory)
                 self.query_one("#docker-state", Static).update(
-                    f"DebugPilot  ·  Docker: connected  ·  {active} active / {len(inventory)} total"
+                    f"debugealo  ·  Docker: connected  ·  {active} active / {len(inventory)} total"
                 )
                 self._show_inventory(inventory)
             except DebugPilotError as error:
