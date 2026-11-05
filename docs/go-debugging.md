@@ -1,7 +1,7 @@
 # Debug Go projects with Shift+F5
 
 Go debugging uses Delve's DAP adapter. Start the application normally with
-`uv run debugpilot`; no `PATH`, `PYTHONPATH`, or `GOFLAGS` override is required. The
+`uv run debugealo`; no `PATH`, `PYTHONPATH`, or `GOFLAGS` override is required. The
 project virtual environment must be able to find the already-installed `dlv`. When Delve
 is already present at `.tools/bin/dlv`, expose it to `uv run` by creating this project-local
 link from the repository root (only when the destination does not already exist):
@@ -12,11 +12,11 @@ test -x .tools/bin/dlv && test ! -e .venv/bin/dlv && ln -s ../../.tools/bin/dlv 
 
 The link points to the existing tool; it installs nothing and changes no global settings.
 Recreate it with the same command if the project virtual environment is replaced. Confirm
-the application entrypoint with `uv run debugpilot version`. If Delve is missing or startup
+the application entrypoint with `uv run debugealo version`. If Delve is missing or startup
 fails, Code reports an actionable warning and never falls back to a normal run.
 
 ```python
-from debugpilot.debugger import DebugError, GoDebugSession
+from debugealo.debugger import DebugError, GoDebugSession
 
 session = GoDebugSession(on_event=handle_debug_event,
                          on_output=lambda category, text: append_output(category, text))
@@ -141,7 +141,7 @@ POSIX path with no backslashes or `..` segments. Invalid profiles are rejected w
 rewriting the launch file. The backend connects only to the validated loopback endpoint.
 
 ```python
-from debugpilot.debugger import DebugError, GoAttachSession
+from debugealo.debugger import DebugError, GoAttachSession
 
 session = GoAttachSession(on_event=handle_debug_event)
 try:

@@ -8,7 +8,7 @@ and owned-descendant cleanup. TUI integration remains T4b work.
 ## Quick path for the TUI owner
 
 ```python
-from debugpilot.debugger import DebugError, PythonDebugSession
+from debugealo.debugger import DebugError, PythonDebugSession
 
 session = PythonDebugSession(
     on_event=handle_debug_event,             # synchronous, nonblocking, must not raise

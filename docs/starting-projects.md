@@ -1,7 +1,7 @@
 # Start a project from its Compose file
 
 Use **Open Compose** (Ctrl+N), even when the inventory is empty. The terminal
-browser starts in DebugPilot's working directory; expand directories or enter an
+browser starts in debugealo's working directory; expand directories or enter an
 absolute directory/file path. **Up** navigates to the parent. Escape cancels
 without inspecting configuration or changing Docker.
 

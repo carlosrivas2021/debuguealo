@@ -19,7 +19,7 @@ The standard-library servers are disposable examples, not production HTTP server
 
 ## Start the lab
 
-Run these commands from the DebugPilot repository root. The Docker commands work in
+Run these commands from the debugealo repository root. The Docker commands work in
 PowerShell and POSIX shells; do not copy prompt markers such as `PS>` or `$`.
 Docker Engine and Compose v2 must be available. The first build may download the public
 `python:3.12-alpine` base image. That is installation activity, not an offline-runtime claim.
@@ -65,9 +65,9 @@ contains the project's marker, a startup timestamp and a unique API instance ID.
 Workers log `worker_poll` with the same chain; `worker_retry` or HTTP 502 means an
 upstream is not available yet. Requests never rely on the host's proxy environment.
 
-## Select a service or its group in DebugPilot
+## Select a service or its group in debugealo
 
-Start `uv run debugpilot`. Look for `dp-demo-gateway`, `dp-demo-orders` and
+Start `uv run debugealo`. Look for `dp-demo-gateway`, `dp-demo-orders` and
 `dp-demo-catalog` project groups, each containing its API and worker. A container's
 Compose service identity (`api` or `worker`) is different from its generated name.
 
@@ -122,7 +122,7 @@ Each project includes `.env.example` with a harmless `APP_MARKER`. Copy it to `.
 `cp .env.example .env` in a POSIX shell / `Copy-Item .env.example .env` in PowerShell.
 Do not put real secrets into the demo or commit `.env` files.
 
-**Restart keeps the existing environment.** Use Recreate in DebugPilot, or:
+**Restart keeps the existing environment.** Use Recreate in debugealo, or:
 
 ```console
 docker compose -f examples/multi-project/orders/compose.yaml up -d --force-recreate --no-deps api
@@ -135,7 +135,7 @@ To apply source/Dockerfile changes, choose Rebuild and recreate, or:
 docker compose -f examples/multi-project/orders/compose.yaml up --build -d --force-recreate
 ```
 
-DebugPilot additionally uses `--pull never` for service images; its **Rebuild** action
+debugealo additionally uses `--pull never` for service images; its **Rebuild** action
 can build the local service image. Builds can still obtain base images or use networks.
 Read [Compose safety and limitations](compose.md) before using non-disposable projects.
 
