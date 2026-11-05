@@ -16,6 +16,8 @@ class Settings(BaseModel):
     event_queue_size: int = Field(default=256, ge=1, le=10_000)
     docker_timeout_seconds: int = Field(default=3, ge=1, le=30)
     docker_endpoint: str | None = Field(default=None, max_length=4096)
+    # Building several images from a clean cache can take well over ten minutes.
+    compose_timeout_seconds: int = Field(default=3600, ge=60, le=3600)
 
     @field_validator("docker_endpoint")
     @classmethod

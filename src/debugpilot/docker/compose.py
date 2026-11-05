@@ -456,10 +456,12 @@ def _resolved_env_file_paths(config: dict, project: ComposeProject) -> tuple[Pat
 
 
 class ComposeService:
-    def __init__(self, settings: Settings, *, timeout_seconds: float = 600):
+    def __init__(self, settings: Settings, *, timeout_seconds: float | None = None):
         # Revalidate even a caller-supplied model constructed without Pydantic validation.
         self.settings = Settings.model_validate(settings.model_dump())
-        self.timeout_seconds = timeout_seconds
+        self.timeout_seconds = (
+            self.settings.compose_timeout_seconds if timeout_seconds is None else timeout_seconds
+        )
         self._executable = shutil.which("docker")
         self._retry_snapshot: _RuntimeSnapshot | None = None
 
@@ -927,7 +929,8 @@ class ComposeService:
                     return ComposeResult(exit_code, output)
             except TimeoutError as error:
                 raise ComposeError(
-                    "Compose timed out. Docker changes may remain; inspect the project."
+                    f"Compose timed out after {self.timeout_seconds:g} seconds. Docker changes "
+                    "may remain; inspect the project or raise compose_timeout_seconds."
                 ) from error
             except OSError as error:
                 raise ComposeError("Cannot start the local Docker CLI with Compose v2.") from error
