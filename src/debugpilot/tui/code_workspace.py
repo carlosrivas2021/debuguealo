@@ -50,9 +50,10 @@ class CodeWorkspace(Vertical):
         yield self._debug
         yield self._pane
         yield Static(
-            "F5: run without debug · Escape: return to profiles · Stop: end Code process tree. "
-            "Shift+F5: Python debug · Continue: button · F10/F11/Shift+F11: step. "
-            "Debug output has no stdin. Source is read-only.",
+            "F5: run without debug · Escape: return to profiles · Stop: end owned Code process. "
+            "Shift+F5: debug/attach · Continue: button · F10/F11/Shift+F11: step. "
+            "Attach Disconnect leaves the target to Containers; debug output has no stdin. "
+            "Source is read-only.",
             id="code-capabilities",
         )
 
@@ -103,6 +104,8 @@ class CodeWorkspace(Vertical):
         self._run_button.disabled = running
         self._debug_button.disabled = running
         self._stop_button.disabled = not running
+        if not running:
+            self._stop_button.label = "Stop"
 
     @on(Button.Pressed, "#code-run")
     def run_selected(self):
@@ -116,6 +119,14 @@ class CodeWorkspace(Vertical):
             self._state("No Code profile selected. Open code launch.json to add one.")
             return
         profile = self._profiles[table.ordered_rows[table.cursor_row].key.value]
+        if not profile.command:
+            message = (
+                f"{profile.name} is attach-only. Use Shift+F5 to connect; "
+                "F5 does not start a local process."
+            )
+            self._state(message)
+            self.app.notify(message, severity="warning")
+            return
         self._debug.display = False
         self._pane.display = True
         self._state(f"Starting: {profile.name}")
@@ -137,6 +148,8 @@ class CodeWorkspace(Vertical):
         self._pane.display = False
         self._controls(True)
         self._debug.start(profile)
+        if profile.go_attach is not None:
+            self._stop_button.label = "Disconnect"
 
     @on(SourceBrowser.BreakpointsChanged)
     def breakpoints_changed(self, event):
@@ -161,6 +174,7 @@ class CodeWorkspace(Vertical):
     @on(Button.Pressed, "#code-stop")
     async def stop(self):
         self._stopping = True
+        disconnecting = self._debug.active and self._debug.profile.go_attach is not None
         self._controls(True)
         try:
             task, self._run_task = self._run_task, None
@@ -169,7 +183,10 @@ class CodeWorkspace(Vertical):
                 await asyncio.gather(task, return_exceptions=True)
             await self._debug.close()
             await self._pane.close_session()
-            self._state("Stopped")
+            self._state(
+                "Disconnected; target remains managed by Containers"
+                if disconnecting else "Stopped"
+            )
         finally:
             self._controls(False)
             self._stopping = False

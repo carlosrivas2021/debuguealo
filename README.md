@@ -13,10 +13,13 @@ The **Code** area registers project folders using a separate central `projects/l
 and runs the selected profile without debug using **F5**, with an interactive console and
 **Stop** control. **Shift+F5** debugs Python and supported Go profiles with the same
 profile: mark read-only source, pause at a breakpoint, inspect stack/variables, step and
-Continue. Requested breakpoints remain separate from adapter verification. Python debug
+Continue. Go attach profiles can connect to an existing loopback Delve target without
+starting or owning that target; disconnect leaves its lifecycle to Containers. Requested
+breakpoints remain separate from adapter verification. Python debug
 requires `debugpy` in the selected interpreter; Go debug requires Delve (`dlv`) on the
 application PATH. Debug mode has no interactive stdin, and missing adapters never fall
-back to run. See [code projects](docs/code-projects.md). Server-side Node debugging
+back to run. See [code projects](docs/code-projects.md), including the Go remote attach schema,
+source mapping, controls and reconnect workflow. Server-side Node debugging
 supports direct scripts and explicit npm debug targets; see [code projects](docs/code-projects.md#debug-server-side-node).
 The FastAPI example remains pending.
 No connection is simulated in the application.

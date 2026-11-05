@@ -8,7 +8,13 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, RichLog, Static
 
-from debugpilot.debugger import DebugError, GoDebugSession, NodeDebugSession, PythonDebugSession
+from debugpilot.debugger import (
+    DebugError,
+    GoAttachSession,
+    GoDebugSession,
+    NodeDebugSession,
+    PythonDebugSession,
+)
 from debugpilot.storage.code_projects import is_node_command, is_npm_command
 
 
@@ -77,7 +83,9 @@ class CodeDebug(Vertical):
 
         command_name = Path(profile.command[0]).name.lower() if profile.command else ""
         backend = (
-            GoDebugSession
+            GoAttachSession
+            if profile.go_attach is not None
+            else GoDebugSession
             if command_name in {"go", "go.exe"}
             else NodeDebugSession
             if is_node_command(profile.command)
@@ -127,19 +135,32 @@ class CodeDebug(Vertical):
             state = body.get('state')
             if state != 'stopped':
                 self._invalidate()
-            self.state_changed(f'Debug {state}: {self.profile.name} · {self.profile.root}')
+            if self.profile.go_attach is not None:
+                label = {
+                    'starting': 'Connecting', 'running': 'Attached',
+                    'stopped': 'Stopped', 'closed': 'Disconnected',
+                }.get(state, f'Debug {state}')
+            else:
+                label = f'Debug {state}'
+            self.state_changed(f'{label}: {self.profile.name} · {self.profile.root}')
             if state == 'closed':
                 self.active = False
                 self.browser.set_verification(self.profile.root, {})
-                result = (
-                    "finalizado; código de salida no disponible"
-                    if self.session.exit_code is None
-                    and Path(self.profile.command[0]).name.lower() in {"go", "go.exe"}
-                    else f"Exited: {self.session.exit_code}"
-                )
-                self.state_changed(
-                    f'{result} · {self.profile.name} · {self.profile.root}'
-                )
+                if self.profile.go_attach is None:
+                    result = (
+                        "finalizado; código de salida no disponible"
+                        if self.session.exit_code is None
+                        and Path(self.profile.command[0]).name.lower() in {"go", "go.exe"}
+                        else f"Exited: {self.session.exit_code}"
+                    )
+                    self.state_changed(
+                        f'{result} · {self.profile.name} · {self.profile.root}'
+                    )
+                else:
+                    self.state_changed(
+                        f'Disconnected: {self.profile.name} · {self.profile.root} · '
+                        'target remains managed by Containers'
+                    )
                 self.finished()
         elif name == 'stopped':
             self._invalidate()

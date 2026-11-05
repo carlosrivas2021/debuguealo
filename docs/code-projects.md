@@ -125,7 +125,58 @@ rewrites and no source edits. Python script/module grammar and installation guid
 the [Python backend API and limits](python-debugging.md). Go debugging supports only
 `go run main.go [args...]` and `go run . [args...]`; install Delve separately and make
 `dlv` available on the application PATH. See the [Go debugging walkthrough and limits](go-debugging.md).
-Attach, expression evaluation and interactive debug stdin remain deferred.
+Expression evaluation and interactive debug stdin remain unsupported.
+
+## Attach to an existing Go/Delve target
+
+Use `goAttach` to connect Code to an already running headless Delve DAP server. Code
+connects only to loopback and never starts a local adapter, builds a program, launches the
+profile command, or owns the target process. Containers remains responsible for starting,
+stopping, and inspecting the container.
+
+```json
+{
+  "name": "Go remote",
+  "workspaceFolder": "/local/path/to/go-debug",
+  "goAttach": {
+    "host": "127.0.0.1",
+    "port": 2345,
+    "remoteRoot": "/app"
+  }
+}
+```
+
+`goAttach` has exactly three required keys: `host` is `127.0.0.1`; `port` is an integer
+from 1 through 65535 (a JSON boolean is not an integer); and `remoteRoot` is an absolute
+POSIX path without backslashes or `..` path segments. Invalid profiles are reported rather
+than rewritten. `command` is optional for attach-only profiles. If supplied, it retains its
+ordinary F5 meaning and is never run by attach. F5 on an attach-only profile warns to use
+Shift+F5 and does not launch a local process.
+
+1. Start the target/container and its headless Delve server independently in **Containers**.
+   The configured endpoint must already be reachable on `127.0.0.1:<port>`.
+2. Add the profile above to Code's central `projects/launch.json`, replacing the local
+   `workspaceFolder` with the folder containing the matching source tree.
+3. Open source, mark pending breakpoints, then press **Shift+F5**. Code shows
+   **Connecting**, then **Attached**; the started profile and root remain pinned even if
+   another profile is selected, profiles are reloaded, or the user switches areas.
+4. At a pause, inspect stack, scopes and variables; use **Continue**, **Over F10**,
+   **In F11**, and **Out Shift+F11**. Breakpoints, stack navigation and source previews
+   follow the attached profile's local root.
+5. Use **Disconnect** or **Stop** to close only the DAP client. The target may continue or
+   remain paused; it is not terminated and the UI does not report it as exited. Reconnect
+   with **Shift+F5** after ensuring the Delve endpoint is still available. Containers
+   independently reports and controls the container lifecycle.
+
+Local `workspaceFolder` maps to remote `remoteRoot` (for example, local `main.go` maps to
+`/app/main.go`). Breakpoints are sent with remote paths; returned stack paths are mapped
+back into the local root and checked for containment before source preview. The configured
+Delve server must be started with compatible source substitution and expose the remote
+DAP target. Attach supports breakpoints, stopped state, stack, scopes, variables, step and
+continue. It does not support expression evaluation, debug stdin, arbitrary endpoints,
+starting/stopping Delve, or target lifecycle management. Target stdout/stderr remain
+available through the container's logs; the Code attach session does not present them as
+its debug output stream.
 
 ## Debug server-side Node
 
