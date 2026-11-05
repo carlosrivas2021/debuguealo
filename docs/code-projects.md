@@ -163,10 +163,13 @@ Shift+F5 and does not launch a local process.
 4. At a pause, inspect stack, scopes and variables; use **Continue**, **Over F10**,
    **In F11**, and **Out Shift+F11**. Breakpoints, stack navigation and source previews
    follow the attached profile's local root.
-5. Use **Disconnect** or **Stop** to close only the DAP client. The target may continue or
-   remain paused; it is not terminated and the UI does not report it as exited. Reconnect
-   with **Shift+F5** after ensuring the Delve endpoint is still available. Containers
-   independently reports and controls the container lifecycle.
+5. Use **Disconnect** or **Stop** to clear this attach session's remote breakpoints and
+   leave the target running, even when it was paused. The target is not terminated and the UI
+   does not report it as exited. Local requested marks and their stored data are preserved
+   and reapplied on reconnect; a transport failure while clearing, resuming, or disconnecting
+   shows a warning and reports the target state as unknown. Reconnect with **Shift+F5** after
+   ensuring the Delve endpoint is still available.
+   Containers independently reports and controls the container lifecycle.
 
 Local `workspaceFolder` maps to remote `remoteRoot` (for example, local `main.go` maps to
 `/app/main.go`). Breakpoints are sent with remote paths; returned stack paths are mapped
