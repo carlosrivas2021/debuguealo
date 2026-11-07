@@ -116,6 +116,7 @@ unrelated stream is not opened automatically.
 | `r` | Preview Recreate for the selected saved launch profile. |
 | `Shift+R` | Preview Build + Recreate for the selected saved launch profile. |
 | `s` | Confirm stopping the selected visible container or project group. |
+| `a` | Refresh AWS credentials for every profile with `awsCredentials`, then offer Recreate for the running ones. |
 | `C` | From the project tree, show `/bin/sh` for the selected running container in the logs area. |
 | `H` | With the project tree focused, open host Bash in the explicit local workspace or the selected central profile's validated working directory. |
 | `D` | Show details for the selected actual container. |

@@ -42,6 +42,80 @@ Opening or creating the file never runs Compose.
 
 `workspaceFolder` is required in central mode and must name an existing, non-symlink absolute directory; it is the project root, never inferred from cwd or Docker metadata. `cwd` is where relative file paths are resolved, while `${workspaceFolder}` expands to that profile's root. `projectDirectory` is optional; without it, Compose uses the first file's parent. No shell command, inherited environment, or other variable expansion is performed. `up` flags are optional strict booleans; omitted values remain unspecified.
 
+## Limiting a profile to some services
+
+Add the optional `services` array to run a profile against only part of its Compose
+project, for example a shared database defined beside application services:
+
+```json
+{
+  "name": "Shared database",
+  "type": "docker-compose",
+  "projectName": "platform",
+  "workspaceFolder": "/path/to/project",
+  "cwd": "${workspaceFolder}",
+  "files": ["local/platform/docker-compose.yaml"],
+  "services": ["database"],
+  "up": {"build": true, "detach": true, "forceRecreate": true}
+}
+```
+
+**Play / Recreate** and **Build + Recreate** append the names to `docker compose up`
+(and to `restart`), so only those services are created or recreated. Compose still starts
+their declared `depends_on` dependencies; `--no-deps` is not added. The confirmation
+shows the service names instead of "all services". **Stop** on the profile row pins only
+active containers whose Compose service is listed; selecting an individual child
+container still stops just that container.
+
+`services` must be an array of unique Compose service names (letters, digits, `.`,
+`_`, `-`, starting with a letter or digit); anything else leaves the profile pending.
+Names are checked against `docker compose config --services` before any mutating
+operation, and an unknown name fails without running `up`. Omitting the field or
+setting `"services": []` keeps acting on every service in the project. Containers of unlisted services still
+appear under the profile because grouping uses the Compose project label.
+
+## Refreshing AWS credentials
+
+Profiles whose containers read AWS session credentials from a dotenv file can declare
+where those credentials go:
+
+```json
+{
+  "name": "Worker",
+  "type": "docker-compose",
+  "projectName": "worker",
+  "workspaceFolder": "/path/to/project",
+  "cwd": "${workspaceFolder}",
+  "files": ["local/worker/docker-compose.yaml"],
+  "awsCredentials": {
+    "envFiles": ["local/.env.aws"],
+    "profile": "dev"
+  }
+}
+```
+
+`envFiles` lists 1–16 files, resolved like `files` (relative to `cwd`, confined to
+`workspaceFolder`). A file may be missing, but its directory must exist. `profile` is
+an optional AWS CLI profile name; without it the default credential chain is used.
+An invalid `awsCredentials` object leaves the profile pending.
+
+Press **a** in the dashboard, or run `debugpilot credentials refresh`, to refresh every
+saved profile that declares `awsCredentials`. debugealo runs
+`aws configure export-credentials --format process [--profile NAME]` without a shell,
+once per AWS profile, and writes each distinct file once. Only `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` are replaced (or appended); other lines
+such as `AWS_REGION` are kept. A stale session token is removed when the CLI issues
+none. Files are written atomically with mode 0600 and symlinks are refused. Credential
+values are never printed, logged or written to temporary files outside the target
+directory.
+
+If the SSO session expired, the AWS CLI fails and debugealo asks you to run
+`aws sso login` (with `--profile` when set); it never opens a browser itself. Containers
+keep their old environment until recreated, so after a successful refresh the dashboard
+offers **Recreate** for the refreshed profiles that have running containers. Confirm to
+recreate them one after another, or press Escape to skip. The CLI command only lists
+the profiles to recreate.
+
 ## Discovery and safety
 
 Discovery groups containers by Compose project label, not container ID. Saved profiles
