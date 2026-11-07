@@ -42,12 +42,15 @@ processes. Container action shortcuts are inactive in Code.
 2. Type in the Code terminal for interactive input. **Escape** returns focus to profiles.
 3. Click **Stop** to end that Code process tree. After stopping or exit, run again with F5.
 
-Only one Code execution runs at a time. F5 while starting/running does not restart or
-launch another process. Changing the selected profile or switching areas does not
-retarget or stop the active execution. Reload affects the next run only.
-The status line reports `Running`, `Exited: <code>`, `Stopped`, or a startup error.
-The terminal retains the last screen after exit; a new run starts with a fresh screen.
-Quitting debugealo also stops Code execution, including startup in progress.
+Each saved profile can own at most one pending or active Code run. Different profiles
+may run simultaneously and may run alongside local debug contexts. F5 on a profile that
+already has a live run selects its terminal; it does not spawn a duplicate. F5 on that
+profile's active debug context selects the debugger instead of changing modes. Selecting
+another profile never stops its background run; its terminal screen and output are retained.
+**Stop** affects only the selected run or debug context. The status line reports the
+selected context's `Starting`, `Running`, `Exited: <code>`, `Stopped`, or startup error.
+A new run after exit starts with a fresh terminal screen. Quitting debugealo stops all
+owned Code runs, including startup in progress.
 
 Commands inherit the environment and run in their configured folder, using argv rather
 than a host shell. On Windows, npm's standard `npm.cmd` entry is resolved to Node plus
@@ -102,14 +105,24 @@ The preview is not an operating-system sandbox; browse trusted local projects.
 5. **Stop** ends the owned adapter and target tree, including pending startup.
    Quitting also cancels startup and closes the owned session.
 
-Only one Code run **or** debug session is active. Stop before changing modes or
-starting another profile. Selecting another profile, reloading configuration, or
-switching areas never retargets the running session, its output, or Stop. Stack
-navigation returns to the started profile's root, even if another row is selected.
-Breakpoint edits synchronize only when they belong to that started root; marks in
-other roots remain local pending intent for the next launch. Switching to Containers
-preserves Code work but disables Code launch/step shortcuts there. Focused interactive
-terminals and modal dialogs retain their existing shortcut guards.
+Code retains a separate run or debug context for each saved profile. Select another profile
+to view its output, stack, variables, source execution marker, and controls; background events
+stay with their owning profile. Starting a profile that already has a live context selects it
+instead of spawning a duplicate. **Stop** affects only the selected profile context, and
+quitting closes all owned local runs/debuggers while disconnecting (never terminating)
+external Go targets. Requested breakpoint intent is shared by project root; adapter
+verification and inspection state belong to each debugger context.
+
+Distinct profiles may run, debug, or attach concurrently. A profile name remains pinned to
+its live configuration through reload/removal and cannot start a second session under edited
+settings until its existing context is retired. The same external Go host/port cannot be
+attached through two profiles because remote breakpoint cleanup is shared; a rejected attach
+does not create a backend or touch the target. Attach recovery remains explicit and pinned:
+there is no automatic reconnect or endpoint probing. Selecting another profile or switching
+areas never stops or retargets a live context.
+Stack navigation returns to its started profile's root. Switching to Containers preserves
+Code work but disables Code launch/step shortcuts there. Focused interactive terminals and
+modal dialogs retain their existing shortcut guards.
 
 Debug output is Code-only, attributed to the started profile, and bounded to 2,000
 rendered lines. Debug mode uses `internalConsole`: **interactive stdin is not supported**;
@@ -165,7 +178,9 @@ Shift+F5 and does not launch a local process.
    follow the attached profile's local root.
 5. Use **Disconnect** or **Stop** to clear this attach session's remote breakpoints and
    leave the target running, even when it was paused. The target is not terminated and the UI
-   does not report it as exited. Local requested marks and their stored data are preserved
+   does not report it as exited. The same external endpoint cannot be attached concurrently
+   through two profiles because remote breakpoint cleanup is shared. Local requested marks
+   and their stored data are preserved
    and reapplied on reconnect; a transport failure while clearing, resuming, or disconnecting
    shows a warning and reports the target state as unknown. If the transport is lost
    unexpectedly, Code shows **Unexpected disconnect; target state UNKNOWN** and offers an

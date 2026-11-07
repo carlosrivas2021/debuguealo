@@ -158,6 +158,7 @@ async def test_owned_real_api_and_ui(monkeypatch, tmp_path):
             await pilot.press("shift+f5")
             await wait_for(lambda: "answer = 41" in rendered(app, "#code-variables"))
             debug = app.query_one("#code-debug")
+            ui_session = debug.session
             assert debug.session.verified_breakpoints[str(ui_source)][0]["verified"]
             assert browser.file_path == ui_source
             assert app.query_one("#code-stop").label == "Disconnect"
@@ -166,7 +167,14 @@ async def test_owned_real_api_and_ui(monkeypatch, tmp_path):
             await pilot.click("#area-containers")
             await pilot.click("#area-code")
             await pilot.click("#code-reload")
+            assert debug.profile is None
+            assert app.query_one("#code-stop").disabled
+            assert process.returncode is None
+            app.query_one("#code-projects").move_cursor(row=0)
+            await pilot.pause()
+            assert debug.session is ui_session
             assert debug.profile.root == roots[0]
+            assert debug.profile.go_attach.port == port
             stack = app.query_one("#code-stack")
             stack.focus()
             await pilot.press("enter")

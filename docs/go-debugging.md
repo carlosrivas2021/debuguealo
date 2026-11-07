@@ -88,6 +88,15 @@ At the stop, inspect the stack and the `answer` variable (`41`), then choose **C
 profile command tuple is not rewritten when debugging. This walkthrough does not require
 or modify a project beyond the sample file and manually edited profile.
 
+The Code UI keeps one live session per saved profile, not one global session: distinct
+profiles can run, debug, or attach at the same time. Selecting another profile changes
+which session's output and controls are shown; **Stop** or **Disconnect** acts only on that
+selected session. Reloading edited or removed profiles does not retarget an active session;
+its saved name and original launch settings remain pinned until it is stopped or disconnected.
+Distinct Go attach endpoints may coexist, but the same host/port is rejected for another
+profile because remote breakpoint cleanup is shared. Reconnecting after unexpected loss is
+always an explicit action.
+
 When an authoritative exit code is reported, the UI displays that code. Delve may close
 without reporting one; the UI then displays the exact status **“finalizado; código de
 salida no disponible”**. This indicates completion with unknown status, not success.

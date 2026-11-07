@@ -1,6 +1,7 @@
-"""Code-only debug presentation and generation-scoped asynchronous ownership."""
+"""Code debug contexts with one shared, selection-routed presentation."""
 
 import asyncio
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from textual import on
@@ -18,22 +19,71 @@ from debugpilot.debugger import (
 from debugpilot.storage.code_projects import is_node_command, is_npm_command
 
 
+@dataclass
+class DebugContext:
+    profile: object
+    key: tuple
+    session: object = None
+    active: bool = False
+    generation: int = 0
+    pause: int = 0
+    tasks: set = field(default_factory=set)
+    start_task: object = None
+    frames: list = field(default_factory=list)
+    output: list = field(default_factory=list)
+    variables: str = 'Variables: —'
+    execution: tuple | None = None
+    state: str = ''
+    unexpected_disconnect: bool = False
+    close_error: str | None = None
+    update_lock: object = field(default_factory=asyncio.Lock)
+    stopping: bool = False
+    close_task: object = None
+
+
 class CodeDebug(Vertical):
+    """Own one debugger per frozen profile while presenting only the selected one."""
+
     def __init__(self, browser, state_changed, finished):
         super().__init__(id='code-debug')
         self.browser = browser
         self.state_changed = state_changed
         self.finished = finished
-        self.session = None
-        self.profile = None
-        self.active = False
-        self._generation = 0
-        self._pause = 0
-        self._tasks = set()
-        self._start_task = None
-        self._frames = []
-        self._update_lock = asyncio.Lock()
-        self._unexpected_disconnect = False
+        self.contexts: dict[tuple, DebugContext] = {}
+        self.selected_key: tuple | None = None
+
+    @staticmethod
+    def profile_key(profile):
+        # The saved name is the stable identity; a live context pins its original config.
+        return profile.name
+
+    @property
+    def selected(self):
+        return self.contexts.get(self.selected_key)
+
+    @property
+    def session(self):
+        return self.selected.session if self.selected else None
+
+    @property
+    def profile(self):
+        return self.selected.profile if self.selected else None
+
+    @property
+    def active(self):
+        return bool(self.selected and self.selected.active)
+
+    @property
+    def _generation(self):
+        return self.selected.generation if self.selected else 0
+
+    @property
+    def _tasks(self):
+        return self.selected.tasks if self.selected else set()
+
+    @property
+    def _start_task(self):
+        return self.selected.start_task if self.selected else None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id='code-debug-controls'):
@@ -50,202 +100,332 @@ class CodeDebug(Vertical):
         self.query_one(DataTable).add_columns('Frame', 'Source', 'Line')
         self.display = False
 
-    def _spawn(self, coroutine):
+    def _spawn(self, context, coroutine):
         task = asyncio.create_task(coroutine)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        context.tasks.add(task)
+        task.add_done_callback(context.tasks.discard)
         return task
 
-    def _current(self, generation):
-        return self.active and self._generation == generation
+    def _current(self, context, generation):
+        return context.active and context.generation == generation
 
-    def start(self, profile):
-        if self.active:
+    def context_for(self, profile):
+        if profile is None:
+            return None
+        return self.contexts.get(self.profile_key(profile))
+
+    def select_context(self, context):
+        self.selected_key = context.key if context in self.contexts.values() else None
+        self._show_selected()
+
+    def select_profile(self, profile):
+        context = self.context_for(profile)
+        self.selected_key = context.key if context is not None else None
+        if context is None and profile is not None:
+            self.browser.set_verification(profile.root, {})
+        self._show_selected()
+
+    def _show_selected(self):
+        context = self.selected
+        self.display = context is not None
+        if context is None:
+            self._clear_view()
             return
-        self._generation += 1
-        generation = self._generation
-        self.active = True
-        self.profile = profile  # Frozen CodeProject, never the current table selection.
-        self._unexpected_disconnect = False
-        self.display = True
-        self.query_one(RichLog).clear()
-        self._invalidate()
+        self._render_context(context)
 
-        def event(message):
-            # Backend enqueues before calling the hook, including during start().
-            # Drain even obsolete sessions without retaining an event history.
-            while not session.events.empty():
-                session.events.get_nowait()
-            if self._current(generation):
-                self.call_later(self._event, generation, message)
-
-        def output(category, text):
-            if self._current(generation):
-                self.query_one(RichLog).write(f'[{profile.name} · {category}] {text.rstrip()}')
-
-        command_name = Path(profile.command[0]).name.lower() if profile.command else ""
-        backend = (
-            GoAttachSession
-            if profile.go_attach is not None
-            else GoDebugSession
-            if command_name in {"go", "go.exe"}
-            else NodeDebugSession
-            if is_node_command(profile.command)
-            or (is_npm_command(profile.command) and profile.node_debug is not None)
-            else PythonDebugSession
-        )
-        session = self.session = backend(on_event=event, on_output=output)
-        intent = self.browser.breakpoint_snapshot(profile.root)
-        self.state_changed(f'Starting debug: {profile.name} · {profile.root}')
-        self._start_task = self._spawn(self._start(session, generation, intent))
-
-    async def _start(self, session, generation, intent):
-        try:
-            await session.start(self.profile, intent)
-            if self._current(generation):
-                self._verification()
-        except (DebugError, OSError) as error:
-            if self._current(generation):
-                await self.close()
-                message = f'Unable to debug {self.profile.name}: {error}'
-                self.state_changed(message)
-                self.app.notify(message, severity='warning')
-                self.finished()
-
-    def _verification(self):
-        self.browser.set_verification(
-            self.profile.root, self.session.verified_breakpoints,
-            self.session.requested_breakpoints,
-        )
-
-    def _invalidate(self):
-        self._pause += 1
-        self._frames = []
+    def _clear_view(self):
         if not self.query(DataTable):
-            return  # Children are already pruned during repeated unmount cleanup.
+            return
         self.query_one(DataTable).clear()
         self.query_one('#code-variables', Static).update('Variables: —')
+        self.query_one(RichLog).clear()
         self.browser.clear_execution()
         for button in self.query(Button):
             button.disabled = True
 
-    def _event(self, generation, message):
-        if not self._current(generation):
+    def _render_context(self, context):
+        if self.selected is not context or not self.query(DataTable):
+            return
+        log = self.query_one(RichLog)
+        log.clear()
+        for line in context.output:
+            log.write(line)
+        table = self.query_one(DataTable)
+        table.clear()
+        for index, frame in enumerate(context.frames):
+            table.add_row(frame.get('name', '?'), frame.get('source', {}).get('path', '?'),
+                          str(frame.get('line', '?')), key=str(index))
+        self.query_one('#code-variables', Static).update(context.variables)
+        enabled = (
+            context.active and context.session is not None
+            and context.session.state == 'stopped'
+        )
+        for button in self.query(Button):
+            button.disabled = not enabled
+        self.browser.clear_execution()
+        if context.session is not None and context.profile is not None:
+            self._verification(context)
+        if context.execution is not None:
+            root, path, line = context.execution
+            self.browser.show_execution(root, path, line)
+
+    def _set_state(self, context, message):
+        context.state = message
+        if self.selected is context:
+            self.state_changed(message)
+
+    def _deliver_output(self, context, generation, message):
+        if self._current(context, generation):
+            self._append_output(context, message)
+
+    def _append_output(self, context, message):
+        context.output.append(message)
+        context.output = context.output[-2000:]
+        if self.selected is context and self.query(RichLog):
+            self.query_one(RichLog).write(message)
+
+    def start(self, profile):
+        key = self.profile_key(profile)
+        existing = self.contexts.get(key)
+        if existing is not None and existing.active:
+            self.select_profile(profile)
+            return
+        if profile.go_attach is not None:
+            endpoint = (profile.go_attach.host, profile.go_attach.port)
+            if any(context.active and context.profile.go_attach is not None
+                   and (context.profile.go_attach.host, context.profile.go_attach.port) == endpoint
+                   for context in self.contexts.values()):
+                self.state_changed(
+                    f'Go attach endpoint {endpoint[0]}:{endpoint[1]} is already active.'
+                )
+                self.finished(False)
+                return
+        other_active = [context for context in self.contexts.values()
+                        if (context.active or context.stopping) and context.key != key]
+        if profile.go_attach is not None and any(
+            context.profile.go_attach is not None
+            and (context.profile.go_attach.host, context.profile.go_attach.port)
+            == (profile.go_attach.host, profile.go_attach.port)
+            for context in other_active
+        ):
+            self.state_changed(
+                f'Go attach endpoint {profile.go_attach.host}:{profile.go_attach.port} '
+                'is already active.'
+            )
+            self.finished(False)
+            return
+        context = existing or DebugContext(profile=profile, key=key)
+        if existing is not None and (existing.active or existing.stopping):
+            self.select_context(existing)
+            return
+        previous_session = context.session if existing is not None else None
+        context.profile = profile
+        self.contexts[key] = context
+        self.selected_key = key
+        context.generation += 1
+        generation = context.generation
+        context.active = True
+        context.unexpected_disconnect = False
+        context.output.clear()
+        context.frames.clear()
+        context.variables = 'Variables: —'
+        context.execution = None
+        self.display = True
+        self._render_context(context)
+        intent = self.browser.breakpoint_snapshot(profile.root)
+        self._set_state(context, f'Starting debug: {profile.name} · {profile.root}')
+        context.start_task = self._spawn(
+            context, self._launch(context, profile, generation, intent, previous_session)
+        )
+
+    async def _launch(self, context, profile, generation, intent, previous_session):
+        try:
+            if previous_session is not None:
+                await previous_session.close()
+            if not self._current(context, generation):
+                return
+
+            session = None
+
+            def event(message):
+                while not session.events.empty():
+                    session.events.get_nowait()
+                if self._current(context, generation):
+                    self.call_later(self._event, context, generation, message)
+
+            def output(category, text):
+                if self._current(context, generation):
+                    self.call_later(
+                        self._deliver_output, context, generation,
+                        f'[{profile.name} · {category}] {text.rstrip()}',
+                    )
+
+            command_name = Path(profile.command[0]).name.lower() if profile.command else ""
+            backend = (
+                GoAttachSession
+                if profile.go_attach is not None
+                else GoDebugSession
+                if command_name in {"go", "go.exe"}
+                else NodeDebugSession
+                if is_node_command(profile.command)
+                or (is_npm_command(profile.command) and profile.node_debug is not None)
+                else PythonDebugSession
+            )
+            session = context.session = backend(on_event=event, on_output=output)
+            await self._start(context, session, generation, intent)
+        except (DebugError, OSError) as error:
+            if self._current(context, generation):
+                context.active = False
+                message = f'Unable to debug {context.profile.name}: {error}'
+                self._set_state(context, message)
+                self.app.notify(message, severity='warning')
+                if self.selected is context:
+                    self.finished(False)
+
+    async def _start(self, context, session, generation, intent):
+        try:
+            await session.start(context.profile, intent)
+            if self._current(context, generation) and self.selected is context:
+                self._verification(context)
+        except (DebugError, OSError) as error:
+            if self._current(context, generation):
+                await self.close_context(context)
+                message = f'Unable to debug {context.profile.name}: {error}'
+                self._set_state(context, message)
+                self.app.notify(message, severity='warning')
+                if self.selected is context:
+                    self.finished(False)
+
+    def _verification(self, context):
+        self.browser.set_verification(
+            context.profile.root, context.session.verified_breakpoints,
+            context.session.requested_breakpoints,
+        )
+
+    def _invalidate(self, context):
+        context.pause += 1
+        context.frames = []
+        context.variables = 'Variables: —'
+        context.execution = None
+        if self.selected is context:
+            self._render_context(context)
+
+    def _event(self, context, generation, message):
+        if not self._current(context, generation):
             return
         name, body = message.get('event'), message.get('body', {})
-        if name == 'transportClosed' and self.profile.go_attach is not None:
-            self._unexpected_disconnect = True
+        if name == 'transportClosed' and context.profile.go_attach is not None:
+            context.unexpected_disconnect = True
             reason = body.get('message')
             detail = f': {reason}' if reason else ''
-            self.state_changed(
+            self._set_state(context,
                 f'Unexpected disconnect; target state UNKNOWN{detail} · '
-                f'{self.profile.name} · {self.profile.root}'
-            )
+                f'{context.profile.name} · {context.profile.root}')
         elif name == 'state':
             state = body.get('state')
             if state != 'stopped':
-                self._invalidate()
-            if self.profile.go_attach is not None:
-                label = {
-                    'starting': 'Connecting', 'running': 'Attached',
-                    'stopped': 'Stopped', 'closed': 'Disconnected',
-                }.get(state, f'Debug {state}')
+                self._invalidate(context)
+            if context.profile.go_attach is not None:
+                label = {'starting': 'Connecting', 'running': 'Attached',
+                         'stopped': 'Stopped', 'closed': 'Disconnected'}.get(
+                             state, f'Debug {state}')
             else:
                 label = f'Debug {state}'
-            self.state_changed(f'{label}: {self.profile.name} · {self.profile.root}')
+            self._set_state(context, f'{label}: {context.profile.name} · {context.profile.root}')
             if state == 'closed':
-                self.active = False
-                self.browser.set_verification(self.profile.root, {})
-                if self.profile.go_attach is None:
+                context.active = False
+                if self.selected is context:
+                    self.browser.set_verification(context.profile.root, {})
+                if context.profile.go_attach is None:
                     result = (
                         "finalizado; código de salida no disponible"
-                        if self.session.exit_code is None
-                        and Path(self.profile.command[0]).name.lower() in {"go", "go.exe"}
-                        else f"Exited: {self.session.exit_code}"
+                        if context.session.exit_code is None
+                        and Path(context.profile.command[0]).name.lower() in {"go", "go.exe"}
+                        else f"Exited: {context.session.exit_code}"
                     )
-                    self.state_changed(
-                        f'{result} · {self.profile.name} · {self.profile.root}'
-                    )
+                    self._set_state(context,
+                        f'{result} · {context.profile.name} · {context.profile.root}')
                 else:
-                    warning = getattr(self.session, 'disconnect_warning', None)
-                    if self._unexpected_disconnect:
+                    warning = getattr(context.session, 'disconnect_warning', None)
+                    if context.unexpected_disconnect:
                         detail = f': {warning}' if warning else ''
-                        self.state_changed(
+                        self._set_state(context,
                             f'Unexpected disconnect; target state UNKNOWN{detail} · '
-                            f'{self.profile.name} · {self.profile.root}'
-                        )
+                            f'{context.profile.name} · {context.profile.root}')
                     elif warning:
                         message = f'Disconnected; target state UNKNOWN: {warning}'
-                        self.state_changed(message)
+                        self._set_state(context, message)
                         self.app.notify(message, severity='warning')
                     else:
-                        self.state_changed(
-                            f'Disconnected: {self.profile.name} · {self.profile.root} · '
-                            'target remains managed by Containers'
-                        )
-                self.finished(self._unexpected_disconnect)
+                        self._set_state(context,
+                            f'Disconnected: {context.profile.name} · {context.profile.root} · '
+                            'target remains managed by Containers')
+                if self.selected is context:
+                    self._render_context(context)
+                    self.finished(context.unexpected_disconnect)
         elif name == 'stopped':
-            self._invalidate()
-            for button in self.query(Button):
-                button.disabled = False
-            self._spawn(self._inspect(generation, self._pause))
+            context.pause += 1
+            self._spawn(context, self._inspect(context, generation, context.pause))
         elif name in {'breakpoint', 'breakpoints'}:
-            self._verification()
+            if self.selected is context:
+                self._verification(context)
 
-    def _paused(self, generation, pause):
-        return (self._current(generation) and pause == self._pause
-                and self.session.state == 'stopped')
+    def _paused(self, context, generation, pause):
+        return (self._current(context, generation) and pause == context.pause
+                and context.session.state == 'stopped')
 
-    async def _inspect(self, generation, pause):
+    async def _inspect(self, context, generation, pause):
         try:
-            session = self.session
-            frames = await session.stack()
-            if not self._paused(generation, pause):
+            frames = await context.session.stack()
+            if not self._paused(context, generation, pause):
                 return
-            self._frames = frames
-            table = self.query_one(DataTable)
-            table.clear()
-            for index, frame in enumerate(frames):
-                table.add_row(frame.get('name', '?'), frame.get('source', {}).get('path', '?'),
-                              str(frame.get('line', '?')), key=str(index))
+            context.frames = frames
             if frames:
-                await self._frame(generation, pause, frames[0])
+                await self._frame(context, generation, pause, frames[0])
+            if self.selected is context:
+                self._render_context(context)
         except DebugError as error:
-            if self._paused(generation, pause):
+            if self._paused(context, generation, pause):
                 self.app.notify(str(error), severity='warning')
 
-    async def _frame(self, generation, pause, frame):
-        session = self.session
-        scopes = await session.scopes(frame['id'])
+    async def _frame(self, context, generation, pause, frame):
+        scopes = await context.session.scopes(frame['id'])
         values = []
         for scope in scopes:
-            if not self._paused(generation, pause):
+            if not self._paused(context, generation, pause):
                 return
             if scope.get('expensive'):
                 continue
-            variables = await session.variables(scope['variablesReference'])
+            variables = await context.session.variables(scope['variablesReference'])
             values.append(scope.get('name', 'Scope') + ':')
-            values.extend(f"{v['name']} = {v.get('value', '')}" for v in variables)
-        if not self._paused(generation, pause):
+            values.extend(f"{value['name']} = {value.get('value', '')}" for value in variables)
+        if not self._paused(context, generation, pause):
             return
-        self.query_one('#code-variables', Static).update('\n'.join(values) or 'Variables: —')
+        context.variables = '\n'.join(values) or 'Variables: —'
         path = frame.get('source', {}).get('path')
-        if path:
-            self.browser.show_execution(self.profile.root, Path(path), frame.get('line', 1))
+        context.execution = (
+            (context.profile.root, Path(path), frame.get('line', 1)) if path else None
+        )
+        if self.selected is context:
+            self._render_context(context)
 
     @on(DataTable.RowSelected, '#code-stack')
     def select_frame(self, event):
-        if self.active and self.session.state == 'stopped':
-            self._pause += 1
-            self.query_one('#code-variables', Static).update('Variables: —')
-            self.browser.clear_execution()
-            self._spawn(self._select_frame(self._generation, self._pause, event.row_key.value))
+        context = self.selected
+        if context is not None and context.active and context.session.state == 'stopped':
+            context.pause += 1
+            context.variables = 'Variables: —'
+            context.execution = None
+            self._render_context(context)
+            self._spawn(context, self._select_frame(
+                context, context.generation, context.pause, event.row_key.value
+            ))
 
-    async def _select_frame(self, generation, pause, key):
+    async def _select_frame(self, context, generation, pause, key):
         try:
-            await self._frame(generation, pause, self._frames[int(key)])
+            await self._frame(context, generation, pause, context.frames[int(key)])
         except (DebugError, IndexError, ValueError) as error:
-            if self._paused(generation, pause):
+            if self._paused(context, generation, pause):
                 self.app.notify(f'Unable to inspect frame: {error}', severity='warning')
 
     @on(Button.Pressed, '#code-continue, #code-over, #code-in, #code-out')
@@ -254,55 +434,99 @@ class CodeDebug(Vertical):
                      'code-in': 'step_in', 'code-out': 'step_out'}[event.button.id])
 
     def resume(self, command):
-        if not self.active or self.session.state != 'stopped':
+        context = self.selected
+        if (
+            context is None or not context.active or context.session is None
+            or context.session.state != 'stopped'
+        ):
             return
-        self._invalidate()
-        self._spawn(self._resume(self._generation, command))
+        self._invalidate(context)
+        self._spawn(context, self._resume(context, context.generation, command))
 
-    async def _resume(self, generation, command):
+    async def _resume(self, context, generation, command):
         try:
-            if self._current(generation):
-                await getattr(self.session, command)()
+            if self._current(context, generation):
+                await getattr(context.session, command)()
         except DebugError as error:
-            if self._current(generation):
+            if self._current(context, generation):
                 self.app.notify(str(error), severity='warning')
 
     def breakpoints_changed(self, event):
-        if self.active and event.root == self.profile.root.resolve():
-            self._spawn(self._update(self._generation, event.path, event.lines))
+        for context in self.contexts.values():
+            if context.active and event.root == context.profile.root.resolve():
+                self._spawn(context, self._update(
+                    context, context.generation, event.path, event.lines
+                ))
 
-    async def _update(self, generation, path, lines):
-        # Serialized replacements preserve rapid toggle ordering.
-        async with self._update_lock:
-            if not self._current(generation):
+    async def _update(self, context, generation, path, lines):
+        async with context.update_lock:
+            if not self._current(context, generation):
                 return
             try:
-                if self._start_task is not None and not self._start_task.done():
-                    await asyncio.shield(self._start_task)
-                if self._current(generation):
-                    await self.session.set_breakpoints(str(path), lines)
-                    if self._current(generation):
-                        self._verification()
+                if context.start_task is not None and not context.start_task.done():
+                    await asyncio.shield(context.start_task)
+                if self._current(context, generation):
+                    await context.session.set_breakpoints(str(path), lines)
+                    if self._current(context, generation) and self.selected is context:
+                        self._verification(context)
             except DebugError as error:
-                if self._current(generation):
+                if self._current(context, generation):
                     self.app.notify(str(error), severity='warning')
 
-    async def close(self):
-        self._generation += 1
-        self.active = False
-        self._invalidate()
+    async def close_context(self, context):
+        if context.close_task is None:
+            context.stopping = True
+            context.generation += 1
+            context.active = False
+            self._invalidate(context)
+            initiator = asyncio.current_task()
+            context.close_task = asyncio.create_task(
+                self._close_context_owned(context, initiator)
+            )
+        await asyncio.shield(context.close_task)
+        return getattr(context.session, 'disconnect_warning', None)
+
+    async def _close_context_owned(self, context, initiator):
         current = asyncio.current_task()
-        tasks = [task for task in self._tasks if task is not current]
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        session = self.session
-        if session is not None:
-            await session.close()
-        warning = getattr(session, 'disconnect_warning', None)
-        if warning and self.profile is not None and self.query(RichLog):
-            self.query_one(RichLog).write(f'[{self.profile.name} · stderr] Warning: {warning}')
-        if self.profile is not None:
-            self.browser.set_verification(self.profile.root, {})
-        return warning
+        try:
+            tasks = [task for task in context.tasks if task not in {current, initiator}]
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            session = context.session
+            context.close_error = None
+            if session is not None:
+                try:
+                    await session.close()
+                except (TimeoutError, OSError) as error:
+                    # The session kept its owner handle: stay live so Stop can retry it
+                    # and a new start cannot replace it.
+                    context.close_error = str(error)
+                    context.active = True
+                    return None
+            warning = getattr(session, 'disconnect_warning', None)
+            if (
+                warning and context.profile is not None
+                and self.selected is context and self.query(RichLog)
+            ):
+                self._append_output(
+                    context, f'[{context.profile.name} · stderr] Warning: {warning}'
+                )
+            if context.profile is not None and self.selected is context:
+                self.browser.set_verification(context.profile.root, {})
+            context.unexpected_disconnect = False
+            return warning
+        finally:
+            context.stopping = False
+            context.close_task = None
+
+    async def close(self):
+        context = self.selected
+        return await self.close_context(context) if context is not None else None
+
+    async def close_all(self):
+        warnings = []
+        for context in list(self.contexts.values()):
+            warnings.append(await self.close_context(context))
+        return warnings

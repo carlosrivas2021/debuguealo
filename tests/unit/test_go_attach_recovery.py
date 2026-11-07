@@ -25,10 +25,10 @@ def attach_recovery_app(monkeypatch, tmp_path):
     return app, roots, store
 
 
-async def test_unexpected_loss_offers_pinned_explicit_reconnect_with_pending_marks(
+async def test_recovery_controls_follow_selected_profile_and_reconnect_pinned_config(
     attach_recovery_app,
 ):
-    app, roots, _store = attach_recovery_app
+    app, roots, store = attach_recovery_app
     async with app.run_test(size=(120, 45)) as pilot:
         await pilot.click("#area-code")
         browser = app.query_one("#source-browser")
@@ -51,22 +51,42 @@ async def test_unexpected_loss_offers_pinned_explicit_reconnect_with_pending_mar
         assert browser.breakpoints(roots[0], source) == marks == (1,)
         pending = browser.query_one("Tree").root.children[0].children[0].label
         assert "Line 1 · pending" in str(pending)
-        assert app.query_one("#code-stop").disabled
+        assert not app.query_one("#code-stop").disabled
 
-        # Selection changes cannot retarget the recovery action.
-        app.query_one("#code-projects").move_cursor(row=1)
+        # Edited configuration cannot retarget the recovery context.
+        config = json.loads(store.path.read_text(encoding="utf-8"))
+        config["configurations"][0]["goAttach"]["port"] = 2456
+        store.path.write_text(json.dumps(config), encoding="utf-8")
+        workspace = app.query_one("#code-workspace")
+        workspace.reload_profiles()
+        table = app.query_one("#code-projects")
+        table.move_cursor(row=1)
         await pilot.pause()
+        assert not reconnect.display
+        assert app.query_one("#code-stop").disabled
+        # Hidden controls have no click target; the action must still not retarget.
+        workspace.reconnect()
+        await pilot.pause()
+        assert len(FakeGoAttach.instances) == 1
+
+        table.move_cursor(row=0)
+        await pilot.pause()
+        assert reconnect.display
+        assert not app.query_one("#code-stop").disabled
         await pilot.click("#code-reconnect")
         await until(pilot, lambda: len(FakeGoAttach.instances) == 2)
-        await pilot.click("#code-reconnect")
+        workspace.reconnect()
         await pilot.pause()
 
         assert len(FakeGoAttach.instances) == 2
         second = FakeGoAttach.instances[1]
         assert second.profile.name == first.profile.name
         assert second.profile.root == roots[0]
+        assert second.profile.go_attach.port == 2345
         assert second.requested_breakpoints == {str(source.resolve()): (1,)}
         assert browser.breakpoints(roots[0], source) == (1,)
+        await pilot.click("#code-stop")
+        assert second.closed and not app.query_one("#code-reconnect").display
 
 
 async def _disconnect_unexpectedly(pilot, app, roots):
@@ -85,7 +105,9 @@ async def _disconnect_unexpectedly(pilot, app, roots):
     return browser, source, marks, session
 
 
-async def test_reconnect_rejects_pending_f5_and_stop_clears_recovery(attach_recovery_app):
+async def test_reconnect_coexists_with_other_pending_run_and_stop_is_profile_local(
+    attach_recovery_app,
+):
     app, roots, _store = attach_recovery_app
     started = asyncio.Event()
     cancelled = asyncio.Event()
@@ -107,26 +129,33 @@ async def test_reconnect_rejects_pending_f5_and_stop_clears_recovery(attach_reco
         workspace._start = pending_run
         await pilot.press("f5")
         await asyncio.wait_for(started.wait(), 2)
-        await pilot.click("#code-reconnect")
+        app.query_one("#code-projects").move_cursor(row=0)
         await pilot.pause()
-
-        assert len(FakeGoAttach.instances) == 1
+        await pilot.click("#code-reconnect")
+        await until(pilot, lambda: len(FakeGoAttach.instances) == 2)
+        assert started.is_set() and not cancelled.is_set()
         assert browser.breakpoints(roots[0], source) == marks == (1,)
         assert session.requested_breakpoints == {str(source.resolve()): (1,)}
+        assert FakeGoAttach.instances[1].requested_breakpoints == {
+            str(source.resolve()): (1,)
+        }
 
+        await pilot.click("#code-stop")
+        assert FakeGoAttach.instances[1].closed
+        assert not cancelled.is_set(), "stopping attach cancelled the other profile startup"
+        app.query_one("#code-projects").move_cursor(row=1)
+        await pilot.pause()
         await pilot.click("#code-stop")
         await asyncio.wait_for(cancelled.wait(), 2)
         await until(pilot, lambda: "Stopped" in rendered(app, "#code-run-state"))
         assert not app.query_one("#code-reconnect").display
         assert browser.breakpoints(roots[0], source) == (1,)
-        await pilot.click("#code-reconnect")
-        await pilot.pause()
         await workspace.shutdown()
-        assert len(FakeGoAttach.instances) == 1
-        assert not app.query_one("#code-reconnect").display
+        assert len(FakeGoAttach.instances) == 2
+        assert FakeGoAttach.instances[0].closed
 
 
-async def test_reconnect_rejects_active_f5_and_stop_is_repeatable(attach_recovery_app):
+async def test_reconnect_coexists_with_other_active_run_and_stop_is_repeatable(attach_recovery_app):
     app, roots, _store = attach_recovery_app
     async with app.run_test(size=(120, 45)) as pilot:
         await pilot.click("#area-code")
@@ -137,21 +166,48 @@ async def test_reconnect_rejects_active_f5_and_stop_is_repeatable(attach_recover
         await pilot.pause()
         await pilot.press("f5")
         await until(pilot, lambda: app.query_one("#code-terminal").active)
-        await pilot.click("#code-reconnect")
+        run_context = app.query_one("#code-terminal").selected_context
+        run_session = run_context.session
+        app.query_one("#code-projects").move_cursor(row=0)
         await pilot.pause()
+        await pilot.click("#code-reconnect")
+        await until(pilot, lambda: len(FakeGoAttach.instances) == 2)
 
-        assert len(FakeGoAttach.instances) == 1
+        assert run_context.active and run_session is not None
         assert session.requested_breakpoints == {str(source.resolve()): (1,)}
         assert browser.breakpoints(roots[0], source) == marks == (1,)
-        assert "Running: two" in rendered(app, "#code-run-state")
+        assert FakeGoAttach.instances[1].requested_breakpoints == {
+            str(source.resolve()): (1,)
+        }
 
         await pilot.click("#code-stop")
-        await until(pilot, lambda: rendered(app, "#code-run-state") == "Stopped")
-        assert not app.query_one("#code-reconnect").display
+        assert FakeGoAttach.instances[1].closed
+        assert run_context.active, "stopping attach stopped the other profile's process"
         await pilot.click("#code-stop")
+        app.query_one("#code-projects").move_cursor(row=1)
+        await pilot.pause()
+        await pilot.click("#code-stop")
+        await until(pilot, lambda: not run_context.active)
         await app.query_one("#code-workspace").shutdown()
-        assert len(FakeGoAttach.instances) == 1
+        assert len(FakeGoAttach.instances) == 2
+        assert all(item.closed for item in FakeGoAttach.instances)
+
+
+async def test_stop_on_inactive_unexpected_attach_retires_only_selected_recovery(
+    attach_recovery_app,
+):
+    app, roots, _store = attach_recovery_app
+    async with app.run_test(size=(120, 45)) as pilot:
+        await pilot.click("#area-code")
+        browser, source, marks, first = await _disconnect_unexpectedly(pilot, app, roots)
+        assert app.query_one("#code-stop").disabled is False
+        await pilot.click("#code-stop")
         assert not app.query_one("#code-reconnect").display
+        assert rendered(app, "#code-run-state") == (
+            "Disconnected; target remains managed by Containers"
+        )
+        assert browser.breakpoints(roots[0], source) == marks == (1,)
+        assert first.closed
 
 
 async def test_deliberate_disconnect_does_not_offer_recovery(attach_recovery_app):
