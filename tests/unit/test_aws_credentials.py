@@ -265,3 +265,21 @@ async def test_tui_skip_does_not_recreate(tmp_path, monkeypatch):
         assert not app._pending_credential_recreates
         assert not app.query_one("#inline-compose").display
         assert not service.runs
+
+
+async def test_aws_refresh_shortcut_is_inactive_in_code_area(monkeypatch, tmp_path):
+    from test_code_debug_ui import debug_app
+
+    app, _roots, _store = debug_app(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr(app, "action_refresh_aws_credentials", lambda: calls.append("refresh"))
+    async with app.run_test(size=(120, 45)) as pilot:
+        await pilot.press("a")
+        await pilot.pause()
+        assert calls == ["refresh"]
+
+        await pilot.click("#area-code")
+        await pilot.pause()
+        await pilot.press("a")
+        await pilot.pause()
+        assert calls == ["refresh"], "AWS refresh ran from the Code area"

@@ -19,6 +19,7 @@ class FakeSession:
         self.on_exit = on_exit
         self.writes: list[str] = []
         self.sizes: list[tuple[int, int]] = []
+        self.resized = asyncio.Event()
         self.closed = False
 
     async def open_host(self, cwd, rows, columns):
@@ -32,6 +33,7 @@ class FakeSession:
 
     def resize(self, rows, columns):
         self.sizes.append((rows, columns))
+        self.resized.set()
 
     async def close_session(self):
         self.closed = True
@@ -116,8 +118,11 @@ async def test_screen_geometry_resize_vt_style_and_cursor_are_rendered(monkeypat
         ]
         made[0].emit("\x1b[2J\x1b[H")
         await _pilot.pause()
+        made[0].resized.clear()
         pane.styles.width = 14
         await _pilot.pause()
+        # Layout completion does not guarantee the widget handled its queued Resize yet.
+        await asyncio.wait_for(made[0].resized.wait(), timeout=2)
         assert made[0].sizes[-1] == (4, 14)
         assert [len(row) for row in pane.render().plain.splitlines()] == [14] * 4
         made[0].emit("\x1b[31mred\x1b[0m\x1b[2;3H")

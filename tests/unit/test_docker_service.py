@@ -280,4 +280,4 @@ def test_container_and_logs_cli(monkeypatch):
     result = runner.invoke(app, ["logs", "demo", "--tail", "10"])
     assert result.exit_code == 0 and "INFO from container" in result.output
     assert runner.invoke(app, ["logs", "demo", "--tail", "-1"]).exit_code == 2
-    assert runner.invoke(app, ["version"]).output.strip() == "DebugPilot 0.1.0"
+    assert runner.invoke(app, ["version"]).output.strip() == "debugealo 0.1.0"

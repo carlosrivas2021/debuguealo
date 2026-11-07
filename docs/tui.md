@@ -1,7 +1,7 @@
 # Terminal dashboard
 
-Run `uv run debugpilot` or `uv run debugpilot tui` to open the local Docker dashboard.
-Use `uv run debugpilot tui --config path/to/config.toml` for explicit settings. Docker
+Run `uv run debugealo` or `uv run debugealo tui` to open the local Docker dashboard.
+Use `uv run debugealo tui --config path/to/config.toml` for explicit settings. Docker
 connection status is shown separately from saved launch configuration state.
 
 The dashboard presents saved profiles, their containers, and unowned Docker inventory
@@ -32,6 +32,25 @@ the dashboard. Focus returns to the project tree; press `O` there to restore the
 Hiding does not clear output or close an active session. Explicitly opening a terminal
 with `H` also reveals the console. `O` does not hide the right-hand container shell.
 
+## Containers / Code
+
+Use the top **Containers** and **Code** buttons to switch without starting or stopping
+processes. Code lists registered project folders and command arguments; container
+shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
+**Open code launch.json** opens the separate central code configuration directly.
+In Code, **F5** or **Run (F5)** runs the selected profile without debug. Type in its
+terminal; **Escape** returns focus to profiles. **Stop** ends only the selected Code
+context. A running profile survives area changes; repeated F5 does not restart it. Distinct
+profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
+an active profile returns to its context. Same-endpoint Go attaches are rejected, while distinct
+endpoints may coexist. **Shift+F5** or **Debug (Shift+F5)** starts Python debugging from that same profile
+and its requested source breakpoints. At a pause, inspect the stack/variables and the
+yellow execution arrow, then use **Continue**, **F10** (over), **F11** (in), or
+**Shift+F11** (out). Continue never repurposes F5. Stop cancels startup or ends the
+active Code run/debug tree. Debug output is internal-console only (no interactive stdin).
+Missing debugpy or unsupported commands report an error without falling back to run.
+See [code project execution and debugging](code-projects.md) for setup and limits.
+
 ## Launch profiles
 
 The primary sidebar lists saved profiles from the central user-configuration
@@ -47,7 +66,7 @@ Choose a profile and use **Play / Recreate** to apply its Compose files, or **Bu
 Recreate** when code changed. Both actions require confirmation. `r` previews Play /
 Recreate; `Shift+R` previews Build + Recreate. There is no plain Restart action in the
 TUI. `Ctrl+O` or `Ctrl+N` opens `launch.json` directly; neither key opens a Compose file
-picker or starts a service. Editing stays in the same terminal: DebugPilot suspends
+picker or starts a service. Editing stays in the same terminal: debugealo suspends
 the dashboard, runs `nano` (falling back to `vi` when nano is not installed), and
 restores the TUI after the editor exits. After a successful editor exit, valid JSON is
 formatted with two-space indentation while preserving field order and unknown fields. Invalid
@@ -152,5 +171,7 @@ entries when those limits are reached. Copy depends on terminal clipboard suppor
 
 ## Not implemented yet
 
-DAP, breakpoints, source navigation, variables and stepping are not implemented. This
-dashboard does not pretend to debug source code or provide a desktop editor.
+Code supports read-only source navigation, persistent root-scoped requested breakpoints,
+Python/Node/Go debugging, and non-owning Go attach. Distinct saved profiles retain separate
+run/debug/attach contexts; the same Go endpoint cannot be attached twice. Expression
+evaluation and a desktop editor are not implemented. See [Code setup and limits](code-projects.md).

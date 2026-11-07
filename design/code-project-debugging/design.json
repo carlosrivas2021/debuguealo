@@ -1,0 +1,28 @@
+{
+  "title": "DebugPilot code projects: run and debug",
+  "brief": "Design-only terminal UI proposals for centralized code projects alongside an independent Containers area. Persistent area navigation preserves context and never starts or stops a process. One selected Local profile offers F5 run without debugging and Shift+F5 debug, with separate contextual launch.json previews, Python source breakpoints, stack, variables, output, and a Stop button. Every interaction is an explicitly labeled simulation; no files, commands, adapters, or containers are accessed. HTML uses the existing system palette and its documented system-monospace renderer adaptation.",
+  "feature": "odd/tasks/code-project-debugging.md",
+  "artboards": [
+    {
+      "file": "01-sidebar-console.html",
+      "title": "Compact terminal tree + docked console (recommended)",
+      "tradeoff": "Closest to the supplied current TUI: one-row app/status/navigation/actions, compact profile/path and simulation rows, a 22% left tree, thin divider, large source/log workspace and bottom shortcuts. Subordinate inspection and docked output preserve code context without cards; dense controls and horizontally scrollable narrow-screen rows trade spaciousness for terminal continuity.",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "02-focus-workspace.html",
+      "title": "Focus-first source workspace",
+      "tradeoff": "Removes the permanent sidebar in favor of a compact project selector and broad source canvas, with inspection and output immediately below. More reading room, but project inventory and adapter notes are less visible.",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "03-session-workbench.html",
+      "title": "Session-centric workbench",
+      "tradeoff": "A horizontal project registry feeds a session lifecycle rail, central source, right inspector and session-linked transcript. Execution history is easy to follow, but session metadata competes with source width. Single-session illustration only, not a commitment to multi-session support.",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}
