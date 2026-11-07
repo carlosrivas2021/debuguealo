@@ -110,7 +110,6 @@ Dependency installation and example image builds may require downloads.
 [keyboard workflow](docs/tui.md). The future `gui` command is not registered.
 Python's current breakpoint workflow is documented
 in [code projects](docs/code-projects.md#debug-python-with-the-same-profile).
-No license has been selected; no license grant is implied by this source distribution.
 
 The installed distribution, primary Python package and command are named `debugealo`. The
 legacy `debugpilot` command, `python -m debugpilot`, and `debugpilot.*` imports remain
@@ -133,3 +132,7 @@ project restores both commands. `--frozen` uses the checkout's existing lockfile
 need to be renamed, copied, or migrated.
 
 Read [Docker integration](docs/docker.md) for limits, logging-driver support, and reconnect semantics.
+
+## License
+
+[MIT](LICENSE)

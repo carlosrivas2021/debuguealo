@@ -7,6 +7,8 @@ name = "debugealo"
 version = "0.1.0"
 description = "Local-first Docker debugging, with a UI-independent Python engine."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
   "docker>=7.1,<8",
