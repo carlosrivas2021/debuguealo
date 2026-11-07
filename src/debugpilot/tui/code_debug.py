@@ -35,6 +35,7 @@ class DebugContext:
     execution: tuple | None = None
     state: str = ''
     unexpected_disconnect: bool = False
+    frame_row: int = 0
     close_error: str | None = None
     update_lock: object = field(default_factory=asyncio.Lock)
     stopping: bool = False
@@ -150,11 +151,25 @@ class CodeDebug(Vertical):
         log.clear()
         for line in context.output:
             log.write(line)
+        self._render_pause(context)
+
+    def _render_pause(self, context):
+        """Rebuild the stack for a new pause; output keeps its lines and scroll."""
+        if self.selected is not context or not self.query(DataTable):
+            return
         table = self.query_one(DataTable)
         table.clear()
         for index, frame in enumerate(context.frames):
             table.add_row(frame.get('name', '?'), frame.get('source', {}).get('path', '?'),
                           str(frame.get('line', '?')), key=str(index))
+        if context.frame_row < table.row_count:
+            table.move_cursor(row=context.frame_row)
+        self._render_inspection(context)
+
+    def _render_inspection(self, context):
+        """Refresh variables, controls and marker; the stack keeps its cursor."""
+        if self.selected is not context or not self.query(DataTable):
+            return
         self.query_one('#code-variables', Static).update(context.variables)
         enabled = (
             context.active and context.session is not None
@@ -307,8 +322,8 @@ class CodeDebug(Vertical):
         context.frames = []
         context.variables = 'Variables: —'
         context.execution = None
-        if self.selected is context:
-            self._render_context(context)
+        context.frame_row = 0
+        self._render_pause(context)
 
     def _event(self, context, generation, message):
         if not self._current(context, generation):
@@ -361,10 +376,12 @@ class CodeDebug(Vertical):
                             f'Disconnected: {context.profile.name} · {context.profile.root} · '
                             'target remains managed by Containers')
                 if self.selected is context:
-                    self._render_context(context)
+                    self._render_pause(context)
                     self.finished(context.unexpected_disconnect)
         elif name == 'stopped':
             context.pause += 1
+            # Controls never wait for inspection, which may be slow or fail.
+            self._render_inspection(context)
             self._spawn(context, self._inspect(context, generation, context.pause))
         elif name in {'breakpoint', 'breakpoints'}:
             if self.selected is context:
@@ -380,10 +397,10 @@ class CodeDebug(Vertical):
             if not self._paused(context, generation, pause):
                 return
             context.frames = frames
+            context.frame_row = 0
+            self._render_pause(context)
             if frames:
                 await self._frame(context, generation, pause, frames[0])
-            if self.selected is context:
-                self._render_context(context)
         except DebugError as error:
             if self._paused(context, generation, pause):
                 self.app.notify(str(error), severity='warning')
@@ -406,8 +423,7 @@ class CodeDebug(Vertical):
         context.execution = (
             (context.profile.root, Path(path), frame.get('line', 1)) if path else None
         )
-        if self.selected is context:
-            self._render_context(context)
+        self._render_inspection(context)
 
     @on(DataTable.RowSelected, '#code-stack')
     def select_frame(self, event):
@@ -416,7 +432,8 @@ class CodeDebug(Vertical):
             context.pause += 1
             context.variables = 'Variables: —'
             context.execution = None
-            self._render_context(context)
+            context.frame_row = event.cursor_row
+            self._render_inspection(context)
             self._spawn(context, self._select_frame(
                 context, context.generation, context.pause, event.row_key.value
             ))
