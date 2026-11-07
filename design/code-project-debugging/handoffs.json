@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "chosen": "01-sidebar-console.html",
+  "handoffs": {
+    "01-sidebar-console.html": {
+      "status": "sent",
+      "queued": false,
+      "sentAt": "2026-11-02T22:20:18.484Z",
+      "startedAt": null,
+      "implementedAt": null,
+      "feature": "odd/tasks/code-project-debugging.md"
+    }
+  }
+}

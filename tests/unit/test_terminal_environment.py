@@ -27,6 +27,8 @@ def adapters(monkeypatch, tmp_path):
     monkeypatch.setattr(backend.shutil, "which", lambda name: str(tmp_path / name))
 
     class Process:
+        pid = 12345
+
         def poll(self):
             return 0
 
@@ -44,6 +46,14 @@ def adapters(monkeypatch, tmp_path):
         if control["failure"] is not None:
             raise control["failure"]
         return Process()
+
+    def absent_group(pid, sig):
+        # The fake process already exited, so close may only probe its group.
+        # Never reach the real os.killpg with this invented process identity.
+        assert (pid, sig) == (Process.pid, 0)
+        raise ProcessLookupError
+
+    monkeypatch.setattr(backend.os, "killpg", absent_group, raising=False)
 
     # Exercise the POSIX adapter without importing platform-only modules or
     # opening a real terminal. A pipe gives it portable, owned descriptors;

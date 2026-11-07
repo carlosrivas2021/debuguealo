@@ -15,7 +15,7 @@ select an individual service for larger groups. No launch profile is required.
 - Sends one bounded stop request per selected target, continuing after an individual
   failure and reporting each observed result.
 - Does not remove containers, images, volumes, networks, or Compose configuration.
-- Is separate from **Stop CLI**, which cancels only a local DebugPilot worker process.
+- Is separate from **Stop CLI**, which cancels only a local debugealo worker process.
 - While a real stop is running, **Cancel wait** stops waiting locally; it does not
   undo requests already sent to Docker.
 - Does not retry a stop request. If the local worker is cancelled or disconnects after

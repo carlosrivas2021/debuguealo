@@ -14,7 +14,16 @@ def isolate_compose_project_configuration(tmp_path, monkeypatch, request):
         lambda: tmp_path / ".debugpilot" / "config.toml",
     )
 
-    # The central default remains isolated under this test's temporary root.
+    monkeypatch.setattr(
+        "debugpilot.storage.code_projects.config_path",
+        lambda: tmp_path / ".debugpilot" / "config.toml",
+    )
+    monkeypatch.setattr(
+        "debugpilot.storage.breakpoints.config_path",
+        lambda: tmp_path / ".debugpilot" / "config.toml",
+    )
+
+    # Both central defaults remain isolated under this test's temporary root.
 
     # Headless drivers cannot suspend a real terminal; the welcome test asserts
     # ownership and restoration explicitly with its own suspend context.
