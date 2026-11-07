@@ -200,6 +200,37 @@ starting/stopping Delve, or target lifecycle management. Target stdout/stderr re
 available through the container's logs; the Code attach session does not present them as
 its debug output stream.
 
+## Attach to an existing Python/debugpy target
+
+Use `pythonAttach` to connect Code to a process already listening through `debugpy`, for example
+inside a container. It has the same exactly three keys and validation as `goAttach`, and the same
+**Shift+F5**, **Disconnect**, **Reconnect** and F5 behavior. A profile cannot declare both. No local
+`debugpy` is needed, because Code never starts an adapter or owns the target.
+
+```json
+{
+  "name": "Python remote",
+  "workspaceFolder": "/local/path/to/project",
+  "pythonAttach": {
+    "host": "127.0.0.1",
+    "port": 5678,
+    "remoteRoot": "/workspace"
+  }
+}
+```
+
+Start the target with `python -m debugpy --listen 0.0.0.0:5678 ...` and publish that port on host
+loopback only, such as `127.0.0.1:5678:5678`: anything that reaches the debug port can run code in
+the target. Local `app/main.py` maps to `/workspace/app/main.py`, and stack paths map back. Local
+and target sources must match, or breakpoints land on the wrong lines. Disconnect clears this
+session's breakpoints and resumes a paused target, which keeps running and can be attached again.
+Target output stays in the container's logs. A connection that closes without attaching, such as a
+port probe, can end the `debugpy` listener; recreate the container if attach is then refused.
+
+An endpoint can only be attached once at a time, across both attach kinds. Expression evaluation
+and debug stdin are not supported. Try the workflow with the
+[FastAPI debug example](../examples/fastapi-debug/README.md).
+
 ## Debug server-side Node
 
 Use the same breakpoint, stack, variables, step and Continue controls described above.

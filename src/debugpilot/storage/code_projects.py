@@ -11,13 +11,16 @@ from debugpilot.storage.config import config_path
 
 
 @dataclass(frozen=True)
-class GoAttach:
+class RemoteAttach:
     host: str
     port: int
     remote_root: str
 
 
-def parse_go_attach(value: object) -> GoAttach:
+GoAttach = RemoteAttach
+
+
+def parse_remote_attach(value: object) -> RemoteAttach:
     """Validate the intentionally loopback-only attach schema."""
     if (not isinstance(value, dict) or set(value) != {'host', 'port', 'remoteRoot'}
             or value.get('host') != '127.0.0.1'
@@ -29,7 +32,7 @@ def parse_go_attach(value: object) -> GoAttach:
     if ('\\' in raw_root or not remote_root.is_absolute() or '..' in remote_root.parts
             or str(remote_root) != raw_root):
         raise ValueError
-    return GoAttach('127.0.0.1', value['port'], str(remote_root))
+    return RemoteAttach('127.0.0.1', value['port'], str(remote_root))
 
 
 @dataclass(frozen=True)
@@ -38,7 +41,12 @@ class CodeProject:
     root: Path
     command: tuple[str, ...]
     node_debug: tuple[str, ...] | None = None
-    go_attach: GoAttach | None = None
+    go_attach: RemoteAttach | None = None
+    python_attach: RemoteAttach | None = None
+
+    @property
+    def attach(self) -> RemoteAttach | None:
+        return self.go_attach or self.python_attach
 
 
 def is_node_command(command):
@@ -113,22 +121,33 @@ class CodeProjectStore:
                 root = Path(folder)
                 if not root.is_absolute() or not root.is_dir():
                     raise ValueError
-                go_attach = None
-                if 'goAttach' in entry:
+                if 'goAttach' in entry and 'pythonAttach' in entry:
+                    raise ConfigurationError(
+                        'Invalid attach profile: use either goAttach or pythonAttach, not both.'
+                    )
+                go_attach = python_attach = None
+                for field in ('goAttach', 'pythonAttach'):
+                    if field not in entry:
+                        continue
                     try:
-                        go_attach = parse_go_attach(entry['goAttach'])
+                        parsed = parse_remote_attach(entry[field])
                     except ValueError:
                         raise ConfigurationError(
-                            'Invalid goAttach: use host 127.0.0.1, integer port 1..65535, '
+                            f'Invalid {field}: use host 127.0.0.1, integer port 1..65535, '
                             'and an absolute POSIX remoteRoot without parent segments.'
                         ) from None
-                if command is None and go_attach is None:
+                    if field == 'goAttach':
+                        go_attach = parsed
+                    else:
+                        python_attach = parsed
+                attach = go_attach or python_attach
+                if command is None and attach is None:
                     raise ValueError
                 if command is None:
                     command = []
                 if not isinstance(command, list) or len(command) > 128:
                     raise ValueError
-                if (not command and go_attach is None) or any(
+                if (not command and attach is None) or any(
                         not self._text(arg) for arg in command):
                     raise ValueError
                 node_debug = None
@@ -141,7 +160,7 @@ class CodeProjectStore:
                         )
                     node_debug = tuple(target)
                 profiles.append(CodeProject(name, root.resolve(strict=True), tuple(command),
-                                            node_debug, go_attach))
+                                            node_debug, go_attach, python_attach))
                 names.add(name)
             return profiles
         except (ValueError, TypeError, UnicodeError, OSError, RuntimeError, RecursionError):

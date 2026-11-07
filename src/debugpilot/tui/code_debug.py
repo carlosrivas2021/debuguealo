@@ -14,9 +14,14 @@ from debugpilot.debugger import (
     GoAttachSession,
     GoDebugSession,
     NodeDebugSession,
+    PythonAttachSession,
     PythonDebugSession,
 )
 from debugpilot.storage.code_projects import is_node_command, is_npm_command
+
+
+def _attach_language(profile):
+    return 'Go' if profile.go_attach is not None else 'Python'
 
 
 @dataclass
@@ -205,26 +210,28 @@ class CodeDebug(Vertical):
         if existing is not None and existing.active:
             self.select_profile(profile)
             return
-        if profile.go_attach is not None:
-            endpoint = (profile.go_attach.host, profile.go_attach.port)
-            if any(context.active and context.profile.go_attach is not None
-                   and (context.profile.go_attach.host, context.profile.go_attach.port) == endpoint
+        if profile.attach is not None:
+            endpoint = (profile.attach.host, profile.attach.port)
+            if any(context.active and context.profile.attach is not None
+                   and (context.profile.attach.host, context.profile.attach.port) == endpoint
                    for context in self.contexts.values()):
                 self.state_changed(
-                    f'Go attach endpoint {endpoint[0]}:{endpoint[1]} is already active.'
+                    f'{_attach_language(profile)} attach endpoint {endpoint[0]}:{endpoint[1]} '
+                    'is already active.'
                 )
                 self.finished(False)
                 return
         other_active = [context for context in self.contexts.values()
                         if (context.active or context.stopping) and context.key != key]
-        if profile.go_attach is not None and any(
-            context.profile.go_attach is not None
-            and (context.profile.go_attach.host, context.profile.go_attach.port)
-            == (profile.go_attach.host, profile.go_attach.port)
+        if profile.attach is not None and any(
+            context.profile.attach is not None
+            and (context.profile.attach.host, context.profile.attach.port)
+            == (profile.attach.host, profile.attach.port)
             for context in other_active
         ):
             self.state_changed(
-                f'Go attach endpoint {profile.go_attach.host}:{profile.go_attach.port} '
+                f'{_attach_language(profile)} attach endpoint '
+                f'{profile.attach.host}:{profile.attach.port} '
                 'is already active.'
             )
             self.finished(False)
@@ -279,6 +286,8 @@ class CodeDebug(Vertical):
             backend = (
                 GoAttachSession
                 if profile.go_attach is not None
+                else PythonAttachSession
+                if profile.python_attach is not None
                 else GoDebugSession
                 if command_name in {"go", "go.exe"}
                 else NodeDebugSession
@@ -329,7 +338,7 @@ class CodeDebug(Vertical):
         if not self._current(context, generation):
             return
         name, body = message.get('event'), message.get('body', {})
-        if name == 'transportClosed' and context.profile.go_attach is not None:
+        if name == 'transportClosed' and context.profile.attach is not None:
             context.unexpected_disconnect = True
             reason = body.get('message')
             detail = f': {reason}' if reason else ''
@@ -340,7 +349,7 @@ class CodeDebug(Vertical):
             state = body.get('state')
             if state != 'stopped':
                 self._invalidate(context)
-            if context.profile.go_attach is not None:
+            if context.profile.attach is not None:
                 label = {'starting': 'Connecting', 'running': 'Attached',
                          'stopped': 'Stopped', 'closed': 'Disconnected'}.get(
                              state, f'Debug {state}')
@@ -351,7 +360,7 @@ class CodeDebug(Vertical):
                 context.active = False
                 if self.selected is context:
                     self.browser.set_verification(context.profile.root, {})
-                if context.profile.go_attach is None:
+                if context.profile.attach is None:
                     result = (
                         "finalizado; código de salida no disponible"
                         if context.session.exit_code is None
