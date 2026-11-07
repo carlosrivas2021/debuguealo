@@ -206,7 +206,9 @@ class CodeWorkspace(Vertical):
             return
         profile = self._profiles[table.ordered_rows[table.cursor_row].key.value]
         debug_context = self._debug.context_for(profile)
-        if debug_context is not None and (debug_context.active or debug_context.stopping):
+        if debug_context is not None and (
+            debug_context.active or debug_context.stopping or debug_context.unexpected_disconnect
+        ):
             self._debug.select_context(debug_context)
             self._pane.display = False
             self._state(debug_context.state)
@@ -249,6 +251,11 @@ class CodeWorkspace(Vertical):
         ):
             return
         profile = self._debug.profile
+        run_context = self._pane.contexts.get(profile.name)
+        if run_context is not None and (
+            run_context.pending or run_context.active or run_context.stopping
+        ):
+            return
         self._reconnect_button.display = False
         self._debug.start(profile)
         self._sync_controls()
