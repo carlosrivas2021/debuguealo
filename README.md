@@ -19,9 +19,10 @@ breakpoints remain separate from adapter verification. Python debug
 requires `debugpy` in the selected interpreter; Go debug requires Delve (`dlv`) on the
 application PATH. Debug mode has no interactive stdin, and missing adapters never fall
 back to run. See [code projects](docs/code-projects.md), including the Go remote attach schema,
-source mapping, controls and reconnect workflow. Server-side Node debugging
+source mapping, controls and reconnect workflow. Python attach profiles do the same for an
+existing loopback `debugpy` target, such as a container; try the
+[FastAPI debug example](examples/fastapi-debug/README.md). Server-side Node debugging
 supports direct scripts and explicit npm debug targets; see [code projects](docs/code-projects.md#debug-server-side-node).
-The FastAPI example remains pending.
 No connection is simulated in the application.
 
 The dashboard also supports explicit, confirmation-gated local Compose restart,
@@ -101,13 +102,13 @@ to that operation, not authorization for every Docker API operation.
 
 Configuration is optional. See [configuration](docs/configuration.md) and
 [architecture](docs/architecture.md). Usage after installation requires no Internet.
-Dependency installation and the eventual example image build may require downloads.
+Dependency installation and example image builds may require downloads.
 
 ## Not available yet
 
 `debugealo` and `debugealo tui` open the terminal dashboard; see the
 [keyboard workflow](docs/tui.md). The future `gui` command is not registered.
-The FastAPI example remains pending. Python's current breakpoint workflow is documented
+Python's current breakpoint workflow is documented
 in [code projects](docs/code-projects.md#debug-python-with-the-same-profile).
 No license has been selected; no license grant is implied by this source distribution.
 
