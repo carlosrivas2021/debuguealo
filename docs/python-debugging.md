@@ -5,6 +5,9 @@ integration. It does not wire Shift+F5, alter F5, edit profiles, or persist brea
 Backend tests pass on Windows with debugpy 1.8.22, including real script/module debugging
 and owned-descendant cleanup. TUI integration remains T4b work.
 
+This page covers locally launched targets. To debug a process that is already running, such as
+one in a container, see [Python attach](code-projects.md#attach-to-an-existing-pythondebugpy-target).
+
 ## Quick path for the TUI owner
 
 ```python
