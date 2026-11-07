@@ -51,7 +51,7 @@ class CodeWorkspace(Vertical):
         yield self._pane
         yield Static(
             "F5: run without debug · Escape: return to profiles · Stop: end owned Code process. "
-            "Shift+F5: debug/attach · Continue: button · F10/F11/Shift+F11: step. "
+            "Shift+F5: debug/attach · F5 at a pause: Continue · F10/F11/Shift+F11: step. "
             "One session per saved profile; distinct profiles may run/debug/attach together. "
             "Attach Disconnect leaves the target to Containers; Reconnect is explicit; "
             "the same attach endpoint cannot be attached twice. Debug output has no stdin. "
@@ -212,6 +212,7 @@ class CodeWorkspace(Vertical):
             self._debug.select_context(debug_context)
             self._pane.display = False
             self._state(debug_context.state)
+            self._debug.resume("continue_execution")
             self._sync_controls()
             return
         run_context = self._pane.contexts.get(profile.name)
