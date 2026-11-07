@@ -26,18 +26,24 @@ def posix_adapter(monkeypatch):
     signals = []
     reads = []
     chunks = iter((b"hello ", b"\xc3", b"\xa9", b""))
-    state = SimpleNamespace(race=False, argv=None)
+    state = SimpleNamespace(race=False, argv=None, exited=False)
 
     class Process:
         pid = 12345
 
         def poll(self):
-            return None
+            return 0 if state.exited else None
 
         def wait(self):
+            state.exited = True
             return 0
 
     process = Process()
+
+    def killpg(pid, sig):
+        signals.append((pid, sig))
+        if sig == 0 and state.exited:
+            raise ProcessLookupError
 
     def open_adapter(self, argv, cwd, dimensions, env):
         state.argv = argv
@@ -58,7 +64,7 @@ def posix_adapter(monkeypatch):
         if state.race and func == process.wait:
             waiting.set()
             await release.wait()
-            return 0
+            return process.wait()
         return await asyncio.to_thread(func, *args)
 
     def read(fd, size):
@@ -75,8 +81,7 @@ def posix_adapter(monkeypatch):
         "sleep": sleep, "to_thread": to_thread,
     })))
     monkeypatch.setattr(terminal, "os", SimpleNamespace(**(vars(terminal.os) | {
-        "read": read, "close": closed.append,
-        "killpg": lambda pid, sig: signals.append((pid, sig)),
+        "read": read, "close": closed.append, "killpg": killpg,
     })))
     return SimpleNamespace(
         state=state, sleeping=sleeping, resume=resume, waiting=waiting, release=release,
@@ -120,7 +125,7 @@ async def test_close_while_posix_reader_sleeps(posix_adapter, tmp_path):
         assert exits == ["exit"]
         assert adapter.reads == []
         assert adapter.closed == [-12345]
-        assert adapter.signals == [(12345, signal.SIGTERM)]
+        assert adapter.signals == [(12345, signal.SIGTERM), (12345, 0)]
         assert session.process is None and session._fd is None and session._reader is None
     finally:
         adapter.resume.set()

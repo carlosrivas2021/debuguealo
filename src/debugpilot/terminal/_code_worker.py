@@ -59,6 +59,10 @@ def main():
     result = {}
     try:
         job = _windows_job() if os.name == "nt" else None
+        # A group TERM reaches helper and command. Keep the helper alive until its
+        # direct child exits so the PTY parent cannot mistake helper exit for cleanup.
+        if os.name != "nt":
+            signal.signal(signal.SIGTERM, lambda *_: None)
         # Inherit all three PTY handles; never invoke an interactive shell.
         result["exit_code"] = subprocess.call(sys.argv[2:])
         _ = job  # Keep kill-on-close containment until helper process teardown.

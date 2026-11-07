@@ -276,15 +276,18 @@ class PythonDebugSession:
             if self.state == 'closed':
                 return
             self._state('closing')
+            completed = False
             try:
-                client, self._client = self._client, None
-                if client is not None:
-                    await client.close()
-            finally:
                 try:
+                    client, self._client = self._client, None
+                    if client is not None:
+                        await client.close()
+                finally:
                     if self._adapter is not None:
                         await self._adapter.close_session()
-                finally:
+                completed = True
+            finally:
+                if completed:
                     self._adapter = None
                     self.thread_id = None
                     self.verified_breakpoints = {}

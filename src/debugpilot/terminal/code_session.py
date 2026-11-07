@@ -136,5 +136,7 @@ class CodeSession(TerminalSession):
         # Wake a pending Windows read before TerminalSession cancels the reader.
         if self._windows and self.process is not None:
             self._disconnect_windows(self.process)
-        await super().close_session()
-        self._cleanup_status()
+        try:
+            await super().close_session()
+        finally:
+            self._cleanup_status()
