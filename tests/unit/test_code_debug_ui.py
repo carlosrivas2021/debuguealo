@@ -102,6 +102,10 @@ async def test_real_shift_f5_breakpoint_inspection_steps_continue_and_attributio
         await pilot.click('#area-containers')
         await pilot.press('f10')  # Containers must not step the hidden Code debugger.
         await pilot.click('#area-code')
+        # Keyboard controls now belong to the selected profile context; return to
+        # the running profile before stepping rather than controlling it from row two.
+        profiles.move_cursor(row=0)
+        await pilot.pause()
         stopped.clear()
         await pilot.press('f11')
         await expect_pause(pilot, 'value = 41')
@@ -187,9 +191,9 @@ class FakeDebug:
 @pytest.fixture
 def fake(monkeypatch):
     from debugpilot.tui import code_debug
-    FakeDebug.instances = []
-    FakeDebug.gate = None
-    FakeDebug.failure = None
+    monkeypatch.setattr(FakeDebug, 'instances', [])
+    monkeypatch.setattr(FakeDebug, 'gate', None)
+    monkeypatch.setattr(FakeDebug, 'failure', None)
     monkeypatch.setattr(code_debug, 'PythonDebugSession', FakeDebug)
     return FakeDebug
 

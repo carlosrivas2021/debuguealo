@@ -39,9 +39,11 @@ processes. Code lists registered project folders and command arguments; containe
 shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
 In Code, **F5** or **Run (F5)** runs the selected profile without debug. Type in its
-terminal; **Escape** returns focus to profiles. **Stop** ends only the Code process
-tree. A running profile survives area changes; repeated F5 does not restart it.
-**Shift+F5** or **Debug (Shift+F5)** starts Python debugging from that same profile
+terminal; **Escape** returns focus to profiles. **Stop** ends only the selected Code
+context. A running profile survives area changes; repeated F5 does not restart it. Distinct
+profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
+an active profile returns to its context. Same-endpoint Go attaches are rejected, while distinct
+endpoints may coexist. **Shift+F5** or **Debug (Shift+F5)** starts Python debugging from that same profile
 and its requested source breakpoints. At a pause, inspect the stack/variables and the
 yellow execution arrow, then use **Continue**, **F10** (over), **F11** (in), or
 **Shift+F11** (out). Continue never repurposes F5. Stop cancels startup or ends the
@@ -168,7 +170,7 @@ entries when those limits are reached. Copy depends on terminal clipboard suppor
 
 ## Not implemented yet
 
-Code supports read-only source navigation, session-local requested line breakpoints
-nested beneath files, and real Python DAP debugging with separate adapter verification.
-Node/Go debugging, persistent breakpoints, attach, expression evaluation and a desktop
-editor are not implemented. See [Code setup and limits](code-projects.md).
+Code supports read-only source navigation, persistent root-scoped requested breakpoints,
+Python/Node/Go debugging, and non-owning Go attach. Distinct saved profiles retain separate
+run/debug/attach contexts; the same Go endpoint cannot be attached twice. Expression
+evaluation and a desktop editor are not implemented. See [Code setup and limits](code-projects.md).
