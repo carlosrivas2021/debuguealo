@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 from test_code_debug_ui import debug_app, rendered, until
@@ -239,3 +240,42 @@ async def test_local_debug_does_not_offer_attach_recovery(monkeypatch, tmp_path)
         await pilot.pause()
         assert not app.query_one("#code-reconnect").display
         assert len(FakeDebug.instances) == 1
+
+
+async def test_lost_attach_with_command_stays_one_session_per_profile(monkeypatch, tmp_path):
+    app, _roots, store = debug_app(monkeypatch, tmp_path)
+    config = json.loads(store.path.read_text(encoding="utf-8"))
+    config["configurations"][0]["goAttach"] = {
+        "host": "127.0.0.1", "port": 2345, "remoteRoot": "/app"
+    }
+    store.path.write_text(json.dumps(config), encoding="utf-8")
+    FakeGoAttach.instances = []
+    monkeypatch.setattr(code_debug, "GoAttachSession", FakeGoAttach, raising=False)
+    async with app.run_test(size=(120, 45)) as pilot:
+        await pilot.click("#area-code")
+        await pilot.press("shift+f5")
+        await until(pilot, lambda: len(FakeGoAttach.instances) == 1)
+        lost = FakeGoAttach.instances[0]
+        lost.emit("transportClosed", message="peer disappeared")
+        lost.state = "closed"
+        lost.emit("state", state="closed")
+        await pilot.pause()
+        workspace = app.query_one("#code-workspace")
+        pane = app.query_one("#code-terminal")
+
+        app.action_run_code()
+        await pilot.pause()
+        assert "one" not in pane.contexts, "F5 started a run beside a recovering attach"
+        assert "Unexpected" in rendered(app, "#code-run-state")
+        assert app.query_one("#code-reconnect").display
+
+        # Reconnect must refuse a live run on this profile, however it got there.
+        pane.contexts["one"] = SimpleNamespace(pending=False, active=True, stopping=False)
+        workspace.reconnect()
+        await pilot.pause()
+        assert len(FakeGoAttach.instances) == 1, "Reconnect attached beside a live run"
+        del pane.contexts["one"]
+
+        workspace.reconnect()
+        await until(pilot, lambda: len(FakeGoAttach.instances) == 2)
+        await workspace.shutdown()
