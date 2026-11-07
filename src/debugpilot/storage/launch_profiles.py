@@ -14,6 +14,7 @@ from typing import Any
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.docker.compose_overrides import validate_service_overrides
+from debugpilot.storage.aws_credentials import AwsCredentialsTarget, parse_aws_credentials_field
 from debugpilot.storage.config import config_path
 
 MAX_LAUNCH_BYTES = 256 * 1024
@@ -22,6 +23,8 @@ MAX_FILES = 16
 MAX_PATH_LENGTH = 4096
 PROJECT_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 UP_FIELDS = {"build", "detach", "forceRecreate"}
+MAX_SERVICES = 64
+SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 PROJECT_LABEL = "com.docker.compose.project"
 WORKING_DIR_LABEL = "com.docker.compose.project.working_dir"
 CONFIG_FILES_LABEL = "com.docker.compose.project.config_files"
@@ -52,6 +55,23 @@ class ResolvedLaunch:
     up: dict[str, bool] | None
     environment_files: tuple[Path, ...] = ()
     service_overrides: Any = field(default=None, repr=False)
+    services: tuple[str, ...] = ()
+    aws_credentials: AwsCredentialsTarget | None = None
+
+
+def profile_services(raw: dict[str, Any]) -> tuple[str, ...] | None:
+    """Return the optional explicit service subset, or None when it is invalid."""
+    value = raw.get("services")
+    if value is None or value == []:
+        return ()
+    if (
+        not isinstance(value, list)
+        or len(value) > MAX_SERVICES
+        or any(not isinstance(name, str) or not SERVICE_NAME.fullmatch(name) for name in value)
+        or len(set(value)) != len(value)
+    ):
+        return None
+    return tuple(value)
 
 
 def _is_reparse(path: Path) -> bool:
@@ -330,6 +350,22 @@ class LaunchProfileStore:
                 return None
             if not service_overrides.services:
                 service_overrides = None
+            services = profile_services(raw)
+            if services is None:
+                return None
+            aws_credentials = None
+            if "awsCredentials" in raw:
+                parsed = parse_aws_credentials_field(raw["awsCredentials"])
+                if parsed is None:
+                    return None
+                credential_files, aws_profile = parsed
+                aws_credentials = AwsCredentialsTarget(
+                    tuple(
+                        self._resolve_output_path(value, cwd, workspace)
+                        for value in credential_files
+                    ),
+                    aws_profile,
+                )
             return ResolvedLaunch(
                 workspace=workspace,
                 cwd=cwd,
@@ -339,9 +375,43 @@ class LaunchProfileStore:
                 up=up,
                 environment_files=env_paths,
                 service_overrides=service_overrides,
+                services=services,
+                aws_credentials=aws_credentials,
             )
         except (ConfigurationError, OSError, RuntimeError, TypeError, ValueError):
             return None
+
+    def _resolve_output_path(self, value: Any, base: Path, workspace: Path) -> Path:
+        """Resolve a file that may not exist yet; its directory must be workspace-local."""
+        if not isinstance(value, str) or not value or len(value) > MAX_PATH_LENGTH:
+            raise ValueError
+        expanded = value.replace("${workspaceFolder}", str(workspace))
+        if "$" in expanded or "{" in expanded or "}" in expanded or "\x00" in expanded:
+            raise ValueError
+        path = Path(expanded)
+        if not path.is_absolute():
+            path = base / path
+        if path.name in {"", ".", ".."}:
+            raise ValueError
+        if path.is_symlink():
+            raise ValueError
+        resolved = path.parent.resolve(strict=True) / path.name
+        if not resolved.is_relative_to(workspace) or not resolved.parent.is_dir():
+            raise ValueError
+        if resolved.exists() and not resolved.is_file():
+            raise ValueError
+        return resolved
+
+    def aws_credential_targets(self) -> list[tuple[LaunchProfile, AwsCredentialsTarget]]:
+        """Saved, resolvable profiles that declare ``awsCredentials``."""
+        targets = []
+        for profile in self.profiles():
+            if profile.dynamic or "awsCredentials" not in profile.raw:
+                continue
+            resolved = self.resolve(profile)
+            if resolved is not None and resolved.aws_credentials is not None:
+                targets.append((profile, resolved.aws_credentials))
+        return targets
 
     def _resolve_path(self, value: Any, base: Path, workspace: Path | None = None) -> Path:
         workspace = workspace or self.workspace
@@ -463,6 +533,10 @@ class LaunchProfileStore:
             validate_service_overrides(raw.get("overrides"))
         except ValueError:
             return "Service overrides need attention."
+        if profile_services(raw) is None:
+            return "Profile services must be a list of unique Compose service names."
+        if "awsCredentials" in raw and parse_aws_credentials_field(raw["awsCredentials"]) is None:
+            return "awsCredentials needs envFiles (1-16 paths) and an optional AWS profile name."
         try:
             if (
                 self.resolve(LaunchProfile(None, raw.get("projectName"), None, copy.deepcopy(raw)))

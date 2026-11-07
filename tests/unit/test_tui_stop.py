@@ -189,3 +189,44 @@ async def test_saved_profile_parent_stop_pins_active_project_members(tmp_path, c
         await until(pilot, lambda: app._inline_task.done())
         assert app._selection_key == "profile:Orders"
         assert app.query_one("#launch-profiles", DataTable).has_focus
+
+
+async def test_saved_profile_with_services_stops_only_those_services(tmp_path):
+    (tmp_path / "compose.yaml").write_text("services: {}\n")
+    profile_file = tmp_path / ".debugpilot" / "launch.json"
+    profile_file.parent.mkdir(parents=True)
+    profile_file.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "configurations": [
+                    {
+                        "name": "Orders",
+                        "type": "docker-compose",
+                        "projectName": "orders",
+                        "cwd": "${workspaceFolder}",
+                        "files": ["compose.yaml"],
+                        "services": ["api"],
+                    }
+                ],
+            }
+        )
+    )
+    docker = StopDocker()
+    docker.inventory = [
+        item("orders-api", "orders", "api"),
+        item("orders-worker", "orders", "worker"),
+    ]
+    app = DebugPilotApp(
+        DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
+    )
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(app._launch_profiles) and bool(docker.opened))
+        select_key(app, "profile:Orders")
+        await until(pilot, lambda: app._selection_key == "profile:Orders")
+        await pilot.press("s")
+        message = str(app.query_one("#inline-compose-message", Static).render())
+        assert "1 active container(s)" in message
+        await pilot.click("#inline-compose-confirm")
+        await until(pilot, lambda: bool(docker.stops))
+        assert docker.stops == [(("orders-api",), True, 10)]
