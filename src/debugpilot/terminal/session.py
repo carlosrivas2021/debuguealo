@@ -73,6 +73,22 @@ def _posix_argv(argv: list[str]) -> list[str]:
     return [sys.executable, "-c", "import sys; " + bootstrap, *argv]
 
 
+GROUP_GRACE_SECONDS = 2.0
+GROUP_KILL_WAIT_SECONDS = 1.0
+
+
+async def _wait_for_group_exit(pgid: int, deadline: float) -> bool:
+    while True:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        await asyncio.sleep(min(0.01, remaining))
+
+
 @dataclass
 class TerminalSession:
     """A bounded native pseudo-terminal session; no process starts until open()."""
@@ -268,38 +284,73 @@ class TerminalSession:
                 os.close(fd)
             except OSError:
                 pass
-        if process is not None:
-            if self._windows:
-                try:
-                    process.close(force=True)
-                except OSError:
-                    pass
-            else:
-                try:
-                    if process.poll() is None:
-                        os.killpg(process.pid, signal.SIGTERM)
-                    await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=0.5)
-                except TimeoutError:
+        try:
+            if process is not None:
+                if self._windows:
                     try:
-                        os.killpg(process.pid, signal.SIGKILL)
+                        process.close(force=True)
+                    except OSError:
+                        pass
+                else:
+                    started = time.monotonic()
+                    terminated = False
+                    try:
+                        if process.poll() is None:
+                            os.killpg(process.pid, signal.SIGTERM)
+                            terminated = True
+                        await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=0.5)
+                    except TimeoutError:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        try:
+                            await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=1.0)
+                        except TimeoutError:
+                            pass
+                    except (OSError, ProcessLookupError):
+                        pass
+
+                    # Reaping the helper alone is insufficient: closing the PTY can end it
+                    # at once while owned descendants in its process group are still
+                    # shutting down. Give them their grace period, then force the group.
+                    try:
+                        os.killpg(process.pid, 0)
                     except ProcessLookupError:
                         pass
-                    try:
-                        await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=1.0)
-                    except TimeoutError:
-                        pass
-                except (OSError, ProcessLookupError):
+                    else:
+                        if not terminated:
+                            try:
+                                os.killpg(process.pid, signal.SIGTERM)
+                            except ProcessLookupError:
+                                pass
+                        graceful = started + GROUP_GRACE_SECONDS
+                        if not await _wait_for_group_exit(process.pid, graceful):
+                            try:
+                                os.killpg(process.pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+                            forced = graceful + GROUP_KILL_WAIT_SECONDS
+                            if not await _wait_for_group_exit(process.pid, forced):
+                                raise TimeoutError(
+                                    "Timed out waiting for the owned process group to exit."
+                                )
+        except BaseException:
+            # Preserve an owner handle for a later close retry.
+            if process is not None and self.process is None:
+                self.process = process
+            raise
+        finally:
+            reader, self._reader = self._reader, None
+            if reader and reader is not asyncio.current_task():
+                reader.cancel()
+                try:
+                    await asyncio.wait_for(reader, timeout=1.0)
+                except (asyncio.CancelledError, TimeoutError):
                     pass
-        reader, self._reader = self._reader, None
-        if reader and reader is not asyncio.current_task():
-            reader.cancel()
-            try:
-                await asyncio.wait_for(reader, timeout=1.0)
-            except (asyncio.CancelledError, TimeoutError):
-                pass
-        self._windows = False
-        self._release_docker_config(docker_config)
-        if not self._exit_notified:
-            self._exit_notified = True
-            if self.on_exit is not None:
-                self.on_exit()
+            self._windows = False
+            self._release_docker_config(docker_config)
+            if not self._exit_notified:
+                self._exit_notified = True
+                if self.on_exit is not None:
+                    self.on_exit()
