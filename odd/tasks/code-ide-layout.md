@@ -21,8 +21,8 @@ S2. User selected "Estilo IDE (Recommended)": "Sidebar izquierda con perfiles + 
 S3. "Todo me molesta" (answer to layout/flow/texts question) — texts that read like errors ("pending (no debugger)") and shortcut noise in labels are replaced by clear wording; shortcuts live in the footer.
 
 ## Tasks
-T1 | S1 | inline | done: RED test_paused_execution_line_is_shaded_yellow_until_cleared failed, GREEN after post-style overlay; unit suite 694 passed | commit: pending (shares file with T2)
-T2 | S2, S3 | inline | done (suite pending): RED 3/3 test_code_ide_layout.py on base copy, GREEN 3/3; SourceBrowser slots (sidebar header, editor side, bottom), toolbar + status row, Ctrl+J terminal collapse, footer bindings for F9/F10/F11/Shift+F11 in Code only, remove help paragraph, clearer texts | commit: pending
+T1 | S1 | inline | done: RED test_paused_execution_line_is_shaded_yellow_until_cleared failed, GREEN after post-style overlay; unit suite 694 passed | commit: 2768676
+T2 | S2, S3 | inline | done (suite pending): RED 3/3 test_code_ide_layout.py on base copy, GREEN 3/3; SourceBrowser slots (sidebar header, editor side, bottom), toolbar + status row, Ctrl+J terminal collapse, footer bindings for F9/F10/F11/Shift+F11 in Code only, remove help paragraph, clearer texts | commit: 2768676
 
 ## Log
 L1 (2026-11-08) "Quiero mejorar el ux de la parte de code" → "Todo me molesta, ademas cuando se detiene solo sale una flechita seria mejor que se sombreara la linea en amarillo"
@@ -37,3 +37,4 @@ L9 (2026-11-08) User asked "Como se veria eso con 20 proyectos?" — measured 20
 L10 (2026-11-08) User: "Sí, dale, y arreglá también lo del 3". Sidebar lists names only; folder + argv in #code-profile-details (test_code_projects updated to the requested behavior). Bug 3: selection applies exactly one bottom view (live wins; else last view chosen per profile via F5/Shift+F5/Reconnect). RED→GREEN test_a_profile_shows_one_bottom_view_when_it_has_a_finished_run_and_debug; 63 Code tests pass.
 L11 (2026-11-08) User screenshot after L10: status said "Exited: 0" while Debug output was shown; empty Debug panel stayed after the session ended; profile highlight only covered the name. Fix: status follows the shown view; side panel only for live debug (finished keeps only its bottom output); Profile column width 26. RED→GREEN test_finished_debug_view_keeps_output_hides_panel_and_reports_debug_state; 60 Code tests pass.
 L12 (2026-11-08) User screenshots: paused view OK; after Continue ended the program the empty Debug panel stayed. Fix: _debug_finished re-applies the view and status. RED→GREEN test_debug_panel_closes_when_the_selected_session_ends_on_its_own; 69 Code/debug tests pass.
+L13 (2026-11-08) Suite 702 passed. User chose "Un solo PR (Recommended)" (636 authored lines, size:exception). Commit 2768676, PR https://github.com/carlosrivas2021/debuguealo/pull/12.
