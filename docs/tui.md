@@ -42,11 +42,11 @@ In Code, **F5** or **Run (F5)** runs the selected profile without debug. Type in
 terminal; **Escape** returns focus to profiles. **Stop** ends only the selected Code
 context. A running profile survives area changes; repeated F5 does not restart it. Distinct
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
-an active profile returns to its context. Same-endpoint Go attaches are rejected, while distinct
+an active profile returns to its context. Same-endpoint attaches are rejected, while distinct
 endpoints may coexist. **Shift+F5** or **Debug (Shift+F5)** starts Python debugging from that same profile
-and its requested source breakpoints. At a pause, inspect the stack/variables and the
-yellow execution arrow, then use **Continue**, **F10** (over), **F11** (in), or
-**Shift+F11** (out). Continue never repurposes F5. Stop cancels startup or ends the
+and its requested source breakpoints, which **F9** toggles at the source cursor. At a pause, inspect the stack/variables and the
+yellow execution arrow, then use **F5** or **Continue F5**, **F10** (over), **F11** (in), or
+**Shift+F11** (out). F5 continues only the paused profile under the cursor. Stop cancels startup or ends the
 active Code run/debug tree. Debug output is internal-console only (no interactive stdin).
 Missing debugpy or unsupported commands report an error without falling back to run.
 See [code project execution and debugging](code-projects.md) for setup and limits.
@@ -172,6 +172,6 @@ entries when those limits are reached. Copy depends on terminal clipboard suppor
 ## Not implemented yet
 
 Code supports read-only source navigation, persistent root-scoped requested breakpoints,
-Python/Node/Go debugging, and non-owning Go attach. Distinct saved profiles retain separate
-run/debug/attach contexts; the same Go endpoint cannot be attached twice. Expression
+Python/Node/Go debugging, and non-owning Go and Python attach. Distinct saved profiles retain separate
+run/debug/attach contexts; the same endpoint cannot be attached twice. Expression
 evaluation and a desktop editor are not implemented. See [Code setup and limits](code-projects.md).

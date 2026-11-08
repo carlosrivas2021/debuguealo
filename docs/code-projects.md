@@ -45,7 +45,8 @@ processes. Container action shortcuts are inactive in Code.
 Each saved profile can own at most one pending or active Code run. Different profiles
 may run simultaneously and may run alongside local debug contexts. F5 on a profile that
 already has a live run selects its terminal; it does not spawn a duplicate. F5 on that
-profile's active debug context selects the debugger instead of changing modes. Selecting
+profile's active debug context selects the debugger instead of changing modes, and continues
+it when paused. Selecting
 another profile never stops its background run; its terminal screen and output are retained.
 **Stop** affects only the selected run or debug context. The status line reports the
 selected context's `Starting`, `Running`, `Exited: <code>`, `Stopped`, or startup error.
@@ -95,13 +96,15 @@ The preview is not an operating-system sandbox; browse trusted local projects.
 1. Use a Python script or module command, for example `["python", "main.py"]` or
    `["python", "-u", "-m", "package.module"]`. Install `debugpy` yourself in that
    profile's interpreter before launching; debugealo never installs it at runtime.
-2. Mark an executable source line, then press **Shift+F5** or **Debug (Shift+F5)**.
+2. Mark an executable source line with **F9**, the button or the gutter, then press **Shift+F5**
+   or **Debug (Shift+F5)**.
    The initial requested breakpoints are sent before the program runs.
 3. At a pause, inspect the **Frame / Source / Line** stack and the variables pane.
    Select a stack row (Enter or click) to preview its source and non-expensive scopes.
    A yellow **▶** identifies the execution line independently of red breakpoint dots.
-4. Use **Over F10**, **In F11**, **Out Shift+F11**, or **Continue**. Continue is a
-   button, not F5. **F5 always runs without debug**; it never resumes a debugger.
+4. Use **Over F10**, **In F11**, **Out Shift+F11**, or **Continue F5**. **F5** continues only
+   when the profile under the cursor is paused; otherwise it keeps its run-without-debug
+   meaning and never starts a second session for that profile.
 5. **Stop** ends the owned adapter and target tree, including pending startup.
    Quitting also cancels startup and closes the owned session.
 
