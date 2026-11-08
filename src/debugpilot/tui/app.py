@@ -23,7 +23,7 @@ from debugpilot.docker.logs import LogBuffer
 from debugpilot.storage.compose_projects import ComposeProjectStore
 from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore, profile_services
 from debugpilot.tui.code_workspace import CodeWorkspace
-from debugpilot.tui.container_details import ContainerDetails, published_ports
+from debugpilot.tui.container_details import ContainerDetails, ProjectOverview, published_ports
 from debugpilot.tui.container_list import ContainerRow, container_label, container_rows
 from debugpilot.tui.execution_console import ExecutionConsole
 from debugpilot.tui.log_viewer import LogViewer
@@ -41,6 +41,11 @@ def _plan_scope(plan) -> str:
     if isinstance(services, tuple) and services:
         return ", ".join(services)
     return "all services"
+
+
+def _selection_signature(item: ContainerInfo | None) -> ContainerInfo | None:
+    """Selection identity for change detection; Docker's uptime text is ignored."""
+    return item.model_copy(update={"status": ""}) if item is not None else None
 
 
 class DebugPilotApp(App):
@@ -95,6 +100,8 @@ class DebugPilotApp(App):
         self._inventory_widths: dict[str, tuple[int, int, int]] = {}
         self._inventory_content: dict[str, tuple[tuple[str, str, str, str], ...]] = {}
         self._selection_changed = asyncio.Event()
+        # Logs stream only on request and close again when the selected row changes.
+        self._logs_requested = False
         self._generation = 0
         self._selection_revision = 0
         self._group_signature: tuple[tuple[str, str], ...] = ()
@@ -211,6 +218,7 @@ class DebugPilotApp(App):
                     )
                     yield self._container_terminal_pane
                 yield ContainerDetails(id="container-details")
+                yield ProjectOverview(id="project-overview")
                 with Vertical(id="logs-panel"):
                     yield Static("Select a container", id="log-state", markup=False)
                     yield LogViewer()
@@ -794,7 +802,7 @@ class DebugPilotApp(App):
         force: bool = False,
     ) -> None:
         old = (
-            self.selected_container,
+            _selection_signature(self.selected_container),
             self.selected_project,
             self._selection_key,
             self._group_signature,
@@ -814,11 +822,11 @@ class DebugPilotApp(App):
             )
             empty_detail = (
                 f"Compose project: {self.selected_project}\n{count} containers\n"
-                "Combined project logs; select a service to isolate it."
+                "Ctrl+L shows combined project logs; select a service for details."
             )
         elif self._selection_key == "standalone:":
             empty_detail = (
-                "Standalone containers have no Compose project. Select a container for logs."
+                "Standalone containers have no Compose project. Select a container for details."
             )
         self.query_one("#container-info", Static).update(
             Text(
@@ -828,14 +836,50 @@ class DebugPilotApp(App):
             if item
             else Text(empty_detail)
         )
+        if (old[1], old[2]) != (self.selected_project, self._selection_key):
+            self._logs_requested = False
         if force or old != (
-            item,
+            _selection_signature(item),
             self.selected_project,
             self._selection_key,
             self._group_signature,
         ):
             self._generation += 1
             self._selection_changed.set()
+        self._show_selection_panel()
+
+    def _show_selection_panel(self) -> None:
+        """Show container details by default and the log panel only on request."""
+        if self.query_one("#container-shell").display:
+            return
+        item = self.selected_container
+        details = self.query_one(ContainerDetails)
+        overview = self.query_one(ProjectOverview)
+        # The overview lists every project container, stopped ones included.
+        members = (
+            tuple(
+                value
+                for value in self._inventory.values()
+                if value.compose_project == self.selected_project
+            )
+            if item is None and self.selected_project
+            else ()
+        )
+        show_details = item is not None and not self._logs_requested
+        show_overview = bool(members) and not self._logs_requested
+        if show_details:
+            details.show_container(item)
+        if show_overview:
+            overview.show_project(self.selected_project or "", members)
+        details.display = show_details
+        overview.display = show_overview
+        self.query_one("#logs-panel").display = not (show_details or show_overview)
+
+    def _set_logs_requested(self, requested: bool) -> None:
+        self._logs_requested = requested
+        self._generation += 1
+        self._selection_changed.set()
+        self._show_selection_panel()
 
     def _compose_output_matches_selection(self) -> bool:
         return (
@@ -930,6 +974,17 @@ class DebugPilotApp(App):
                 viewer.action_clear_logs()
                 self._restore_compose_output()
                 members = self._group_members()
+                if not self._logs_requested:
+                    if item is None and members:
+                        self.query_one("#log-state", Static).update(
+                            f"Project · {self.selected_project} · {len(members)} services"
+                            " · Ctrl+L shows logs"
+                        )
+                    elif item is None:
+                        self.query_one("#log-state", Static).update(
+                            self._no_container_message()
+                        )
+                    continue
                 if item is None and members:
                     if len(members) > 32:
                         self.query_one("#log-state", Static).update(
@@ -943,19 +998,21 @@ class DebugPilotApp(App):
                             self._consume_group(members, generation, self.selected_project)
                         )
                 elif item is None:
-                    message = (
-                        f"Project · {self.selected_project} · select a service for logs"
-                        if self.selected_project
-                        else "No active containers; enable Show all"
-                        if self._inventory and not self._show_all
-                        else "No container selected"
-                    )
-                    self.query_one("#log-state", Static).update(message)
+                    self.query_one("#log-state", Static).update(self._no_container_message())
                 else:
                     self.query_one("#log-state", Static).update(f"Logs · {item.name}")
                     self._stream_task = asyncio.create_task(self._consume(item, generation))
         finally:
             await self._stop_stream()
+
+    def _no_container_message(self) -> str:
+        return (
+            f"Project · {self.selected_project} · select a service for logs"
+            if self.selected_project
+            else "No active containers; enable Show all"
+            if self._inventory and not self._show_all
+            else "No container selected"
+        )
 
     async def _consume_group(
         self, members: tuple[ContainerInfo, ...], generation: int, project: str
@@ -1025,23 +1082,31 @@ class DebugPilotApp(App):
     @on(Button.Pressed, "#container-shell-logs")
     def action_focus_logs(self) -> None:
         if self.query_one("#container-shell").display:
-            self._show_container_terminal(False)
+            self.query_one("#container-shell").display = False
+        if not self._logs_requested:
+            self._set_logs_requested(True)
+        else:
+            self._show_selection_panel()
         self.query_one("#log-entries", DataTable).focus()
 
     def _show_container_terminal(self, visible: bool) -> None:
         self.query_one("#container-shell").display = visible
-        self.query_one("#logs-panel").display = not visible
-        self.query_one(ContainerDetails).display = False
+        if visible:
+            self.query_one("#logs-panel").display = False
+            self.query_one(ContainerDetails).display = False
+            self.query_one(ProjectOverview).display = False
+        else:
+            self._show_selection_panel()
 
     def action_show_container_details(self) -> None:
         if self.selected_container is None:
             self.notify("Select a container to view its details.", severity="warning")
             return
         self.query_one("#container-shell").display = False
-        details = self.query_one(ContainerDetails)
-        details.show_container(self.selected_container)
-        details.display = True
-        self.query_one("#logs-panel").display = False
+        if self._logs_requested:
+            self._set_logs_requested(False)
+        else:
+            self._show_selection_panel()
 
     def action_toggle_compose_output(self) -> None:
         self._compose_output_visible = not self._compose_output_visible
@@ -2057,9 +2122,9 @@ class DebugPilotApp(App):
         elif self._inline_task is not None and not self._inline_task.done():
             self._inline_task.cancel()
         else:
-            if self.query_one(ContainerDetails).display:
-                self.query_one(ContainerDetails).display = False
-                self.query_one("#logs-panel").display = True
+            if self._logs_requested and not self.query_one("#container-shell").display:
+                # Esc closes on-demand logs and returns to the details view.
+                self._set_logs_requested(False)
                 self.query_one(self._selection_table_selector(), DataTable).focus()
                 return
             self._dismiss_inline_compose()

@@ -48,7 +48,15 @@ Button:disabled { color: #697279; background: #101417; }
 #container-info { height: 4; color: #9ba5aa; padding: 0 1; }
 #right-panel { width: 1fr; height: 1fr; border: none; border-left: solid #2b3439; }
 #logs-panel { width: 1fr; height: 1fr; border: none; }
-#container-details { display: none; height: auto; max-height: 10; padding: 0 1; border-bottom: solid #2b3439; }
+#container-details { display: none; height: auto; padding: 0 1; }
+#detail-cards { grid-size: 4; grid-gutter: 0 1; grid-rows: auto; height: auto; }
+.detail-card { height: 1fr; min-height: 5; padding: 0 1; border: round #2b3439; border-title-color: #a9c2cc; color: #d6d9dc; }
+.detail-card.state-running { border: round #3f7d4f; }
+.detail-card.state-exited { border: round #8a4b4b; }
+.detail-card.state-paused { border: round #8a7a3f; }
+#project-overview { display: none; height: 1fr; padding: 0 1; }
+#project-overview-title { height: 1; color: #a9c2cc; }
+#project-overview-table { height: 1fr; }
 #container-details-title { height: 1; color: #a9c2cc; }
 #container-details-content { height: auto; color: #9ba5aa; }
 #log-state { height: 1; color: #a9c2cc; padding: 0 1; }
@@ -84,7 +92,8 @@ Button:disabled { color: #697279; background: #101417; }
 .compact #compose-console.terminal-active { height: 11; min-height: 7; }
 .compact #compose-console.terminal-active.output-hidden { height: 7; min-height: 6; }
 .compact #terminal-pane { height: 3; min-height: 2; }
-.compact #container-details { max-height: 7; }
+.compact #detail-cards { grid-size: 2; }
+.compact .detail-card { min-height: 4; }
 .compact #debugger-state { display: none; }
 .compact #code-status, .compact #code-capabilities { height: 1; max-height: 1; }
 .compact #source-browser { height: 7; min-height: 7; max-height: 7; }

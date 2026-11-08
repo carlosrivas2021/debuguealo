@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from launch_ui_helpers import save_remembered_profile
 from test_tui_compose import Service
-from test_tui_grouping import Docker, item, select_key, until
+from test_tui_grouping import Docker, item, ready, request_logs, select_key, until
 from textual.widgets import Static
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -90,8 +90,10 @@ async def test_success_reconnects_current_execution_and_discards_stale_view(
 ):
     app, docker, service = make_app(tmp_path, monkeypatch)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
+        await until(pilot, lambda: app.selected_project == "orders")
+        await request_logs(pilot, app)
         viewer = app.query_one(LogViewer)
         await until(pilot, lambda: bool(viewer.buffer.entries()))
         await pilot.press(key, "enter")
@@ -125,9 +127,10 @@ async def test_failed_or_cancelled_operation_preserves_current_stream(
 ):
     app, docker, _service = make_app(tmp_path, monkeypatch, exit_code=1, blocked=cancel)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
         await until(pilot, lambda: app.selected_project == "orders")
+        await request_logs(pilot, app)
         viewer = app.query_one(LogViewer)
         await until(pilot, lambda: bool(viewer.buffer.entries()))
         before = viewer.buffer.entries()
@@ -151,13 +154,15 @@ async def test_failed_or_cancelled_operation_preserves_current_stream(
 async def test_completion_does_not_retarget_unrelated_selection(tmp_path, monkeypatch):
     app, docker, service = make_app(tmp_path, monkeypatch, blocked=True)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
         await until(pilot, lambda: app.selected_project == "orders")
         await pilot.press("r", "enter")
         await until(pilot, lambda: bool(service.runs))
         select_key(app, "container:catalog-api")
-        await until(pilot, lambda: docker.opened[-1] == "catalog-api")
+        await until(pilot, lambda: app._selection_key == "container:catalog-api")
+        await request_logs(pilot, app)
+        await until(pilot, lambda: docker.opened[-1:] == ["catalog-api"])
         count = len(docker.opened)
         service.release.set()
         await until(pilot, lambda: app._inline_task.done())
@@ -168,7 +173,7 @@ async def test_completion_does_not_retarget_unrelated_selection(tmp_path, monkey
 async def test_selecting_again_and_retrying_only_show_the_current_execution(tmp_path, monkeypatch):
     app, docker, _service = make_app(tmp_path, monkeypatch)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         viewer = app.query_one(LogViewer)
         for target in (
             "profile-child:profile:Orders:orders-api",
@@ -177,6 +182,9 @@ async def test_selecting_again_and_retrying_only_show_the_current_execution(tmp_
         ):
             opened = len(docker.opened)
             select_key(app, target)
+            # Each new selection closes logs, so request them for this target.
+            await until(pilot, lambda target=target: app._selection_key == target)
+            await request_logs(pilot, app)
             try:
                 await until(pilot, lambda opened=opened: len(docker.opened) > opened)
             except TimeoutError:
@@ -196,9 +204,10 @@ async def test_selecting_again_and_retrying_only_show_the_current_execution(tmp_
 async def test_temporary_stopped_state_does_not_lose_restart_target(tmp_path, monkeypatch):
     app, docker, service = make_app(tmp_path, monkeypatch, blocked=True)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
         await until(pilot, lambda: app.selected_project == "orders")
+        await request_logs(pilot, app)
         await pilot.press("r", "enter")
         await until(pilot, lambda: bool(service.runs))
         index = next(i for i, c in enumerate(docker.inventory) if c.id == "orders-api")

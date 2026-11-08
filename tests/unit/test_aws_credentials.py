@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 from test_tui_compose import Service
-from test_tui_grouping import Docker, item, until
+from test_tui_grouping import Docker, item, ready, until
 from textual.widgets import Static
 from typer.testing import CliRunner
 
@@ -233,7 +233,7 @@ async def test_tui_refresh_offers_recreate_only_for_running_profiles(tmp_path, m
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: len(app._launch_profiles) == 2 and bool(docker.opened))
+        await until(pilot, lambda: len(app._launch_profiles) == 2 and ready(app))
         await pilot.press("a")
         await until(pilot, lambda: bool(app._pending_credential_recreates))
         message = str(app.query_one("#inline-compose-message", Static).render())
@@ -258,7 +258,7 @@ async def test_tui_skip_does_not_recreate(tmp_path, monkeypatch):
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(app._launch_profiles) and bool(docker.opened))
+        await until(pilot, lambda: bool(app._launch_profiles) and ready(app))
         await pilot.press("a")
         await until(pilot, lambda: bool(app._pending_credential_recreates))
         await pilot.press("escape")

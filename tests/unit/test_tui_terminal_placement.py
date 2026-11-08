@@ -8,6 +8,7 @@ from test_tui_grouping import item, until
 from test_tui_terminal_integration import FakeSession, select_row
 from textual.widgets import DataTable
 
+from debugpilot.tui.container_details import ContainerDetails
 from debugpilot.tui.execution_console import ExecutionConsole
 from debugpilot.tui.terminal_view import TerminalPane
 
@@ -25,7 +26,8 @@ async def test_container_logs_navigation_preserves_pinned_session(
         await until(pilot, lambda: docker.requested == 2 and table.row_count == 3)
         console = app.query_one(ExecutionConsole)
         logs = app.query_one("#logs-panel")
-        before = logs.region
+        # A selected profile shows the project overview in the right-hand area.
+        before = app.query_one("#project-overview").region
         assert made == [] and not console.display
         await select_row(app, pilot, "#launch-profiles",
                          "profile-child:profile:Central:actual-api-17", "actual-api-17")
@@ -74,7 +76,8 @@ async def test_view_switch_keeps_host_below_and_only_one_session(
         await until(pilot, lambda: docker.requested == 2 and table.row_count == 3)
         console = app.query_one(ExecutionConsole)
         logs = app.query_one("#logs-panel")
-        before = logs.region
+        # A selected profile shows the project overview in the right-hand area.
+        before = app.query_one("#project-overview").region
         assert made == [] and not console.display
         await select_row(app, pilot, "#launch-profiles",
                          "profile-child:profile:Central:actual-api-17", "actual-api-17")
@@ -98,7 +101,10 @@ async def test_view_switch_keeps_host_below_and_only_one_session(
         await pilot.pause()
         host = app.query_one("#terminal-pane", TerminalPane)
         assert made[0].closed and len(made) == 2
-        assert host.active and not pane.active and console.display and logs.display
+        # Closing the container shell returns to the selection's default details view.
+        details = app.query_one(ContainerDetails)
+        assert host.active and not pane.active and console.display and details.display
+        assert not logs.display
         assert host.parent is console and app.focused is host
         assert made[1].host[0] == service.resolve()
         await pilot.press("escape", "c")
@@ -108,7 +114,8 @@ async def test_view_switch_keeps_host_below_and_only_one_session(
         assert shell.display and not logs.display
         await pilot.click("#container-terminal-close")
         await pilot.pause()
-        assert made[2].closed and not pane.active and logs.display and not shell.display
+        assert made[2].closed and not pane.active and details.display and not shell.display
+        assert not logs.display
         assert sum(view.active for view in app.query(TerminalPane)) == 0
         assert_files_unchanged(launch, compose, original)
     assert all(session.closed for session in made)
@@ -154,5 +161,7 @@ async def test_close_during_view_switch_joins_prior_cleanup_without_starting_c(
         await pilot.pause()
         assert len(made) == 1 and made[0].closed
         assert all(not pane.active for pane in app.query(TerminalPane))
-        assert not active.display and app.query_one("#logs-panel").display
+        # The selected container's default details view returns, not the log panel.
+        assert not active.display and app.query_one(ContainerDetails).display
+        assert not app.query_one("#logs-panel").display
         assert_files_unchanged(launch, compose, original)

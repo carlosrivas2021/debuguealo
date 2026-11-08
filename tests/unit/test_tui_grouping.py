@@ -30,6 +30,26 @@ async def until(pilot, condition):
             await pilot.pause(0.02)
 
 
+def ready(app):
+    """True once the inventory loaded and a row is selected.
+
+    Logs no longer stream on selection, so tests wait on this instead of an opened stream.
+    """
+    return bool(app._inventory) and app._selection_key is not None
+
+
+async def request_logs(pilot, app):
+    """Open the log stream for the current selection, as Ctrl+L does.
+
+    Focus returns to the previously focused widget so later key presses keep their target.
+    """
+    focused = app.focused
+    app.action_focus_logs()
+    if focused is not None:
+        focused.focus()
+    await pilot.pause()
+
+
 class Docker:
     def __init__(self):
         self.inventory = [
@@ -70,7 +90,7 @@ async def test_projects_and_standalone_are_grouped_and_group_selection_merges_lo
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         table = app.query_one("#launch-profiles", DataTable)
         keys = [row.key.value for row in table.ordered_rows]
         assert keys == [
@@ -86,6 +106,8 @@ async def test_projects_and_standalone_are_grouped_and_group_selection_merges_lo
             "standalone:",
             "container:standalone",
         ]
+        await request_logs(pilot, app)
+        await until(pilot, lambda: bool(docker.opened))
         select_key(app, "project:orders")
         await until(
             pilot,
@@ -125,9 +147,11 @@ async def test_selection_identity_survives_refresh_then_disappears_without_wrong
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, workspace=tmp_path, refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "container:orders-api")
-        await until(pilot, lambda: docker.opened[-1] == "orders-api")
+        await until(pilot, lambda: app._selection_key == "container:orders-api")
+        await request_logs(pilot, app)
+        await until(pilot, lambda: docker.opened[-1:] == ["orders-api"])
         opened = list(docker.opened)
         docker.inventory = list(reversed(docker.inventory))
         await pilot.pause(0.1)
@@ -136,7 +160,11 @@ async def test_selection_identity_survives_refresh_then_disappears_without_wrong
         await until(
             pilot, lambda: app.selected_container is None and app.selected_project == "orders"
         )
-        await until(pilot, lambda: docker.opened[-1] == "orders-worker")
+        # The selection moved to the project row, which closes logs until requested again.
+        await pilot.pause(0.1)
+        assert docker.opened == opened
+        await request_logs(pilot, app)
+        await until(pilot, lambda: docker.opened[-1:] == ["orders-worker"])
         opened = list(docker.opened)
         docker.inventory = [
             value for value in docker.inventory if value.compose_project != "orders"
@@ -212,7 +240,7 @@ async def test_r_requests_restart_for_selected_target_without_execution(target, 
     docker = Docker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, target)
         await until(pilot, lambda: app.selected_project == "orders")
         await pilot.press("r")
@@ -231,7 +259,9 @@ async def test_shift_r_requests_rebuild_and_typing_never_runs_actions(key, targe
     docker = Docker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
+        # The log filter lives in the log panel, which is shown only on request.
+        await request_logs(pilot, app)
         app.query_one("#filter-logs", Input).focus()
         await pilot.press("r", "R")
         assert app.query_one("#filter-logs", Input).value == "rR"
@@ -258,9 +288,11 @@ async def test_context_shortcuts_refuse_standalone_and_ctrl_r_retries_logs():
     docker = Docker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "container:standalone")
-        await until(pilot, lambda: docker.opened[-1] == "standalone")
+        await until(pilot, lambda: app._selection_key == "container:standalone")
+        await request_logs(pilot, app)
+        await until(pilot, lambda: docker.opened[-1:] == ["standalone"])
         await pilot.press("r", "R")
         assert not isinstance(app.screen, ComposeDialog)
         previous = len(docker.opened)
@@ -285,7 +317,7 @@ async def test_resize_preserves_visible_cursor_before_selection_event(target):
     docker = Docker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         table = app.query_one("#launch-profiles", DataTable)
         table.focus()
         with table.prevent(DataTable.RowHighlighted):
@@ -311,7 +343,7 @@ async def test_shortcuts_reuse_successful_compose_files_with_confirmation(
     docker = Docker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, target)
         await pilot.pause()
         app._open_compose()
@@ -358,7 +390,7 @@ async def test_shortcuts_reuse_successful_compose_files_with_confirmation(
         DebugPilotEngine(Settings(), docker=restarted_docker), refresh_interval=0.05
     )
     async with restarted.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(restarted_docker.opened))
+        await until(pilot, lambda: ready(restarted))
         select_key(restarted, "profile:Orders")
         await pilot.press(key)
         assert not isinstance(restarted.screen, ComposeDialog)
