@@ -36,10 +36,23 @@ files. Reading a missing file shows an empty list without creating anything.
 Containers / Code switching preserves mounted views and does not start or stop
 processes. Container action shortcuts are inactive in Code.
 
+## Layout
+
+Code is laid out like an IDE: profile names and the file tree on the left (the selected
+profile's folder and command appear under the list), source in the center, the **Debug** panel (controls, stack, variables) on the right while a debug
+session is selected, and the bottom area below: the Code terminal for runs or **Debug output**
+for debug sessions. **Ctrl+J** hides or shows the bottom area. The footer lists the shortcuts
+available in the current area. Selecting a profile shows one bottom view: its live session,
+otherwise the run or debug view you used last for that profile.
+
+F5 and Shift+F5 never move focus, so the arrow keys keep moving between profiles. Click the
+terminal to type into the program; its border turns yellow and reads
+**typing — Esc to leave**. **Escape** returns to the profiles, even after the program exited.
+
 ## Run without debug
 
-1. Select a profile in **Code** and press **F5** or click **Run (F5)**.
-2. Type in the Code terminal for interactive input. **Escape** returns focus to profiles.
+1. Select a profile in **Code** (left sidebar) and press **F5** or click **▶ Run**.
+2. Click the Code terminal to type interactive input. **Escape** returns focus to profiles.
 3. Click **Stop** to end that Code process tree. After stopping or exit, run again with F5.
 
 Each saved profile can own at most one pending or active Code run. Different profiles
@@ -65,7 +78,7 @@ Do not use this runner for detached background services intended to survive the 
 
 1. Select a Code profile. Expand directories in the file tree, then select a file.
 2. Move the cursor to a line in the read-only source pane (mouse or arrow keys).
-3. Click **Toggle breakpoint at cursor (pending)**. A red **●** appears in the
+3. Press **F9**, click the gutter, or click **● Breakpoint**. A red **●** appears in the
    gutter beside that line number, before the code. Expand the file to see its
    **Line N · pending** children; selecting one navigates to that line.
 4. Click the red **●** to remove the mark, or click that gutter position on an
@@ -97,12 +110,13 @@ The preview is not an operating-system sandbox; browse trusted local projects.
    `["python", "-u", "-m", "package.module"]`. Install `debugpy` yourself in that
    profile's interpreter before launching; debugealo never installs it at runtime.
 2. Mark an executable source line with **F9**, the button or the gutter, then press **Shift+F5**
-   or **Debug (Shift+F5)**.
+   or **Debug**.
    The initial requested breakpoints are sent before the program runs.
 3. At a pause, inspect the **Frame / Source / Line** stack and the variables pane.
    Select a stack row (Enter or click) to preview its source and non-expensive scopes.
-   A yellow **▶** identifies the execution line independently of red breakpoint dots.
-4. Use **Over F10**, **In F11**, **Out Shift+F11**, or **Continue F5**. **F5** continues only
+   A yellow **▶** and a yellow-shaded line identify the execution line independently of
+   red breakpoint dots.
+4. Use **F10** (Over), **F11** (In), **Shift+F11** (Out), or **F5** (**▶ Continue**). **F5** continues only
    when the profile under the cursor is paused; otherwise it keeps its run-without-debug
    meaning and never starts a second session for that profile.
 5. **Stop** ends the owned adapter and target tree, including pending startup.
@@ -176,8 +190,8 @@ Shift+F5 and does not launch a local process.
 3. Open source, mark pending breakpoints, then press **Shift+F5**. Code shows
    **Connecting**, then **Attached**; the started profile and root remain pinned even if
    another profile is selected, profiles are reloaded, or the user switches areas.
-4. At a pause, inspect stack, scopes and variables; use **Continue**, **Over F10**,
-   **In F11**, and **Out Shift+F11**. Breakpoints, stack navigation and source previews
+4. At a pause, inspect stack, scopes and variables; use **F5** (Continue), **F10** (Over),
+   **F11** (In), and **Shift+F11** (Out). Breakpoints, stack navigation and source previews
    follow the attached profile's local root.
 5. Use **Disconnect** or **Stop** to clear this attach session's remote breakpoints and
    leave the target running, even when it was paused. The target is not terminated and the UI

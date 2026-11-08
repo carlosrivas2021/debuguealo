@@ -18,6 +18,15 @@ from textual.widgets import Button, Static, TextArea, Tree
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.breakpoints import BreakpointStore
 
+# Dark yellow keeps syntax colors readable while marking the paused line.
+EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
+SOURCE_HINT = "Select a file. F9 or click the gutter to toggle a breakpoint."
+
+
+def _overlay(strip: Strip, style: Style) -> Strip:
+    # Post-style wins over TextArea's own cursor-line and base backgrounds.
+    return Strip(Segment.apply_style(strip, post_style=style), strip.cell_length)
+
 
 class SourceText(TextArea):
     """Read-only source with clickable pending breakpoint dots in the line gutter."""
@@ -36,8 +45,11 @@ class SourceText(TextArea):
         strip = super().render_line(y)
         line = y + self.scroll_offset.y + 1
         if line == self.execution_line:
+            gutter = self.gutter_width
             strip = Strip.join([
-                Strip([Segment("▶", Style(color="#facc15", bold=True))], 1), strip.crop(1),
+                Strip([Segment("▶", Style(color="#facc15", bold=True))], 1),
+                strip.crop(1, gutter),
+                _overlay(strip.crop(gutter), EXECUTION_LINE_STYLE),
             ])
         if line not in self.breakpoint_lines:
             return strip
@@ -67,8 +79,27 @@ class SourceBrowser(Vertical):
             super().__init__()
             self.root, self.path, self.lines = root, path, lines
 
-    def __init__(self):
+    # Structural layout lives with the widget so it renders correctly without the app sheet.
+    DEFAULT_CSS = """
+    SourceBrowser #source-layout { height: 1fr; }
+    SourceBrowser #source-sidebar { width: 30; min-width: 22; }
+    SourceBrowser #source-tree { height: 1fr; }
+    SourceBrowser #source-main { width: 1fr; }
+    SourceBrowser #source-editor-row { height: 2fr; min-height: 6; }
+    SourceBrowser #source-pane { width: 1fr; }
+    SourceBrowser #source-header { height: auto; }
+    SourceBrowser #source-status { width: 1fr; height: auto; }
+    SourceBrowser #source-breakpoint { width: auto; }
+    SourceBrowser #source-text { height: 1fr; }
+    """
+
+    def __init__(self, *, sidebar_header=None, editor_side=None, bottom=None):
         super().__init__(id="source-browser")
+        # Optional slots let a host place its own panes around the source in an IDE layout
+        # while the tree and editor stay owned by this widget.
+        self._sidebar_header = sidebar_header
+        self._editor_side = editor_side
+        self._bottom = bottom
         self.root_path: Path | None = None
         self.file_path: Path | None = None
         self.breakpoint_store = BreakpointStore()
@@ -85,13 +116,23 @@ class SourceBrowser(Vertical):
         self._verification = {}
 
     def compose(self) -> ComposeResult:
-        yield Static("Select a source file. Breakpoints are pending (no debugger).",
-                     id="source-status", markup=False)
-        with Horizontal(id="source-content"):
-            yield Tree("Files", id="source-tree")
-            yield SourceText(id="source-text")
-        yield Button("Toggle breakpoint at cursor (pending)",
-                     id="source-breakpoint", disabled=True)
+        with Horizontal(id="source-layout"):
+            with Vertical(id="source-sidebar"):
+                if self._sidebar_header is not None:
+                    yield self._sidebar_header
+                yield Static("FILES", id="source-files-title", classes="pane-title")
+                yield Tree("Files", id="source-tree")
+            with Vertical(id="source-main"):
+                with Horizontal(id="source-editor-row"):
+                    with Vertical(id="source-pane"):
+                        with Horizontal(id="source-header"):
+                            yield Static(SOURCE_HINT, id="source-status", markup=False)
+                            yield Button("● Breakpoint", id="source-breakpoint", disabled=True)
+                        yield SourceText(id="source-text")
+                    if self._editor_side is not None:
+                        yield self._editor_side
+                if self._bottom is not None:
+                    yield self._bottom
 
     def set_project(self, root: Path | None):
         root = Path(root).absolute() if root is not None else None
@@ -115,8 +156,8 @@ class SourceBrowser(Vertical):
         editor.breakpoint_lines = ()
         editor.execution_line = None
         editor.load_text("")
-        self.query_one(Button).disabled = True
-        self._set_status("Select a source file. Breakpoints are pending (no debugger).")
+        self.query_one("#source-breakpoint", Button).disabled = True
+        self._set_status(SOURCE_HINT)
 
     def _populate(self, node):
         path, _ = node.data
@@ -128,7 +169,9 @@ class SourceBrowser(Vertical):
             self._safe_path(path)
             entries = list(islice(path.iterdir(), 2001))
             if len(entries) > 2000:
-                self.query_one(Static).update("Directory preview limited to 2000 entries.")
+                self.query_one("#source-status", Static).update(
+                    "Directory preview limited to 2000 entries."
+                )
             entries = sorted(entries[:2000], key=lambda p: (not p.is_dir(), p.name.casefold()))
             for entry in entries:
                 if entry.is_symlink() or entry.is_junction():
@@ -206,8 +249,8 @@ class SourceBrowser(Vertical):
         editor.refresh()
         if line is not None:
             editor.move_cursor((min(line - 1, editor.document.line_count - 1), 0))
-        self.query_one(Button).disabled = False
-        self._set_status(f"{path} · Read-only · Breakpoints: requested intent")
+        self.query_one("#source-breakpoint", Button).disabled = False
+        self._set_status(f"{path.name} · read-only")
         return True
 
     def show_execution(self, root, path, line):
@@ -295,7 +338,7 @@ class SourceBrowser(Vertical):
         except ConfigurationError as error:
             self._persistence_error = str(error)
         self._set_status(
-            f"{self.file_path} · Read-only · Breakpoints: requested intent"
+            f"{self.file_path.name} · read-only"
         )
         self.post_message(self.BreakpointsChanged(
             self.root_path, self.file_path.resolve(), tuple(sorted(marks))
@@ -304,4 +347,4 @@ class SourceBrowser(Vertical):
     def _set_status(self, message):
         if self._persistence_error:
             message = f"{message} · {self._persistence_error}"
-        self.query_one(Static).update(message)
+        self.query_one("#source-status", Static).update(message)
