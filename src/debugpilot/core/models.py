@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class CheckStatus(StrEnum):
     OK = "ok"
+    WARNING = "warning"
     ERROR = "error"
     UNKNOWN = "unknown"
 

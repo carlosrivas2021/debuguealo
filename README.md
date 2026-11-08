@@ -18,9 +18,10 @@ The SSH URL uses your GitHub SSH key. With HTTPS credentials (for example after
 uv downloads a suitable Python (3.12 or newer) if needed. To update, rerun the install
 command with `--reinstall`.
 
-Run `debugealo doctor` to check Docker access. Docker is required for containers; Go
-debugging needs [Delve](docs/go-debugging.md) and Python debugging needs `debugpy` in the
-target environment.
+Run `debugealo doctor` to check Docker access and the debugging tools. Docker is required
+for containers; Go debugging needs [Delve](docs/go-debugging.md) and Python debugging needs
+`debugpy` in each profile's interpreter. `doctor` warns, with an install command, when
+either tool is missing.
 
 ## What it does
 
@@ -118,7 +119,8 @@ socket, make it world-writable, or run debugealo as administrator to mask config
 
 `doctor` exits 0 when all checks pass, 1 for an unavailable/denied Docker daemon,
 and 2 for invalid configuration. It reports Python, configuration, platform, local endpoint,
-connectivity, permissions, and Docker server version. A successful API read proves access
+connectivity, permissions, Docker server version, Delve on PATH, and debugpy in the default
+`python3`. Missing debugging tools are warnings and do not change the exit code. A successful API read proves access
 to that operation, not authorization for every Docker API operation.
 
 Configuration is optional. See [configuration](docs/configuration.md) and
