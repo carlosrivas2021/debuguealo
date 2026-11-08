@@ -20,6 +20,15 @@ def entry(text="hello", timestamp="2026-10-26T18:00:00.123456789Z", stream="stdo
     return LogEntry(timestamp=timestamp, stream=stream, text=text)
 
 
+def inventory_from(records):
+    """Serve the inventory from the same fake records as the one-shot worker."""
+
+    async def inventory(self):
+        return [record async for record in records(self, {"command": "containers"})]
+
+    return inventory
+
+
 def test_container_metadata_and_compose_labels():
     container = ContainerInfo.from_docker(
         {
@@ -155,6 +164,7 @@ async def test_discovery_and_history_use_worker_records(monkeypatch):
             yield {"kind": "log", "value": entry().model_dump(mode="json")}
 
     monkeypatch.setattr(DockerService, "_records", records)
+    monkeypatch.setattr(DockerService, "_inventory_records", inventory_from(records))
     service = DockerService(Settings())
     assert (await service.list_containers())[0].id == "abc"
     assert [log.text async for log in service.stream_logs("abc", tail=10)] == ["hello"]
@@ -272,6 +282,7 @@ def test_container_and_logs_cli(monkeypatch):
             yield {"kind": "log", "value": entry("INFO from container").model_dump(mode="json")}
 
     monkeypatch.setattr(DockerService, "_records", records)
+    monkeypatch.setattr(DockerService, "_inventory_records", inventory_from(records))
     runner = CliRunner()
     result = runner.invoke(app, ["containers"])
     assert result.exit_code == 0 and "demo" in result.output

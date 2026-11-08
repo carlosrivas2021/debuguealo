@@ -1,6 +1,6 @@
 import asyncio
 
-from test_tui_grouping import Docker, item, select_key, until
+from test_tui_grouping import Docker, item, ready, request_logs, select_key, until
 from textual.widgets import DataTable, Static
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -41,8 +41,10 @@ async def test_project_merges_tagged_logs_and_closes_all_streams_when_switching(
     docker = LoggingDocker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "project:orders")
+        await until(pilot, lambda: app.selected_project == "orders")
+        await request_logs(pilot, app)
         viewer = app.query_one(LogViewer)
         await until(pilot, lambda: len(viewer.buffer.entries()) == 2)
         assert {entry.text for entry in viewer.buffer.entries()} == {
@@ -61,6 +63,8 @@ async def test_project_merges_tagged_logs_and_closes_all_streams_when_switching(
             ),
         )
         await until(pilot, lambda: docker.closed.count("orders-worker") == 2)
+        # The new selection closed logs; request them for the selected container.
+        await request_logs(pilot, app)
         await until(pilot, lambda: len(viewer.buffer.entries()) == 1)
         assert viewer.buffer.entries()[0].text == "same message"
         assert viewer.query_one(DataTable).is_mounted
@@ -82,8 +86,10 @@ async def test_group_failure_isolated_and_inventory_membership_refreshes_streams
     docker = FailingDocker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "project:orders")
+        await until(pilot, lambda: app.selected_project == "orders")
+        await request_logs(pilot, app)
         viewer = app.query_one(LogViewer)
         await until(pilot, lambda: any(e.text == "[worker] alive" for e in viewer.buffer.entries()))
         await until(
@@ -103,8 +109,12 @@ async def test_large_group_does_not_open_unbounded_streams():
     docker.inventory = [item(f"orders-api-{number}", "orders", "api") for number in range(33)]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
+        await request_logs(pilot, app)
+        await until(pilot, lambda: len(docker.opened) == 1)
         select_key(app, "project:orders")
+        await until(pilot, lambda: app.selected_container is None)
+        await request_logs(pilot, app)
         await until(pilot, lambda: "over 32" in str(app.query_one("#log-state", Static).render()))
         assert len(docker.opened) == 1
         assert docker.closed == docker.opened

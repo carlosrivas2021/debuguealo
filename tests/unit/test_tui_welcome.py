@@ -2,13 +2,14 @@ import json
 import threading
 from contextlib import contextmanager
 
-from test_tui_grouping import Docker, item, until
+from test_tui_grouping import Docker, item, request_logs, until
 from textual.widgets import DataTable, Static
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
 from debugpilot.storage.launch_profiles import LaunchProfileStore
 from debugpilot.tui.app import DebugPilotApp
+from debugpilot.tui.container_details import ContainerDetails
 
 
 async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
@@ -54,7 +55,10 @@ async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
         assert not app.query_one("#empty-welcome").display
         assert "Docker: connected" in str(app.query_one("#docker-state", Static).render())
         assert app.query_one("#launch-profiles", DataTable).row_count > 0
-        assert app.query_one("#logs-panel").display
+        # The selected container shows its details by default; logs open on request.
+        await until(pilot, lambda: app.selected_container is not None)
+        assert app.query_one(ContainerDetails).display
+        assert not app.query_one("#logs-panel").display
         assert not path.exists()
         assert await pilot.click("#open-launch-file")
         await until(pilot, lambda: bool(opened))
@@ -66,6 +70,8 @@ async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
             if row.key.value.startswith("profile:")
         ] == ["profile:Edited"]
         assert not app.query_one("#empty-welcome").display
+        await request_logs(pilot, app)
+        await until(pilot, lambda: "unconfigured-api" in docker.opened)
         assert "unconfigured-api" in docker.opened
 
 

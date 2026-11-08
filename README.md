@@ -56,9 +56,10 @@ an inline confirmation with the pinned profile; changing its saved configuration
 confirmation invalidates the preview. Escape cancels without running Docker. Builds
 and recreation may interrupt services; inspect Docker after partial failures.
 
-The selected profile follows its project's combined logs, tagged by container origin.
-Raw inventory also supports individual service logs. **Ctrl+R** reconnects the current
-selection. Dashboard logs show only each container's current execution. Successful
+Selecting a container shows detail cards and selecting a profile shows a project
+overview; neither streams logs. **Ctrl+L** opens the selection's logs (combined project
+logs are tagged by container origin) and **D** or **Esc** closes them. **Ctrl+R**
+reconnects open logs. Dashboard logs show only each container's current execution. Successful
 recreation refreshes inventory, clears the old view and reconnects after container IDs
 change; Docker's stored history is not deleted. The `logs` CLI retains history behavior.
 See the [keyboard workflow](docs/tui.md) and [workspace launch profiles](docs/launch-profiles.md).
@@ -138,6 +139,8 @@ Read [Docker integration](docs/docker.md) for limits, logging-driver support, an
 - F5 runs have shown an intermittent test failure whose cause is not established.
 - One `NoneType` integer error was reported in the dashboard and has not recurred or been explained.
 - Windows has not been rechecked since Python attach and the F5 and F9 changes.
+- `test_go_attach_disconnect.py` can time out when the full suite runs under heavy load;
+  it passes in isolation.
 
 ## Tests
 

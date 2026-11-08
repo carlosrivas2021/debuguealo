@@ -4,7 +4,7 @@ import json
 import pytest
 from launch_ui_helpers import save_remembered_profile
 from test_tui_compose import Service
-from test_tui_grouping import Docker, select_key, until
+from test_tui_grouping import Docker, ready, select_key, until
 from textual.widgets import Static
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -24,7 +24,7 @@ async def test_inline_confirmation_never_changes_screen(tmp_path, monkeypatch, k
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press(key)
@@ -78,7 +78,7 @@ async def test_running_inline_operation_rejects_overlap_and_cancels_cleanly(tmp_
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press("r")
@@ -100,7 +100,7 @@ async def test_unknown_project_shortcut_stays_on_dashboard(monkeypatch):
     docker = Docker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test() as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         await pilot.press("r")
         assert app.screen is screen
@@ -120,7 +120,7 @@ async def test_enter_immediately_after_shortcut_confirms_once(
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press(key, "enter")
@@ -163,7 +163,7 @@ async def test_inline_failure_shows_literal_output_and_missing_image_consent(tmp
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
@@ -212,7 +212,7 @@ async def test_missing_image_consent_cancel_never_retries(tmp_path, monkeypatch,
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
@@ -253,7 +253,7 @@ async def test_generic_failure_shows_output_without_download_action(tmp_path, mo
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
@@ -336,7 +336,7 @@ async def test_empty_failure_output_has_actionable_fallback(tmp_path, monkeypatc
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
         await until(pilot, lambda: app._inline_task.done())
@@ -373,7 +373,7 @@ async def test_retry_failure_is_shown_without_automatic_loop(tmp_path, monkeypat
     app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
     save_remembered_profile(app, "orders")
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
         await until(

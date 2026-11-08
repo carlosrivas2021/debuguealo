@@ -33,6 +33,8 @@ class ContainerInfo(BaseModel):
     name: str = Field(max_length=256)
     image: str = Field(max_length=1024)
     state: str = Field(max_length=64)
+    # Docker's human status ("Up 3 hours"); it changes every refresh while running.
+    status: str = Field(default="", max_length=256)
     created_at: datetime
     ports: tuple[PortMapping, ...] = ()
     labels: dict[str, str] = Field(default_factory=dict, max_length=1024)
@@ -53,16 +55,28 @@ class ContainerInfo(BaseModel):
             name=(value.get("Names") or [identity])[0].removeprefix("/"),
             image=value.get("Image", "unknown"),
             state=value.get("State", "unknown"),
+            status=str(value.get("Status") or "")[:256],
             created_at=datetime.fromtimestamp(value.get("Created", 0), UTC),
             labels=labels,
+            # Docker lists ports in unstable order; sort so equal inventories compare equal.
             ports=tuple(
-                PortMapping(
-                    private_port=port["PrivatePort"],
-                    public_port=port.get("PublicPort"),
-                    protocol=port.get("Type", "tcp"),
-                    host_ip=port.get("IP"),
+                sorted(
+                    (
+                        PortMapping(
+                            private_port=port["PrivatePort"],
+                            public_port=port.get("PublicPort"),
+                            protocol=port.get("Type", "tcp"),
+                            host_ip=port.get("IP"),
+                        )
+                        for port in ports
+                    ),
+                    key=lambda port: (
+                        port.private_port,
+                        port.protocol,
+                        port.public_port or 0,
+                        port.host_ip or "",
+                    ),
                 )
-                for port in ports
             ),
             compose_project=labels.get("com.docker.compose.project"),
             compose_service=labels.get("com.docker.compose.service"),

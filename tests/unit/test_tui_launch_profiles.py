@@ -2,7 +2,7 @@ import json
 import os
 
 from test_tui_compose import Service
-from test_tui_grouping import Docker, item, select_key, until
+from test_tui_grouping import Docker, item, ready, select_key, until
 from textual.app import App
 from textual.widgets import Button, Select, Static
 
@@ -92,7 +92,7 @@ async def test_pending_profile_does_not_block_logs_or_execute_actions(tmp_path, 
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: len(app._launch_profiles) == 1)
         assert path.read_bytes() == original
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         assert "pending" in str(app.query_one("#launch-state", Static).render()).lower()
         await pilot.press("r")
         assert not service.previews and not service.runs
@@ -122,7 +122,7 @@ async def test_named_profiles_select_without_overwriting_custom_fields(tmp_path,
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Local")
         app._open_compose()
         await pilot.pause()
@@ -244,7 +244,7 @@ async def test_copy_saved_nested_cwd_preserves_profile_semantics(tmp_path, monke
     copied = []
     monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Nested")
         app._open_compose()
         await pilot.pause()

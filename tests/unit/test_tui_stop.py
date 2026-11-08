@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from test_tui_grouping import Docker, item, select_key, until
+from test_tui_grouping import Docker, item, ready, select_key, until
 from textual.widgets import Checkbox, DataTable, Static
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -36,7 +36,7 @@ async def test_stop_requires_confirmation_and_pins_target_without_launch_config(
     docker = StopDocker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, target)
         await pilot.press("s")
         assert not docker.stops
@@ -54,7 +54,7 @@ async def test_cancel_stop_and_filter_typing_do_not_touch_docker():
     docker = StopDocker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test() as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         await pilot.press("s", "escape")
         assert not docker.stops
         app.query_one("#filter-logs").focus()
@@ -71,7 +71,7 @@ async def test_stopped_group_does_not_stop_its_active_siblings():
     ]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test() as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         app.query_one("#show-all", Checkbox).value = True
         table = app.query_one("#launch-profiles", DataTable)
         key = "stopped:container:orders-worker"
@@ -123,7 +123,7 @@ async def test_saved_profile_status_distinguishes_inactive_active_and_pending(tm
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: len(app._launch_profiles) == 3 and bool(docker.opened))
+        await until(pilot, lambda: len(app._launch_profiles) == 3 and ready(app))
         table = app.query_one("#launch-profiles", DataTable)
         statuses = {
             row.key.value: str(table.get_row_at(index)[2])
@@ -168,7 +168,7 @@ async def test_saved_profile_parent_stop_pins_active_project_members(tmp_path, c
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(app._launch_profiles) and bool(docker.opened))
+        await until(pilot, lambda: bool(app._launch_profiles) and ready(app))
         select_key(app, "profile:Orders")
         await until(pilot, lambda: app._selection_key == "profile:Orders")
         await pilot.press("s")
@@ -221,7 +221,7 @@ async def test_saved_profile_with_services_stops_only_those_services(tmp_path):
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(app._launch_profiles) and bool(docker.opened))
+        await until(pilot, lambda: bool(app._launch_profiles) and ready(app))
         select_key(app, "profile:Orders")
         await until(pilot, lambda: app._selection_key == "profile:Orders")
         await pilot.press("s")
