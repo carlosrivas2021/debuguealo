@@ -1,8 +1,8 @@
 # debugealo
 
-Local-first Docker debugging in Python. **Implementation is in progress; this is not the completed MVP.**
+Local-first Docker debugging in Python.
 
-## Current executable slice
+## What it does
 
 The foundation provides packaging, a headless lifecycle engine, bounded events, TOML
 configuration, and real local Docker diagnostics. Docker integration adds discovery of
@@ -132,6 +132,17 @@ project restores both commands. `--frozen` uses the checkout's existing lockfile
 need to be renamed, copied, or migrated.
 
 Read [Docker integration](docs/docker.md) for limits, logging-driver support, and reconnect semantics.
+
+## Known issues
+
+- F5 runs have shown an intermittent test failure whose cause is not established.
+- One `NoneType` integer error was reported in the dashboard and has not recurred or been explained.
+- Windows has not been rechecked since Python attach and the F5 and F9 changes.
+
+## Tests
+
+`uv run pytest` needs Docker and, for the Go debugging tests, Delve available as `dlv`
+(see [Go debugging](docs/go-debugging.md)). Those tests fail rather than skip when Delve is missing.
 
 ## License
 
