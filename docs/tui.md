@@ -39,14 +39,14 @@ starting or stopping processes. `Ctrl+T` is unavailable while a modal is open or
 terminal pane has focus (press `Esc` first). Code lists registered project folders and command arguments; container
 shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
-In Code, **F5** or **Run (F5)** runs the selected profile without debug. Type in its
-terminal; **Escape** returns focus to profiles. **Stop** ends only the selected Code
+In Code, **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
+terminal to type; **Escape** returns focus to profiles and **Ctrl+J** hides or shows it. **Stop** ends only the selected Code
 context. A running profile survives area changes; repeated F5 does not restart it. Distinct
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
 an active profile returns to its context. Same-endpoint attaches are rejected, while distinct
-endpoints may coexist. **Shift+F5** or **Debug (Shift+F5)** starts Python debugging from that same profile
+endpoints may coexist. **Shift+F5** or **Debug** starts Python debugging from that same profile
 and its requested source breakpoints, which **F9** toggles at the source cursor. At a pause, inspect the stack/variables and the
-yellow execution arrow, then use **F5** or **Continue F5**, **F10** (over), **F11** (in), or
+yellow-shaded execution line, then use **F5** or **▶ Continue**, **F10** (over), **F11** (in), or
 **Shift+F11** (out). F5 continues only the paused profile under the cursor. Stop cancels startup or ends the
 active Code run/debug tree. Debug output is internal-console only (no interactive stdin).
 Missing debugpy or unsupported commands report an error without falling back to run.

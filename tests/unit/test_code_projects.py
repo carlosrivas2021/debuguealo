@@ -69,11 +69,11 @@ async def test_area_navigation_keeps_container_context_and_isolates_code_errors(
         await pilot.click("#code-reload")
         code_table = app.query_one("#code-projects", DataTable)
         assert code_table.row_count == 1
-        assert code_table.get_row("Example") == [
-            "Example",
-            str(tmp_path.resolve()),
-            "['npm', 'run', 'dev']",
-        ]
+        # The narrow sidebar lists names; the selected profile's folder and argv are below it.
+        assert code_table.get_row("Example") == ["Example"]
+        details = str(app.query_one("#code-profile-details").render())
+        assert str(tmp_path.resolve()) in details
+        assert "['npm', 'run', 'dev']" in details
         await pilot.press("ctrl+o")
         await until(pilot, lambda: bool(opened))
         assert opened == [store.path]
