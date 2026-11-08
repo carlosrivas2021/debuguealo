@@ -15,6 +15,7 @@ from debugpilot import __version__
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import ConfigurationError, DockerError
 from debugpilot.core.models import CheckStatus, DiagnosticCheck
+from debugpilot.debugger.tools import debug_tool_checks
 from debugpilot.docker.diagnostics import DockerDiagnostics, endpoint_description
 from debugpilot.docker.service import DockerService
 from debugpilot.storage.config import load_settings
@@ -67,7 +68,7 @@ def version() -> None:
 def doctor(
     config: Annotated[Path | None, typer.Option(help="Optional TOML configuration path.")] = None,
 ) -> None:
-    """Check Python, configuration, and read access to the local Docker daemon."""
+    """Check Python, configuration, Docker access, and the Delve and debugpy debug tools."""
     try:
         settings = load_settings(config)
     except ConfigurationError as error:
@@ -92,6 +93,7 @@ def doctor(
             name="Endpoint", status=CheckStatus.OK, detail=endpoint_description(settings)
         ),
         *asyncio.run(diagnose()),
+        *debug_tool_checks(),
     ]
     table = Table("Check", "Status", "Details")
     for check in checks:
