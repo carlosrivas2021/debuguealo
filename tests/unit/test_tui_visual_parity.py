@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
-from test_tui_grouping import item, until
+from test_tui_grouping import item, request_logs, until
 from test_tui_inventory_scroll import ControlledInventory
 from textual.widgets import DataTable, Footer, Input, Select
 
@@ -73,6 +73,9 @@ async def test_actual_dashboard_visual_rules(tmp_path, monkeypatch, rule):
             await pilot.pause()
             assert table.max_scroll_x == 0
         elif rule == "toolbar":
+            # The log toolbar lives in the log panel, which opens on request.
+            await request_logs(pilot, app)
+            await pilot.pause()
             controls = [
                 app.query_one(s) for s in ("#filter-logs", "#search-logs", "#severity-logs")
             ]
