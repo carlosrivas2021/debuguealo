@@ -54,7 +54,7 @@ class CodeWorkspace(Vertical):
             "Shift+F5: debug/attach · Continue: button · F10/F11/Shift+F11: step. "
             "One session per saved profile; distinct profiles may run/debug/attach together. "
             "Attach Disconnect leaves the target to Containers; Reconnect is explicit; "
-            "the same Go endpoint cannot be attached twice. Debug output has no stdin. "
+            "the same attach endpoint cannot be attached twice. Debug output has no stdin. "
             "Source is read-only.",
             id="code-capabilities",
         )
@@ -159,7 +159,7 @@ class CodeWorkspace(Vertical):
             selected is not None and selected.unexpected_disconnect
         )
         self._stop_button.label = (
-            "Disconnect" if selected is not None and selected.profile.go_attach is not None
+            "Disconnect" if selected is not None and selected.profile.attach is not None
             and (selected.active or selected.unexpected_disconnect) else "Stop"
         )
         self._sync_controls()
@@ -185,7 +185,7 @@ class CodeWorkspace(Vertical):
         self._debug_button.disabled = self._shutting_down
         self._stop_button.disabled = not (run_selected or debug_selected)
         self._stop_button.label = (
-            "Disconnect" if debug_selected and debug_context.profile.go_attach is not None
+            "Disconnect" if debug_selected and debug_context.profile.attach is not None
             else "Stop"
         )
 
@@ -247,7 +247,7 @@ class CodeWorkspace(Vertical):
         if (
             self._shutting_down
             or self._debug.profile is None
-            or self._debug.profile.go_attach is None
+            or self._debug.profile.attach is None
         ):
             return
         profile = self._debug.profile
@@ -333,7 +333,7 @@ class CodeWorkspace(Vertical):
             return
         debug_context = self._debug.selected
         disconnecting = bool(
-            debug_context and debug_context.profile.go_attach is not None
+            debug_context and debug_context.profile.attach is not None
             and (debug_context.active or debug_context.stopping
                  or debug_context.unexpected_disconnect)
         )
