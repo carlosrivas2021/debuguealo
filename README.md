@@ -2,6 +2,26 @@
 
 Local-first Docker debugging in Python.
 
+## Install
+
+The repository is private; you need read access and Git. Install
+[uv](https://docs.astral.sh/uv/) once, then install debugealo from the repository:
+
+```console
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool install git+ssh://git@github.com/carlosrivas2021/debuguealo.git
+debugealo
+```
+
+The SSH URL uses your GitHub SSH key. With HTTPS credentials (for example after
+`gh auth login`), use `git+https://github.com/carlosrivas2021/debuguealo.git` instead.
+uv downloads a suitable Python (3.12 or newer) if needed. To update, rerun the install
+command with `--reinstall`.
+
+Run `debugealo doctor` to check Docker access. Docker is required for containers; Go
+debugging needs [Delve](docs/go-debugging.md) and Python debugging needs `debugpy` in the
+target environment.
+
 ## What it does
 
 The foundation provides packaging, a headless lifecycle engine, bounded events, TOML
@@ -112,10 +132,11 @@ Dependency installation and example image builds may require downloads.
 Python's current breakpoint workflow is documented
 in [code projects](docs/code-projects.md#debug-python-with-the-same-profile).
 
-The installed distribution, primary Python package and command are named `debugealo`. The
-legacy `debugpilot` command, `python -m debugpilot`, and `debugpilot.*` imports remain
-supported aliases; both import paths resolve to the same implementation and state. Existing
-`debugpilot` configuration and workspace data paths are intentionally unchanged.
+The installed distribution, primary Python package and command are named `debugealo`.
+`python -m debugpilot` and `debugpilot.*` imports remain supported aliases; both import
+paths resolve to the same implementation and state. The legacy `debugpilot` command is no
+longer installed; use `debugealo`. Existing `debugpilot` configuration and workspace data
+paths are intentionally unchanged.
 
 ### Upgrade an existing checkout
 
@@ -126,10 +147,8 @@ reinstall the local project while preserving packages outside the lockfile:
 uv sync --inexact --frozen --reinstall-package debugealo
 ```
 
-The rename makes the new and old distributions share the `debugpilot` console-script name;
-a regular sync during the transition can remove the old script. Reinstalling the current
-project restores both commands. `--frozen` uses the checkout's existing lockfile and
-`--inexact` retains unrelated installed tools. No configuration, profiles, or breakpoints
+`--frozen` uses the checkout's existing lockfile and `--inexact` retains unrelated
+installed tools. No configuration, profiles, or breakpoints
 need to be renamed, copied, or migrated.
 
 Read [Docker integration](docs/docker.md) for limits, logging-driver support, and reconnect semantics.
