@@ -2160,7 +2160,8 @@ class DebugPilotApp(App):
             self.screen, ModalScreen
         ):
             return False
-        if isinstance(self.focused, TerminalPane):
+        if isinstance(self.focused, TerminalPane) and self.focused.active:
+            # A live terminal owns the keys; once its process exits, shortcuts work again.
             return False
         if action in {"open_container_terminal", "open_host_terminal"} and (
             not self._left_table_focused() or isinstance(self.screen, ModalScreen)
