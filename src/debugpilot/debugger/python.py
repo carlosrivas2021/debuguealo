@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import re
 import socket
+import sys
 from pathlib import Path
 
 from debugpilot.debugger.dap import DAPClient, DebugError
@@ -95,7 +96,8 @@ class PythonDebugSession:
             self._state('running')
         elif name == 'exited':
             self.exit_code = body.get('exitCode')
-        elif name == 'output' and self.on_output:
+        elif name == 'output' and self.on_output and body.get('category') != 'telemetry':
+            # DAP telemetry is for tools, never user-visible output.
             self.on_output(body.get('category', 'console'), body.get('output', ''))
         elif name == 'breakpoint':
             # Adapter changes verification only, never overwrite requested lines.
@@ -145,8 +147,10 @@ class PythonDebugSession:
                     reservation.bind(('127.0.0.1', 0))
                     port = reservation.getsockname()[1]
                 self._adapter = CodeSession(self._adapter_output, self._adapter_exit)
+                # The adapter runs on debugealo's own interpreter and bundled debugpy;
+                # debugpy's launcher runs the target with the profile's interpreter.
                 await self._adapter.open_command(
-                    (interpreter, '-m', 'debugpy.adapter', '--host', '127.0.0.1',
+                    (sys.executable, '-m', 'debugpy.adapter', '--host', '127.0.0.1',
                      '--port', str(port)), self.profile.root,
                 )
                 self._emit({'event': 'adapterStarted', 'body': {}})
@@ -195,9 +199,9 @@ class PythonDebugSession:
 
     def _startup_error(self, interpreter):
         return (
-            f'Python debug adapter failed to start. In the selected interpreter, install debugpy: '
-            f'"{interpreter}" -m pip install debugpy. No run-mode fallback. '
-            f'Diagnostics: {self._diagnostic.strip() or "startup timed out"}'
+            f'Python debugging failed to start with "{interpreter}". Check that this '
+            f'interpreter runs and is a Python version supported by debugpy. No run-mode '
+            f'fallback. Diagnostics: {self._diagnostic.strip() or "startup timed out"}'
         )
 
     async def set_breakpoints(self, source, lines):

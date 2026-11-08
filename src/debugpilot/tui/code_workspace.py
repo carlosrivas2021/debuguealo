@@ -324,7 +324,13 @@ class CodeWorkspace(Vertical):
         ):
             context.pending = False
             context.active = False
-            context.state = "Stopped" if task.cancelled() else f"Ready: {profile.name}"
+            if task.cancelled():
+                context.state = "Stopped"
+            elif task.exception() is not None:
+                # Never hide a failed start behind a Ready state.
+                context.state = f"Unable to run {profile.name}: {task.exception()}"
+            else:
+                context.state = f"Ready: {profile.name}"
             if self._pane.selected_context is context:
                 self._state(context.state)
                 self._sync_controls()
