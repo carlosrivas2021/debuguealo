@@ -34,8 +34,9 @@ with `H` also reveals the console. `O` does not hide the right-hand container sh
 
 ## Containers / Code
 
-Use the top **Containers** and **Code** buttons to switch without starting or stopping
-processes. Code lists registered project folders and command arguments; container
+Use the top **Containers** and **Code** buttons, or `Ctrl+T`, to switch without
+starting or stopping processes. `Ctrl+T` is unavailable while a modal is open or a
+terminal pane has focus (press `Esc` first). Code lists registered project folders and command arguments; container
 shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
 In Code, **F5** or **Run (F5)** runs the selected profile without debug. Type in its
@@ -131,6 +132,7 @@ automatically.
 | `O` | Hide/show the entire docked console; when hidden, restore it from the project tree with `O`. |
 | `Ctrl+O` / `Ctrl+N` | Edit the central (or explicitly selected local) `launch.json` with nano or vi. |
 | `Ctrl+L` | From outside a focused shell, open and focus logs for the current selection. |
+| `Ctrl+T` | Switch between the Containers and Code areas. |
 | `Ctrl+R` | Retry the selected log stream after EOF or an error. |
 | `q` | Exit. |
 

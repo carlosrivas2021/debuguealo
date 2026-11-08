@@ -55,6 +55,7 @@ class DebugPilotApp(App):
     CSS_PATH = "styles.tcss"
     BINDINGS = [
         Binding("q", "quit", "Quit"),
+        Binding("ctrl+t", "toggle_area", "Containers/Code"),
         Binding("ctrl+l", "focus_logs", "Logs"),
         Binding("ctrl+r", "retry_logs", "Retry logs"),
         Binding("d", "show_container_details", "Details"),
@@ -173,6 +174,10 @@ class DebugPilotApp(App):
         self.query_one("#area-code", Button).variant = "primary" if code else "default"
         self.query_one("#area-containers", Button).variant = "default" if code else "primary"
         self.query_one("#code-projects" if code else "#launch-profiles", DataTable).focus()
+
+    def action_toggle_area(self) -> None:
+        code = self.query_one(CodeWorkspace).display
+        self.query_one("#area-containers" if code else "#area-code", Button).press()
 
     @on(Button.Pressed, "#open-code-launch")
     def open_code_launch(self) -> None:
@@ -2144,7 +2149,9 @@ class DebugPilotApp(App):
             or isinstance(self.screen, ModalScreen)
         ):
             return False
-        if action in {"run_code", "toggle_breakpoint"} and isinstance(self.screen, ModalScreen):
+        if action in {"run_code", "toggle_breakpoint", "toggle_area"} and isinstance(
+            self.screen, ModalScreen
+        ):
             return False
         if isinstance(self.focused, TerminalPane):
             return False
