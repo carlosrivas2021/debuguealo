@@ -188,6 +188,27 @@ def run(settings: Settings, request: dict) -> None:
             client.close()
 
 
+def serve(settings: Settings, requests=sys.stdin) -> None:
+    """Answer inventory requests, one JSON line each, until stdin closes.
+
+    Every request ends with a ``done`` record so the parent can reuse this
+    process instead of paying the Python and Docker SDK import per refresh.
+    """
+    for line in requests:
+        try:
+            request = json.loads(line)
+        except ValueError:
+            request = None
+        if isinstance(request, dict) and request.get("command") == "containers":
+            run(settings, request)
+        else:
+            emit("error", message="Unsupported Docker operation.", retryable=False)
+        emit("done")
+
+
 if __name__ == "__main__":
     settings = Settings(docker_endpoint=sys.argv[1], docker_timeout_seconds=int(sys.argv[2]))
-    run(settings, json.loads(sys.argv[3]))
+    if sys.argv[3] == "--serve":
+        serve(settings)
+    else:
+        run(settings, json.loads(sys.argv[3]))

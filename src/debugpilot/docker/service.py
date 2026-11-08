@@ -27,30 +27,113 @@ class DockerService:
     def __init__(self, settings: Settings, *, reconnect_delay: float = 0.5):
         self.settings = settings
         self.reconnect_delay = reconnect_delay
+        # One long-lived worker answers inventory refreshes; logs and stops keep
+        # their own short-lived workers.
+        self._inventory: tuple[asyncio.subprocess.Process, tempfile.TemporaryDirectory] | None = (
+            None
+        )
+        self._inventory_lock = asyncio.Lock()
+
+    async def _spawn_worker(self, directory: str, argument: str, **pipes):
+        (Path(directory) / "config.json").write_text("{}", encoding="utf-8")
+        environment = {k: v for k, v in os.environ.items() if k.upper() in {"SYSTEMROOT", "WINDIR"}}
+        environment.update(DOCKER_CONFIG=directory, PYTHONUTF8="1")
+        return await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "debugpilot.docker.worker",
+            self.settings.docker_endpoint or default_endpoint(),
+            str(self.settings.docker_timeout_seconds),
+            argument,
+            env=environment,
+            cwd=directory,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+            limit=262_144,
+            **pipes,
+            **({"creationflags": 0x08000000} if os.name == "nt" else {}),
+        )
+
+    async def _inventory_records(self) -> list[dict]:
+        """Ask the persistent worker for one inventory, respawning it when needed.
+
+        Any failure, timeout or cancellation mid-request kills the worker, because
+        its output stream may no longer line up with the next request.
+        """
+        async with self._inventory_lock:
+            completed = False
+            records: list[dict] = []
+            error = None
+            try:
+                if self._inventory is None or self._inventory[0].returncode is not None:
+                    await self._close_inventory()
+                    directory = tempfile.TemporaryDirectory(prefix="debugpilot-docker-")
+                    try:
+                        process = await self._spawn_worker(
+                            directory.name, "--serve", stdin=asyncio.subprocess.PIPE
+                        )
+                    except BaseException:
+                        directory.cleanup()
+                        raise
+                    self._inventory = (process, directory)
+                process = self._inventory[0]
+                assert process.stdin is not None and process.stdout is not None
+                process.stdin.write(b'{"command": "containers"}\n')
+                await process.stdin.drain()
+                while True:
+                    async with asyncio.timeout(self.settings.docker_timeout_seconds * 2 + 3):
+                        line = await process.stdout.readline()
+                    if not line:
+                        raise DockerError("Docker worker disconnected.", retryable=True)
+                    record = json.loads(line)
+                    if not isinstance(record, dict):
+                        raise DockerError("Invalid Docker worker response.")
+                    kind = record.get("kind")
+                    if kind == "done":
+                        break
+                    if kind == "error":
+                        # Keep reading to "done" so the stream stays aligned.
+                        error = DockerError(
+                            record["message"], retryable=bool(record.get("retryable"))
+                        )
+                    elif kind != "ready":
+                        records.append(record)
+                completed = True
+            except (OSError, TimeoutError) as failure:
+                raise DockerError(
+                    "Docker is unavailable or its worker timed out.", retryable=True
+                ) from failure
+            except (ValueError, KeyError) as failure:
+                raise DockerError("Invalid or oversized Docker worker response.") from failure
+            finally:
+                if not completed:
+                    await self._close_inventory()
+            if error is not None:
+                raise error
+            return records
+
+    async def _close_inventory(self) -> None:
+        inventory, self._inventory = self._inventory, None
+        if inventory is None:
+            return
+        process, directory = inventory
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        await process.wait()
+        directory.cleanup()
+
+    async def close(self) -> None:
+        """Stop the persistent inventory worker; a later refresh starts a new one."""
+        await self._close_inventory()
 
     async def _records(self, request: dict):
         process = None
         with tempfile.TemporaryDirectory(prefix="debugpilot-docker-") as directory:
-            (Path(directory) / "config.json").write_text("{}", encoding="utf-8")
-            environment = {
-                k: v for k, v in os.environ.items() if k.upper() in {"SYSTEMROOT", "WINDIR"}
-            }
-            environment.update(DOCKER_CONFIG=directory, PYTHONUTF8="1")
             try:
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "-m",
-                    "debugpilot.docker.worker",
-                    self.settings.docker_endpoint or default_endpoint(),
-                    str(self.settings.docker_timeout_seconds),
-                    json.dumps(request),
-                    env=environment,
-                    cwd=directory,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    limit=262_144,
-                    **({"creationflags": 0x08000000} if os.name == "nt" else {}),
-                )
+                process = await self._spawn_worker(directory, json.dumps(request))
                 ready = False
                 assert process.stdout is not None
                 while True:
@@ -100,11 +183,10 @@ class DockerService:
 
     async def list_containers(self) -> list[ContainerInfo]:
         containers = []
-        async with aclosing(self._records({"command": "containers"})) as records:
-            async for record in records:
-                if record.get("kind") != "container" or len(containers) >= 10_000:
-                    raise DockerError("Invalid or oversized container inventory.")
-                containers.append(ContainerInfo.model_validate(record["value"]))
+        for record in await self._inventory_records():
+            if record.get("kind") != "container" or len(containers) >= 10_000:
+                raise DockerError("Invalid or oversized container inventory.")
+            containers.append(ContainerInfo.model_validate(record["value"]))
         return sorted(containers, key=lambda container: container.name.casefold())
 
     async def stop_containers(
