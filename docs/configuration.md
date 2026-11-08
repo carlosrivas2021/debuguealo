@@ -44,10 +44,8 @@ packages not listed in the lockfile:
 uv sync --inexact --frozen --reinstall-package debugealo
 ```
 
-The transition gives the new distribution both `debugealo` and `debugpilot` console-script
-entry points. Because the old and new distributions claim the same legacy script name, an
-ordinary sync during the rename can remove that script; reinstalling the current project
-restores it. Existing configuration stays in the `debugpilot` directories documented above.
+Only the `debugealo` command is installed; the legacy `debugpilot` command was removed.
+Existing configuration stays in the `debugpilot` directories documented above.
 Do not rename, copy, or remove existing configuration, launch profiles, or breakpoints.
 
 If Docker is unavailable, start the daemon and verify the endpoint. If permission is
