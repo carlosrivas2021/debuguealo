@@ -236,6 +236,13 @@ class DebugPilotApp(App):
             yield Button("Confirm", id="inline-compose-confirm", variant="warning")
             yield Button("Cancel", id="inline-compose-cancel")
 
+    def on_load(self) -> None:
+        # Textual's run_async installs asyncio.eager_task_factory, which runs a task's
+        # first step inside create_task. Code here assigns tasks before they may run
+        # (for example `context.start_task = create_task(...)` then a guard comparing
+        # it with current_task()), so keep standard task semantics, as tests use.
+        asyncio.get_running_loop().set_task_factory(None)
+
     async def on_mount(self) -> None:
         if self._compose_config_error:
             self.notify(self._compose_config_error, severity="warning")
