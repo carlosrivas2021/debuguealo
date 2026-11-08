@@ -348,9 +348,12 @@ async def test_code_shortcut_modal_terminal_and_container_guards(monkeypatch, tm
         modal.dismiss()
         await pilot.pause()
         app.query_one('#code-terminal').focus()
-        await pilot.press('shift+f5', 'f10', 'f11', 'shift+f11', 'f5')
-        assert not fake.instances
+        await pilot.pause()
+        # An inactive terminal no longer owns the keys (a live one still does; see
+        # test_code_rerun_focus.py), so Code shortcuts stay available from it.
         assert not app.query_one('#code-terminal').active
+        assert app.check_action('debug_code', ()) is not False
+        assert app.check_action('run_code', ()) is not False
         await pilot.click('#area-containers')
         assert app.selected_container == selected
 
