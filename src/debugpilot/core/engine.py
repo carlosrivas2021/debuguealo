@@ -128,6 +128,10 @@ class DebugPilotEngine:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            # Providers may hold long-lived workers; closing is optional for them.
+            close = getattr(self._docker, "close", None)
+            if close is not None:
+                await close()
         finally:
             self.state = EngineState.CLOSED
 
