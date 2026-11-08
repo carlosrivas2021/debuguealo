@@ -52,11 +52,12 @@ a supported-command explanation. Target arguments are literal argv, never shell 
 The original `CodeProject.command` is not rewritten; F5 still uses it unmodified.
 Debug mode deliberately uses internal-console output (no interactive stdin API).
 
-Install `debugpy` yourself **in the interpreter selected by the profile**, for example
-`"<selected-python>" -m pip install debugpy`. The backend never installs anything. A missing
-adapter or startup timeout produces an explicit error and install guidance, not a normal
-run. A venv without pip may require its environment manager instead. The application has
-no new mandatory dependency and no automatic environment mutation.
+debugealo bundles `debugpy` and runs the debug adapter on its own interpreter; debugpy's
+launcher then runs the target with the interpreter selected by the profile. That
+interpreter does not need debugpy installed, but it must be a Python version debugpy
+supports. The backend never installs anything into the target environment. A startup
+failure or timeout produces an explicit error naming the interpreter, not a normal run.
+DAP `telemetry` output is dropped and never shown as program output.
 
 ## Session contract
 

@@ -91,22 +91,37 @@ async def test_rejected_command_never_executes_or_mutates(tmp_path, command):
     await session.close()
 
 
-async def test_missing_adapter_is_actionable_without_running_target(tmp_path):
+async def test_interpreter_without_debugpy_uses_the_bundled_adapter(tmp_path):
+    # debugealo ships debugpy; the profile's interpreter does not need it installed.
     environment = tmp_path / 'environment'
     await asyncio.to_thread(venv.EnvBuilder(with_pip=False).create, environment)
     interpreter = environment / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python')
+    probe = await asyncio.create_subprocess_exec(str(interpreter), '-c', 'import debugpy')
+    assert await probe.wait() != 0  # The target environment really lacks debugpy.
     source = tmp_path / 'sample.py'
-    marker = tmp_path / 'executed'
-    source.write_text(f'from pathlib import Path; Path({str(marker)!r}).touch()\n')
-    profile = CodeProject('missing', tmp_path, (str(interpreter), str(source)))
-    session = PythonDebugSession(timeout=8)
-    with pytest.raises(DebugError, match='install debugpy'):
-        await session.start(profile, {})
-    assert not marker.exists()
-    assert profile.command == (str(interpreter), str(source))
-    assert session.state == 'closed'
-    assert session.thread_id is None
-    await session.close()
+    source.write_text('answer = 41\nanswer += 1\nprint(f"RESULT:{answer}", flush=True)\n')
+    profile = CodeProject('bundled', tmp_path, (str(interpreter), '-u', str(source)))
+    output = []
+    session = PythonDebugSession(on_output=lambda category, text: output.append((category, text)))
+    try:
+        await session.start(profile, {source: {2}})
+        await event(session, 'stopped')
+        frame = (await session.stack())[0]
+        assert frame['line'] == 2
+        scope = (await session.scopes(frame['id']))[0]
+        values = {item['name']: item['value'] for item in await session.variables(
+            scope['variablesReference'])}
+        assert values['answer'] == '41'
+        await session.continue_execution()
+        await event(session, 'terminated')
+        assert session.exit_code == 0
+        assert ''.join(text for category, text in output if category == 'stdout') == (
+            'RESULT:42\n'
+        )
+        # DAP telemetry is not user output.
+        assert all(category != 'telemetry' for category, _ in output)
+    finally:
+        await session.close()
 
 
 async def test_startup_cancellation_closes_owned_adapter(tmp_path):
