@@ -8,10 +8,17 @@ from debugpilot.terminal.code_session import CodeSession
 from debugpilot.tui.code_run_context import CodeRunContext
 from debugpilot.tui.terminal_view import MAX_FEED_CHARS, TerminalContext, TerminalPane
 
+IDLE_TITLE = "Terminal · click to type · Ctrl+J hide/show"
+TYPING_TITLE = "Terminal · typing — Esc to leave"
+
 
 class CodeTerminal(TerminalPane):
+    """Code run output. Focus is never taken automatically so profile navigation keeps
+    its arrows; the border title tells whether the terminal is receiving keys."""
+
     def __init__(self, on_state, **kwargs):
         super().__init__(**kwargs)
+        self.border_title = IDLE_TITLE
         self._on_state = on_state
         self.contexts: dict[str, CodeRunContext] = {}
         self.selected_key: str | None = None
@@ -29,7 +36,6 @@ class CodeTerminal(TerminalPane):
         context = self.contexts.get(profile.name)
         if context is not None and (context.pending or context.active or context.stopping):
             self.select_profile(profile)
-            self.focus()
             return context, False
         rows, columns = self._screen_size()
         screen = pyte.Screen(columns=columns, lines=rows)
@@ -72,6 +78,9 @@ class CodeTerminal(TerminalPane):
         self._terminal_context = TerminalContext("code", context.profile.root)
         self._screen = context.screen
         self._stream = context.stream
+        if not self.size.height:
+            # Hidden: a fallback size would shrink later and pyte drops lines from the top.
+            return
         rows, columns = self._screen_size()
         context.screen.resize(lines=rows, columns=columns)
         if context.active and context.session is not None:
@@ -115,7 +124,6 @@ class CodeTerminal(TerminalPane):
                     )
                 if self.selected_context is context:
                     self._bind_context(context)
-                    self.focus()
         except asyncio.CancelledError:
             if not session._closed:
                 await session.close_session()
@@ -201,3 +209,9 @@ class CodeTerminal(TerminalPane):
 
     async def close_session(self):
         await self.close_all()
+
+    def on_focus(self) -> None:
+        self.border_title = TYPING_TITLE
+
+    def on_blur(self) -> None:
+        self.border_title = IDLE_TITLE

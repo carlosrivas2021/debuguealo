@@ -155,15 +155,22 @@ class TerminalPane(Widget):
         return output
 
     def on_resize(self) -> None:
+        if not self.size.height:
+            return
         rows, columns = self._screen_size()
         self._screen.resize(lines=rows, columns=columns)
         if self._session and self.active:
             self._session.resize(rows, columns)
 
     def on_key(self, event: Key) -> None:
+        key = event.key
+        if key == "escape" and self._escape_hook:
+            # Leaving must work even after the process exited.
+            event.stop()
+            self._escape_hook()
+            return
         if not self.active or self._session is None:
             return
-        key = event.key
         mapped = {
             "enter": "\r", "backspace": "\x7f", "tab": "\t", "up": "\x1b[A",
             "down": "\x1b[B", "right": "\x1b[C", "left": "\x1b[D",

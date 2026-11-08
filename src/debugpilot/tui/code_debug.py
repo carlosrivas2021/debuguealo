@@ -57,6 +57,20 @@ class CodeDebug(Vertical):
         self.finished = finished
         self.contexts: dict[tuple, DebugContext] = {}
         self.selected_key: tuple | None = None
+        # Owned here but placed by the host (at the bottom, like the run terminal).
+        self.output = RichLog(id='code-debug-output', max_lines=2000, markup=False, wrap=True)
+        self.output.border_title = 'Debug output'
+        self.output.display = False
+
+    @property
+    def display(self):
+        return Vertical.display.fget(self)
+
+    @display.setter
+    def display(self, value):
+        # The output pane lives elsewhere in the DOM; keep it visible exactly with the panel.
+        Vertical.display.fset(self, value)
+        self.output.display = value
 
     @staticmethod
     def profile_key(profile):
@@ -93,14 +107,13 @@ class CodeDebug(Vertical):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id='code-debug-controls'):
-            yield Button('Continue F5', id='code-continue', disabled=True)
-            yield Button('Over F10', id='code-over', disabled=True)
-            yield Button('In F11', id='code-in', disabled=True)
-            yield Button('Out Shift+F11', id='code-out', disabled=True)
+            yield Button('▶ Continue', id='code-continue', disabled=True)
+            yield Button('Over', id='code-over', disabled=True)
+            yield Button('In', id='code-in', disabled=True)
+            yield Button('Out', id='code-out', disabled=True)
         with Horizontal(id='code-inspection'):
             yield DataTable(id='code-stack', cursor_type='row')
             yield Static('Variables: —', id='code-variables', markup=False)
-        yield RichLog(id='code-debug-output', max_lines=2000, markup=False, wrap=True)
 
     def on_mount(self):
         self.query_one(DataTable).add_columns('Frame', 'Source', 'Line')
@@ -144,7 +157,7 @@ class CodeDebug(Vertical):
             return
         self.query_one(DataTable).clear()
         self.query_one('#code-variables', Static).update('Variables: —')
-        self.query_one(RichLog).clear()
+        self.output.clear()
         self.browser.clear_execution()
         for button in self.query(Button):
             button.disabled = True
@@ -152,7 +165,7 @@ class CodeDebug(Vertical):
     def _render_context(self, context):
         if self.selected is not context or not self.query(DataTable):
             return
-        log = self.query_one(RichLog)
+        log = self.output
         log.clear()
         for line in context.output:
             log.write(line)
@@ -201,8 +214,8 @@ class CodeDebug(Vertical):
     def _append_output(self, context, message):
         context.output.append(message)
         context.output = context.output[-2000:]
-        if self.selected is context and self.query(RichLog):
-            self.query_one(RichLog).write(message)
+        if self.selected is context and self.output.is_mounted:
+            self.output.write(message)
 
     def start(self, profile):
         key = self.profile_key(profile)
@@ -534,7 +547,7 @@ class CodeDebug(Vertical):
             warning = getattr(session, 'disconnect_warning', None)
             if (
                 warning and context.profile is not None
-                and self.selected is context and self.query(RichLog)
+                and self.selected is context and self.output.is_mounted
             ):
                 self._append_output(
                     context, f'[{context.profile.name} · stderr] Warning: {warning}'

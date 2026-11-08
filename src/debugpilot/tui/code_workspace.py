@@ -4,6 +4,7 @@ import asyncio
 
 from textual import on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Static
 
@@ -15,17 +16,20 @@ from debugpilot.tui.source_browser import SourceBrowser
 
 
 class CodeWorkspace(Vertical):
+    # Shown in the footer only while focus is inside Code; the app-level F9 stays hidden.
+    BINDINGS = [Binding("f9", "app.toggle_breakpoint", "Breakpoint")]
+
     def __init__(self):
         super().__init__(id="code-workspace")
         self.store = CodeProjectStore()
         self._profiles = {}
         self._shutting_down = False
-        self._run_button = Button("Run (F5)", id="code-run")
-        self._debug_button = Button("Debug (Shift+F5)", id="code-debug-start")
+        # Last view the user chose per profile ("run" or "debug"), used when neither is live.
+        self._last_view: dict[str, str] = {}
+        self._run_button = Button("▶ Run", id="code-run")
+        self._debug_button = Button("Debug", id="code-debug-start")
         self._reconnect_button = Button("Reconnect", id="code-reconnect")
         self._reconnect_button.display = False
-        self._browser = SourceBrowser()
-        self._debug = CodeDebug(self._browser, self._state, self._debug_finished)
         self._stop_button = Button("Stop", id="code-stop", disabled=True)
         self._run_state = Static(
             "Ready. Select a profile and press F5.", id="code-run-state", markup=False
@@ -34,34 +38,44 @@ class CodeWorkspace(Vertical):
             self._run_context_state, id="code-terminal",
             escape_hook=lambda: self.query_one(DataTable).focus(),
         )
+        profiles = Vertical(
+            Static("PROFILES", id="code-title", classes="pane-title"),
+            Static("", id="code-status", markup=False),
+            DataTable(id="code-projects", cursor_type="row", zebra_stripes=True),
+            Static("", id="code-profile-details", markup=False),
+            id="code-profiles-pane",
+        )
+        # The debug panel is built first so it can sit beside the editor inside the browser.
+        self._debug = CodeDebug(None, self._state, self._debug_finished)
+        self._debug.border_title = "Debug"
+        self._bottom = Vertical(self._pane, self._debug.output, id="code-bottom")
+        self._browser = SourceBrowser(
+            sidebar_header=profiles, editor_side=self._debug, bottom=self._bottom
+        )
+        self._debug.browser = self._browser
 
     def compose(self) -> ComposeResult:
-        yield Static("PROJECTS", id="code-title")
-        yield Static("", id="code-status", markup=False)
         with Horizontal(id="code-actions"):
-            yield Button("Reload code profiles", id="code-reload")
             yield self._run_button
             yield self._debug_button
             yield self._reconnect_button
             yield self._stop_button
-        yield DataTable(id="code-projects", cursor_type="row", zebra_stripes=True)
+            yield Button("↻ Reload", id="code-reload")
+            yield self._run_state
         yield self._browser
-        yield self._run_state
-        yield self._debug
-        yield self._pane
-        yield Static(
-            "F5: run without debug · Escape: return to profiles · Stop: end owned Code process. "
-            "Shift+F5: debug/attach · F9: breakpoint · F5 at a pause: Continue · "
-            "F10/F11/Shift+F11: step. "
-            "One session per saved profile; distinct profiles may run/debug/attach together. "
-            "Attach Disconnect leaves the target to Containers; Reconnect is explicit; "
-            "the same attach endpoint cannot be attached twice. Debug output has no stdin. "
-            "Source is read-only.",
-            id="code-capabilities",
-        )
+
+    def toggle_terminal(self) -> None:
+        """Ctrl+J collapses the bottom area: run terminal or debug output."""
+        self._bottom.display = not self._bottom.display
+        if not self._bottom.display and self.app.focused in self._bottom.query("*"):
+            self.query_one(DataTable).focus()
+
+    def _show_bottom(self) -> None:
+        self._bottom.display = True
 
     def on_mount(self) -> None:
-        self.query_one(DataTable).add_columns("Profile", "Project folder", "Command (argv)")
+        # Wide enough for the cursor highlight to span the sidebar.
+        self.query_one(DataTable).add_column("Profile", width=26)
         self.reload_profiles()
 
     @on(Button.Pressed, "#code-reload")
@@ -87,14 +101,12 @@ class CodeWorkspace(Vertical):
             profiles.extend(live.values())
             self._profiles = {profile.name: profile for profile in profiles}
             for profile in profiles:
-                table.add_row(
-                    profile.name, str(profile.root), repr(list(profile.command)), key=profile.name
-                )
+                table.add_row(profile.name, key=profile.name)
             keys = [profile.name for profile in profiles]
             if selected in keys:
                 table.move_cursor(row=keys.index(selected))
             message = (
-                f"{len(profiles)} code profile(s). {self.store.path}"
+                f"{len(profiles)} profile(s)"
                 if profiles
                 else f"No code profiles. Open launch.json to register projects: {self.store.path}"
             )
@@ -110,9 +122,7 @@ class CodeWorkspace(Vertical):
             }
             self._profiles = live
             for profile in live.values():
-                table.add_row(
-                    profile.name, str(profile.root), repr(list(profile.command)), key=profile.name
-                )
+                table.add_row(profile.name, key=profile.name)
             message = str(error)
         self.query_one("#code-status", Static).update(message)
         self.select_source_project()
@@ -149,10 +159,12 @@ class CodeWorkspace(Vertical):
         )
         run_context = self._pane.selected_context
         debug_context = self._debug.selected
-        if run_context is not None:
-            self._state(run_context.state)
-        elif debug_context is not None:
+        self._show_profile_details(profile)
+        # The status line describes the view that is actually shown.
+        if self._apply_view(profile) == "debug" and debug_context is not None:
             self._state(debug_context.state)
+        elif run_context is not None:
+            self._state(run_context.state)
         elif profile is not None:
             self._state(f"Ready: {profile.name}")
         selected = debug_context
@@ -165,11 +177,45 @@ class CodeWorkspace(Vertical):
         )
         self._sync_controls()
 
+    def _show_profile_details(self, profile):
+        details = "" if profile is None else (
+            f"{profile.root}\n{list(profile.command)!r}" if profile.command
+            else f"{profile.root}\nattach-only"
+        )
+        self.query_one("#code-profile-details", Static).update(details)
+
+    def _apply_view(self, profile):
+        """Show exactly one of the run terminal or the debug panel for the selection."""
+        run = self._pane.selected_context
+        debug = self._debug.selected
+        run_live = bool(run and (run.pending or run.active or run.stopping))
+        debug_live = bool(debug and (
+            debug.active or debug.stopping or debug.unexpected_disconnect
+        ))
+        if debug_live:
+            view = "debug"
+        elif run_live or debug is None:
+            view = "run"
+        elif run is None:
+            view = "debug"
+        else:
+            view = self._last_view.get(profile.name if profile else "", "run")
+        # The side panel is for live sessions; a finished one keeps only its output below.
+        self._debug.display = view == "debug" and debug_live
+        self._debug.output.display = view == "debug"
+        self._pane.display = view == "run" and run is not None
+        return view
+
     def _state(self, message):
         self._run_state.update(message)
 
     def _debug_finished(self, unexpected_disconnect=False):
         self._reconnect_button.display = bool(unexpected_disconnect)
+        debug_context = self._debug.selected
+        if debug_context is not None and not self._shutting_down:
+            # A session can end on its own (e.g. after Continue); drop the empty side panel.
+            if self._apply_view(debug_context.profile) == "debug":
+                self._state(debug_context.state)
         self._sync_controls()
 
     def _sync_controls(self):
@@ -210,6 +256,7 @@ class CodeWorkspace(Vertical):
         if debug_context is not None and (
             debug_context.active or debug_context.stopping or debug_context.unexpected_disconnect
         ):
+            self._last_view[profile.name] = "debug"
             self._debug.select_context(debug_context)
             self._pane.display = False
             self._state(debug_context.state)
@@ -220,10 +267,10 @@ class CodeWorkspace(Vertical):
         if run_context is not None and (
             run_context.pending or run_context.active or run_context.stopping
         ):
+            self._last_view[profile.name] = "run"
             self._pane.select_profile(profile)
             self._debug.display = False
             self._state(run_context.state)
-            self._pane.focus()
             self._sync_controls()
             return
         if not profile.command:
@@ -234,9 +281,11 @@ class CodeWorkspace(Vertical):
             self._state(message)
             self.app.notify(message, severity="warning")
             return
+        self._last_view[profile.name] = "run"
         self._debug.display = False
         context, created = self._pane.prepare_profile(profile)
         self._pane.display = True
+        self._show_bottom()
         if created:
             context.start_task = asyncio.create_task(self._start(profile))
             context.start_task.add_done_callback(
@@ -259,6 +308,7 @@ class CodeWorkspace(Vertical):
         ):
             return
         self._reconnect_button.display = False
+        self._last_view[profile.name] = "debug"
         self._debug.start(profile)
         self._sync_controls()
         self._stop_button.label = "Disconnect"
@@ -277,21 +327,24 @@ class CodeWorkspace(Vertical):
         if run_context is not None and (
             run_context.pending or run_context.active or run_context.stopping
         ):
+            self._last_view[profile.name] = "run"
             self._pane.select_profile(profile)
             self._pane.display = True
             self._debug.display = False
             self._state(run_context.state)
-            self._pane.focus()
             self._sync_controls()
             return
         debug_context = self._debug.context_for(profile)
         if debug_context is not None and debug_context.active:
+            self._last_view[profile.name] = "debug"
             self._debug.select_context(debug_context)
             self._pane.display = False
             self._state(debug_context.state)
             self._sync_controls()
             return
+        self._last_view[profile.name] = "debug"
         self._pane.display = False
+        self._show_bottom()
         self._debug.start(profile)
         self._sync_controls()
 

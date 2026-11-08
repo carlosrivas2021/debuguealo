@@ -71,10 +71,11 @@ class DebugPilotApp(App):
         Binding("escape", "cancel_compose", show=False),
         Binding("f5", "run_code", "Run code"),
         Binding("shift+f5", "debug_code", "Debug"),
-        Binding("f10", "code_step_over", show=False),
-        Binding("f11", "code_step_in", show=False),
-        Binding("shift+f11", "code_step_out", show=False),
         Binding("f9", "toggle_breakpoint", show=False),
+        Binding("f10", "code_step_over", "Step over"),
+        Binding("f11", "code_step_in", "Step in"),
+        Binding("shift+f11", "code_step_out", "Step out"),
+        Binding("ctrl+j", "toggle_code_terminal", "Terminal"),
     ]
 
     def __init__(
@@ -1302,6 +1303,9 @@ class DebugPilotApp(App):
     def action_debug_code(self) -> None:
         self.query_one(CodeWorkspace).debug_selected()
 
+    def action_toggle_code_terminal(self) -> None:
+        self.query_one(CodeWorkspace).toggle_terminal()
+
     def action_code_step_over(self) -> None:
         self.query_one(CodeWorkspace).debug_control("step_over")
 
@@ -2151,7 +2155,10 @@ class DebugPilotApp(App):
             "refresh_aws_credentials",
         }:
             return False
-        if action in {"debug_code", "code_step_over", "code_step_in", "code_step_out"} and (
+        if action in {
+            "debug_code", "code_step_over", "code_step_in", "code_step_out",
+            "toggle_code_terminal",
+        } and (
             not self.is_mounted or not self.query_one(CodeWorkspace).display
             or isinstance(self.screen, ModalScreen)
         ):
