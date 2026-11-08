@@ -66,6 +66,9 @@ async def test_dashboard_keyboard_switching_closes_old_stream_and_exit():
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
+        await wait_until(pilot, lambda: getattr(app.selected_container, "id", None) == "api")
+        # Logs stream only on request.
+        await pilot.press("ctrl+l")
         await wait_until(pilot, lambda: docker.opened == ["api"])
         assert docker.opened == ["api"]
         docker.queues["api"].put_nowait(LogEntry(text="api entry"))
@@ -73,6 +76,11 @@ async def test_dashboard_keyboard_switching_closes_old_stream_and_exit():
         assert app.query_one(LogViewer).buffer.entries()[0].text == "api entry"
         app.query_one("#launch-profiles", DataTable).focus()
         await pilot.press("down")
+        # A new selection closes the open logs; they open again only on request.
+        await wait_until(pilot, lambda: docker.closed == ["api"])
+        assert getattr(app.selected_container, "id", None) == "worker"
+        assert docker.opened == ["api"]
+        await pilot.press("ctrl+l")
         await wait_until(pilot, lambda: docker.opened == ["api", "worker"])
         assert docker.closed == ["api"] and docker.opened == ["api", "worker"]
         assert not app.query_one(LogViewer).buffer.entries()
@@ -109,6 +117,8 @@ async def test_empty_disconnect_recovery_removal_and_log_errors():
         )
         assert app.query_one("#launch-profiles", DataTable).row_count == 0
         docker.inventory = [container("api")]
+        await wait_until(pilot, lambda: getattr(app.selected_container, "id", None) == "api")
+        app.action_focus_logs()
         await wait_until(pilot, lambda: docker.opened == ["api"])
         assert docker.opened == ["api"]
         docker.queues["api"].put_nowait(DockerError("Unsupported logging driver."))
@@ -150,7 +160,9 @@ async def test_rapid_selection_during_cleanup_opens_only_latest_stream_once():
     engine = DebugPilotEngine(Settings(), docker=docker)
     app = DebugPilotApp(engine, refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await pilot.pause()
+        await wait_until(pilot, lambda: getattr(app.selected_container, "id", None) == "api")
+        app.action_focus_logs()
+        await wait_until(pilot, lambda: docker.opened == ["api"])
         docker.cleanup_gate = asyncio.Event()
         table = app.query_one("#launch-profiles", DataTable)
         table.focus()
@@ -158,6 +170,8 @@ async def test_rapid_selection_during_cleanup_opens_only_latest_stream_once():
         await pilot.press("up")
         await pilot.pause()
         await pilot.press("down")
+        # Each selection closes logs; request them for the latest one before cleanup ends.
+        app.action_focus_logs()
         docker.cleanup_gate.set()
         await pilot.pause(0.2)
         assert docker.opened == ["api", "worker"]

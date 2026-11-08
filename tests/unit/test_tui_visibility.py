@@ -1,5 +1,5 @@
 import pytest
-from test_tui_grouping import Docker, item, until
+from test_tui_grouping import Docker, item, ready, until
 from textual.widgets import Checkbox, DataTable
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -40,7 +40,7 @@ async def test_hiding_selected_stopped_container_clears_selection_and_keeps_scop
     docker.inventory = [item("on", "demo", "api"), item("off", "demo", "worker", "exited")]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(80, 24)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         await pilot.click("#show-all")
         await until(pilot, lambda: "stopped:container:off" in keys(app, "#launch-profiles"))
         table = app.query_one("#launch-profiles", DataTable)
@@ -54,7 +54,8 @@ async def test_hiding_selected_stopped_container_clears_selection_and_keeps_scop
         await until(pilot, lambda: app.selected_container is None)
         assert app.selected_project == "demo"
         assert "stopped:container:off" not in keys(app, "#launch-profiles")
-        assert app.query_one("#log-entries").region.height > 0
+        # The project selection shows its overview instead of auto-opening logs.
+        assert app.query_one("#project-overview").region.height > 0
     assert len(docker.closed) == len(docker.opened)
 
 
@@ -63,7 +64,7 @@ async def test_state_change_rekeys_service_without_losing_identity():
     docker.inventory = [item("api", "demo", "api")]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         await pilot.click("#show-all")
         docker.inventory = [item("api", "demo", "api", "exited")]
         await until(pilot, lambda: "stopped:container:api" in keys(app, "#launch-profiles"))
@@ -78,7 +79,7 @@ async def test_focusing_first_stopped_group_pins_the_action_target(entry):
     docker.inventory = [item("on", "gateway", "api"), item("off", "orders", "api", "exited")]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         assert app.selected_project == "gateway"
         await pilot.click("#show-all")
         table = app.query_one("#launch-profiles", DataTable)
@@ -115,7 +116,7 @@ async def test_inventory_tree_fits_sidebar_without_horizontal_scroll(size):
     ]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=size) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         await pilot.click("#show-all")
         await pilot.pause()
         table = app.query_one("#launch-profiles", DataTable)

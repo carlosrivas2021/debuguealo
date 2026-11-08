@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from test_tui_grouping import Docker, item, until
+from test_tui_grouping import Docker, item, ready, until
 from textual.coordinate import Coordinate
 from textual.widgets import RichLog
 
@@ -16,7 +16,7 @@ async def test_compose_output_is_docked_separate_and_o_restores_control(tmp_path
     docker.inventory = [item("demo-api", "demo", "api")]
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), refresh_interval=0.05)
     async with app.run_test(size=(100, 32)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         assert app.query_one("#compose-console")
         assert not app.query_one("#profile-actions").display
         assert app.query_one("#compose-output-viewer", RichLog) is not app.query_one(LogViewer)

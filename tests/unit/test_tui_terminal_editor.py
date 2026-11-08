@@ -7,6 +7,7 @@ from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.config import Settings
 from debugpilot.tui.app import DebugPilotApp
+from debugpilot.tui.container_details import ContainerDetails
 
 
 async def test_editor_failure_restores_terminal_and_allows_retry(tmp_path, monkeypatch):
@@ -43,4 +44,7 @@ async def test_editor_failure_restores_terminal_and_allows_retry(tmp_path, monke
             assert ownership == []
             assert notices[-1] == "Cannot open launch.json: Install nano or vi on PATH"
         assert attempts == [tmp_path / ".debugpilot" / "launch.json"] * 2
-        assert app.query_one("#logs-panel").display
+        # The dashboard is restored: the selected container shows its details by default.
+        assert app.selected_container is not None
+        assert app.query_one(ContainerDetails).display
+        assert not app.query_one("#logs-panel").display

@@ -2,7 +2,7 @@ import json
 
 import pytest
 from test_tui_compose import Service
-from test_tui_grouping import Docker, item, until
+from test_tui_grouping import Docker, item, ready, request_logs, until
 from textual.widgets import Button, DataTable
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -76,6 +76,8 @@ async def test_primary_rows_are_saved_profiles_and_link_by_project_labels(tmp_pa
             "projects / containers" in str(app.query_one("#launch-title").render()).lower()
         )
         assert path.exists()
+        await until(pilot, lambda: ready(app))
+        await request_logs(pilot, app)
         await until(pilot, lambda: len(docker.opened) >= 2)
         assert set(docker.opened) == {"catalog-api", "catalog-worker"}
         select_profile(app, "profile:Catalog staging")
@@ -130,6 +132,8 @@ async def test_profiles_own_selectable_children_and_raw_inventory_shows_only_uno
         await until(pilot, lambda: app.selected_container is not None)
         assert app.selected_container.id in {"catalog-api", "catalog-worker"}
         assert app.selected_project == "catalog"
+        await request_logs(pilot, app)
+        await until(pilot, lambda: len(docker.opened) >= 1)
         assert len(docker.opened) >= 1
         await pilot.click("#show-all")
         await pilot.pause(0.1)
@@ -335,7 +339,7 @@ async def test_cancel_unexecuted_preview_preserves_profile_and_log_selection(tmp
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_profile(app, "profile:My orders")
         await until(pilot, lambda: app._selection_key == "profile:My orders")
         await pilot.press("r")

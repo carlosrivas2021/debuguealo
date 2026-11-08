@@ -87,8 +87,8 @@ The profile's display `name` is for people. Containers link by the configured Co
 Each saved profile row contains indented, selectable children for its matching actual
 containers. Profiles remain listed when they have no matching containers. When two
 profiles share a Compose project, each retains its own child rows. Selecting a profile
-shows combined project logs; selecting a child shows that container's logs and Stop
-acts on that actual container. A child appears under its owning profile and is not
+shows the project overview; selecting a child shows that container's details and Stop
+acts on that actual container. `Ctrl+L` opens logs for either selection. A child appears under its owning profile and is not
 repeated in the unowned groups of the same tree. Press `Space` on a profile or project
 group to collapse or expand its children; selection stays on that group. `r` previews Recreate and `Shift+R` previews
 Build + Recreate for the selected saved profile; both preserve confirmation and target
@@ -102,14 +102,21 @@ by any saved profile, grouped by Compose project or under a standalone group. It
 addresses), not private-only exposed ports. **Show all** reveals stopped containers
 under their owning profiles and unowned groups without creating another inventory table.
 Group stop actions use the visible project's active members; hidden siblings are not
-silently included. Press `D` on a selected container to view its actual name, image,
-state, Compose project/service, and published ports; `Esc` returns to logs.
+silently included.
 
-Selecting a saved profile links log selection to active containers with the matching
-`projectName`; it does not rename them to the profile's display name. A project-level
-selection combines that project's service logs, while selecting a container isolates
-its logs. Selection survives inventory reorder and refresh; if a target disappears, an
-unrelated stream is not opened automatically.
+Selecting a container shows four detail cards built from the inventory: **Status**
+(state, Docker uptime, creation date), **Image** (name, image, short ID), **Network**
+(published ports) and **Compose** (project, service, project folder). Selecting a
+project or saved profile shows an overview table of every project container, stopped
+ones included, with state, uptime, ports and image. Neither view opens a log stream.
+
+Logs open only on request: `Ctrl+L` follows the selected container, or the combined
+logs of the project's active containers. `D` or `Esc` closes the logs and returns to the
+details, and selecting another row closes them too. Selecting a saved profile links log
+selection to active containers with the matching `projectName`; it does not rename them
+to the profile's display name. Open logs survive inventory reorder, refresh and state
+changes of the same row; if a target disappears, an unrelated stream is not opened
+automatically.
 
 | Control | Effect |
 | --- | --- |
@@ -119,11 +126,11 @@ unrelated stream is not opened automatically.
 | `a` | Refresh AWS credentials for every profile with `awsCredentials`, then offer Recreate for the running ones. |
 | `C` | From the project tree, show `/bin/sh` for the selected running container in the logs area. |
 | `H` | With the project tree focused, open host Bash in the explicit local workspace or the selected central profile's validated working directory. |
-| `D` | Show details for the selected actual container. |
-| `Esc` | In the terminal, return focus to the current left table; otherwise return from details or cancel a pending confirmation. |
+| `D` | Close open logs and show details for the selected container. |
+| `Esc` | In the terminal, return focus to the current left table; otherwise close open logs or cancel a pending confirmation. |
 | `O` | Hide/show the entire docked console; when hidden, restore it from the project tree with `O`. |
 | `Ctrl+O` / `Ctrl+N` | Edit the central (or explicitly selected local) `launch.json` with nano or vi. |
-| `Ctrl+L` | From outside a focused shell, show and focus container logs. |
+| `Ctrl+L` | From outside a focused shell, open and focus logs for the current selection. |
 | `Ctrl+R` | Retry the selected log stream after EOF or an error. |
 | `q` | Exit. |
 
@@ -141,7 +148,7 @@ keeps its opened target when inventory selection changes and is never reopened b
 For C, **Logs** (or Esc, then Ctrl+L) returns to logs without ending the shell.
 Press C on the same selected target to restore that pinned session; changing selection
 alone never retargets it. Both terminal areas offer **Close terminal** to end the session
-or cancel a pending startup; closing C restores logs. Switching views joins prior cleanup,
+or cancel a pending startup; closing C restores the details (or the logs, if they were open). Switching views joins prior cleanup,
 including when a pending switch is cancelled. Startup runs
 outside the app message handler so the close control remains responsive; close and app
 shutdown cancel and join any pending opening task before releasing the session.

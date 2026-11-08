@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from launch_ui_helpers import save_remembered_profile
-from test_tui_grouping import Docker, select_key, until
+from test_tui_grouping import Docker, ready, select_key, until
 from textual.widgets import DataTable, RichLog
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -76,7 +76,7 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
 ):
     app, service, docker = create_app(tmp_path, monkeypatch)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press("o", "r")
@@ -128,7 +128,7 @@ async def test_latest_compose_output_survives_same_profile_refresh_not_other_pro
     app, service, docker = create_app(tmp_path, monkeypatch)
     service.release.set()
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: bool(docker.opened))
+        await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
         await pilot.press("o", "r")
         await pilot.click("#inline-compose-confirm")
