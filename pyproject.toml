@@ -7,6 +7,8 @@ name = "debugealo"
 version = "0.1.0"
 description = "Local-first Docker debugging, with a UI-independent Python engine."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
   "docker>=7.1,<8",
@@ -24,7 +26,7 @@ debugealo = "debugpilot.cli:app"
 debugpilot = "debugpilot.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.9,<1"]
+dev = ["debugpy>=1.8,<2", "pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.9,<1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/debugealo", "src/debugpilot"]

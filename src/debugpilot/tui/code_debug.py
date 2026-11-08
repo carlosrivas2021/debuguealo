@@ -93,7 +93,7 @@ class CodeDebug(Vertical):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id='code-debug-controls'):
-            yield Button('Continue', id='code-continue', disabled=True)
+            yield Button('Continue F5', id='code-continue', disabled=True)
             yield Button('Over F10', id='code-over', disabled=True)
             yield Button('In F11', id='code-in', disabled=True)
             yield Button('Out Shift+F11', id='code-out', disabled=True)

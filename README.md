@@ -1,8 +1,8 @@
 # debugealo
 
-Local-first Docker debugging in Python. **Implementation is in progress; this is not the completed MVP.**
+Local-first Docker debugging in Python.
 
-## Current executable slice
+## What it does
 
 The foundation provides packaging, a headless lifecycle engine, bounded events, TOML
 configuration, and real local Docker diagnostics. Docker integration adds discovery of
@@ -19,9 +19,10 @@ breakpoints remain separate from adapter verification. Python debug
 requires `debugpy` in the selected interpreter; Go debug requires Delve (`dlv`) on the
 application PATH. Debug mode has no interactive stdin, and missing adapters never fall
 back to run. See [code projects](docs/code-projects.md), including the Go remote attach schema,
-source mapping, controls and reconnect workflow. Server-side Node debugging
+source mapping, controls and reconnect workflow. Python attach profiles do the same for an
+existing loopback `debugpy` target, such as a container; try the
+[FastAPI debug example](examples/fastapi-debug/README.md). Server-side Node debugging
 supports direct scripts and explicit npm debug targets; see [code projects](docs/code-projects.md#debug-server-side-node).
-The FastAPI example remains pending.
 No connection is simulated in the application.
 
 The dashboard also supports explicit, confirmation-gated local Compose restart,
@@ -101,15 +102,14 @@ to that operation, not authorization for every Docker API operation.
 
 Configuration is optional. See [configuration](docs/configuration.md) and
 [architecture](docs/architecture.md). Usage after installation requires no Internet.
-Dependency installation and the eventual example image build may require downloads.
+Dependency installation and example image builds may require downloads.
 
 ## Not available yet
 
 `debugealo` and `debugealo tui` open the terminal dashboard; see the
 [keyboard workflow](docs/tui.md). The future `gui` command is not registered.
-The FastAPI example remains pending. Python's current breakpoint workflow is documented
+Python's current breakpoint workflow is documented
 in [code projects](docs/code-projects.md#debug-python-with-the-same-profile).
-No license has been selected; no license grant is implied by this source distribution.
 
 The installed distribution, primary Python package and command are named `debugealo`. The
 legacy `debugpilot` command, `python -m debugpilot`, and `debugpilot.*` imports remain
@@ -132,3 +132,18 @@ project restores both commands. `--frozen` uses the checkout's existing lockfile
 need to be renamed, copied, or migrated.
 
 Read [Docker integration](docs/docker.md) for limits, logging-driver support, and reconnect semantics.
+
+## Known issues
+
+- F5 runs have shown an intermittent test failure whose cause is not established.
+- One `NoneType` integer error was reported in the dashboard and has not recurred or been explained.
+- Windows has not been rechecked since Python attach and the F5 and F9 changes.
+
+## Tests
+
+`uv run pytest` needs Docker and, for the Go debugging tests, Delve available as `dlv`
+(see [Go debugging](docs/go-debugging.md)). Those tests fail rather than skip when Delve is missing.
+
+## License
+
+[MIT](LICENSE)

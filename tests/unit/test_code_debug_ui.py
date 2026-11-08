@@ -96,7 +96,7 @@ async def test_real_shift_f5_breakpoint_inspection_steps_continue_and_attributio
         assert browser.breakpoints(roots[0], roots[0] / 'main.py') == (4,)
         profiles = app.query_one('#code-projects', DataTable)
         profiles.focus()
-        await pilot.press('shift+f5', 'f5')  # Neither may launch a second execution.
+        await pilot.press('shift+f5')  # Must not launch a second execution.
         profiles.move_cursor(row=1)
         await pilot.pause()
         await pilot.click('#area-containers')

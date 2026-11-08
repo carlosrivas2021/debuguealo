@@ -53,6 +53,7 @@ Do not call `asyncio.run` inside a running Qt loop. No Qt dependency is introduc
 
 ## Delivery status
 
-The foundation and Docker discovery/log slice are implemented. Session state machines,
-DAP, path authorization, the interactive TUI, and the example are still pending.
-See `odd/tasks/debugpilot-mvp.md` for the original specification and phase evidence.
+The MVP is implemented: the engine, Docker discovery and logs, the TUI, Python, Node and Go
+debugging over DAP or Inspector, attach to existing targets, and the
+[FastAPI debug example](../examples/fastapi-debug/README.md). The PySide6 frontend is not started.
+See `odd/tasks/debugpilot-mvp.md` for the original specification.

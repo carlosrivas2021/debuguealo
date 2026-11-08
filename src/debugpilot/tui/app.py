@@ -64,11 +64,11 @@ class DebugPilotApp(App):
         Binding("ctrl+o,ctrl+n", "open_launch_file", "Open launch.json"),
         Binding("escape", "cancel_compose", show=False),
         Binding("f5", "run_code", "Run code"),
-        Binding("shift+f5", "debug_code", "Debug Python"),
+        Binding("shift+f5", "debug_code", "Debug"),
         Binding("f10", "code_step_over", show=False),
         Binding("f11", "code_step_in", show=False),
         Binding("shift+f11", "code_step_out", show=False),
-        Binding("f9", "debugger_unavailable", show=False),
+        Binding("f9", "toggle_breakpoint", show=False),
     ]
 
     def __init__(
@@ -1235,7 +1235,14 @@ class DebugPilotApp(App):
         self.query_one(CodeWorkspace).debug_control("step_out")
 
     def action_debugger_unavailable(self) -> None:
-        self.notify("Debugger controls arrive with DAP integration (T4–T5).")
+        self.notify("Debugger controls are available in the Code area.")
+
+    def action_toggle_breakpoint(self) -> None:
+        workspace = self.query_one(CodeWorkspace)
+        if workspace.display:
+            workspace.toggle_breakpoint()
+        else:
+            self.action_debugger_unavailable()
 
     def action_compose(self) -> None:
         self.action_open_launch_file()
@@ -2072,7 +2079,7 @@ class DebugPilotApp(App):
             or isinstance(self.screen, ModalScreen)
         ):
             return False
-        if action == "run_code" and isinstance(self.screen, ModalScreen):
+        if action in {"run_code", "toggle_breakpoint"} and isinstance(self.screen, ModalScreen):
             return False
         if isinstance(self.focused, TerminalPane):
             return False
