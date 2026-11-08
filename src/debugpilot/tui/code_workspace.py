@@ -51,7 +51,8 @@ class CodeWorkspace(Vertical):
         yield self._pane
         yield Static(
             "F5: run without debug · Escape: return to profiles · Stop: end owned Code process. "
-            "Shift+F5: debug/attach · F5 at a pause: Continue · F10/F11/Shift+F11: step. "
+            "Shift+F5: debug/attach · F9: breakpoint · F5 at a pause: Continue · "
+            "F10/F11/Shift+F11: step. "
             "One session per saved profile; distinct profiles may run/debug/attach together. "
             "Attach Disconnect leaves the target to Containers; Reconnect is explicit; "
             "the same attach endpoint cannot be attached twice. Debug output has no stdin. "
@@ -293,6 +294,15 @@ class CodeWorkspace(Vertical):
         self._pane.display = False
         self._debug.start(profile)
         self._sync_controls()
+
+    def toggle_breakpoint(self):
+        browser = self.query_one(SourceBrowser)
+        if browser.file_path is None:
+            self.app.notify(
+                "Open a source file before toggling a breakpoint.", severity="warning"
+            )
+            return
+        browser.toggle_breakpoint()
 
     @on(SourceBrowser.BreakpointsChanged)
     def breakpoints_changed(self, event):
