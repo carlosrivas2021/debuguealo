@@ -89,19 +89,28 @@ file. Red indicates requested intent, **not debugger verification**.
 
 ## Conditional breakpoints and logpoints
 
-Press **Shift+F9** on a line to open the breakpoint dialog:
+Press **Shift+F9** on a line to open a short breakpoint panel at the bottom of the screen.
+The source stays visible above it, and its title shows the file, line and code. It has two
+one-line fields:
 
-- **Condition**: the debugger stops only when the expression is true in the target's
+- **if** (condition): the debugger stops only when the expression is true in the target's
   language, for example `user_id == 42` (Python, Go) or `userId === 42` (Node).
-- **Log message**: makes a **logpoint**. It writes the message to the debug output and
+- **log** (log message): makes a **logpoint**. It writes the message to the debug output and
   never stops. `{expression}` parts are replaced with their value, for example
   `order {order.id} received`. With a condition too, it logs only when the condition holds.
   An expression may contain braces, such as `{ {id: user.id}.id }`; an empty `{}` or an
   unclosed `{` is kept as text.
 
-Leave both fields empty for a plain breakpoint. **Remove** deletes the breakpoint, and
-**Cancel** or **Escape** keeps it unchanged. F9 still toggles a plain breakpoint; on a line
-with a condition or log message it removes the breakpoint together with them.
+**Enter** saves, and leaving both fields empty makes a plain breakpoint. **Escape** keeps
+the breakpoint unchanged. To remove a breakpoint use **F9**, as for any other: on a line with
+a condition or log message it removes the breakpoint together with them.
+
+| Condition | Log message | Result |
+|---|---|---|
+| set | empty | Stops only when the condition is true. |
+| empty | set | Never stops; writes the message every time the line runs. |
+| set | set | Never stops; writes the message only when the condition is true. |
+| empty | empty | Plain breakpoint: always stops. |
 
 The gutter shows **●** for a plain breakpoint, **◆** for a conditional one and a blue **◇**
 for a logpoint. The file's tree entry shows the details, for example
