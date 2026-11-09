@@ -109,10 +109,19 @@ Group stop actions use the visible project's active members; hidden siblings are
 silently included.
 
 Selecting a container shows four detail cards built from the inventory: **Status**
-(state, Docker uptime, creation date), **Image** (name, image, short ID), **Network**
-(published ports) and **Compose** (project, service, project folder). Selecting a
+(state, Docker uptime, creation date, CPU, memory), **Image** (name, image, short ID),
+**Network** (published ports) and **Compose** (project, service, project folder). Selecting a
 project or saved profile shows an overview table of every project container, stopped
 ones included, with state, uptime, ports and image. Neither view opens a log stream.
+
+For a running container, **CPU** and **Memory** update live while its card is shown.
+debugealo asks Docker for one stats sample per refresh interval (2 seconds by default),
+only for that container and through the worker that already reads the inventory: no
+stats stream and no extra process. CPU shows `—` until a second sample arrives, because
+it is computed between two samples; 100% means one full CPU, as in `docker stats`.
+Memory excludes reclaimable page cache, also like `docker stats`, and shows the limit
+when Docker reports one. Sampling stops when you select another row, open the logs or
+quit; stopped containers and project overviews are never sampled.
 
 Logs open only on request: `Ctrl+L` follows the selected container, or the combined
 logs of the project's active containers. `D` or `Esc` closes the logs and returns to the
