@@ -384,17 +384,18 @@ class SourceBrowser(Vertical):
         """Shift+F9: edit the condition and log message of the line at the cursor."""
         if self.file_path is None:
             return
-        line = self.query_one(TextArea).cursor_location[0] + 1
+        editor = self.query_one(TextArea)
+        line = editor.cursor_location[0] + 1
         key = (self.root_path, self.file_path.resolve())
 
         def done(result):
             if result is not None:
-                action, options = result
-                self._apply_breakpoint(key, line, action == "save", options)
+                _, options = result
+                self._apply_breakpoint(key, line, True, options)
 
         self.app.push_screen(BreakpointDialog(
-            f"{self.file_path.name}:{line}", self._options.get(key, {}).get(line),
-            line in self._marks.get(key, set()),
+            f"{self.file_path.name}:{line}", editor.document.get_line(line - 1),
+            self._options.get(key, {}).get(line),
         ), done)
 
     def _apply_breakpoint(self, key, line, present, options):
