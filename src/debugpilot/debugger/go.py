@@ -91,12 +91,34 @@ class GoDebugSession(PythonDebugSession):
                     'linesStartAt1': True, 'columnsStartAt1': True,
                     'supportsRunInTerminalRequest': False,
                 })
-                launch = asyncio.create_task(self._client.request('launch', {
-                    'name': self.profile.name, 'type': 'go', 'request': 'launch',
-                    'mode': 'debug', 'program': program, 'cwd': str(self.profile.root),
-                    'args': list(args), 'output': output, 'outputMode': 'remote',
-                    'buildFlags': '-buildvcs=false', 'stopOnEntry': False,
-                }))
+            # Delve compiles the program while handling launch. A cold or large build can
+            # outlast the startup timeout without anything being wrong, so the build has no
+            # deadline; Stop cancels it like any other startup step.
+            launch = asyncio.create_task(self._client.request('launch', {
+                'name': self.profile.name, 'type': 'go', 'request': 'launch',
+                'mode': 'debug', 'program': program, 'cwd': str(self.profile.root),
+                'args': list(args), 'output': output, 'outputMode': 'remote',
+                'buildFlags': '-buildvcs=false', 'stopOnEntry': False,
+            }, deadline=None))
+            self._state('building')
+            initialized = asyncio.create_task(self._initialized.wait())
+            try:
+                await asyncio.wait({launch, initialized}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                initialized.cancel()
+            if not self._initialized.is_set():
+                # A build error ends launch without initializing; report it right away.
+                try:
+                    await launch
+                except DebugError as error:
+                    if error.detail:
+                        message = f'Unable to build the Go program: {error.detail}'
+                        raise DebugError(message) from None
+                    # Delve died or refused launch: keep the usual startup error with the reason.
+                    self._diagnostic = f'{self._diagnostic.strip()}\n{error}'.strip()
+                    raise DebugError(self._startup_error(dlv)) from None
+            self._state('starting')
+            async with asyncio.timeout(self.timeout):
                 await self._initialized.wait()
                 for source, lines in intent.items():
                     await self.set_breakpoints(source, lines)

@@ -164,8 +164,6 @@ Read [Docker integration](docs/docker.md) for limits, logging-driver support, an
 ## Known issues
 
 - Windows has not been rechecked since Python attach and the F5 and F9 changes.
-- `test_go_attach_disconnect.py` can time out when the full suite runs under heavy load;
-  it passes in isolation.
 
 ## Tests
 
