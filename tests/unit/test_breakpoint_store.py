@@ -39,3 +39,103 @@ def test_store_rejects_invalid_lines_without_publishing(tmp_path):
     with pytest.raises(ConfigurationError):
         store.save({(root, root / "main.py"): {0, 3}})
     assert not path.exists()
+
+
+def _project(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    return root.resolve(), (root / "main.py").resolve()
+
+
+def test_store_round_trips_condition_and_log_message(tmp_path):
+    from debugpilot.storage.breakpoints import BreakpointOptions
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    options = {(root, source): {
+        3: BreakpointOptions(condition="user_id == 42"),
+        7: BreakpointOptions(log_message="order {order.id} received"),
+        9: BreakpointOptions(condition="n > 1", log_message="n={n}"),
+    }}
+    store.save({(root, source): {2, 3, 7, 9}}, options)
+    assert store.load() == {(root, source): (2, 3, 7, 9)}
+    assert store.load_options() == options
+
+
+def test_store_without_options_writes_the_previous_format(tmp_path):
+    import json
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    store.save({(root, source): {2, 4}})
+    expected = {"version": 1, "breakpoints": [
+        {"root": str(root), "file": str(source), "lines": [2, 4]}]}
+    assert store.path.read_bytes() == (json.dumps(expected, indent=2) + "\n").encode()
+    assert store.load_options() == {}
+
+
+def test_store_loads_a_file_written_before_options_existed(tmp_path):
+    import json
+
+    root, source = _project(tmp_path)
+    path = tmp_path / "breakpoints.json"
+    path.write_text(json.dumps({"version": 1, "breakpoints": [
+        {"root": str(root), "file": str(source), "lines": [5]}]}))
+    store = BreakpointStore(path)
+    assert store.load() == {(root, source): (5,)}
+    assert store.load_options() == {}
+
+
+@pytest.mark.parametrize("options", [
+    {},
+    {"5": {}},
+    {"6": {"condition": "x"}},
+    {"5": {"condition": ""}},
+    {"5": {"condition": 3}},
+    {"5": {"hitCount": "2"}},
+    {"x": {"condition": "x"}},
+    {"5": {"condition": "x" * 1001}},
+    {"05": {"condition": "x"}},
+    {"\u0665": {"condition": "x"}},
+], ids=["empty", "no-fields", "line-without-mark", "blank", "not-text", "unknown-field",
+        "bad-line", "too-long", "zero-padded-line", "non-ascii-digit"])
+def test_store_rejects_invalid_options_and_keeps_the_file(tmp_path, options):
+    import json
+
+    root, source = _project(tmp_path)
+    path = tmp_path / "breakpoints.json"
+    path.write_text(json.dumps({"version": 1, "breakpoints": [
+        {"root": str(root), "file": str(source), "lines": [5], "options": options}]}))
+    before = path.read_bytes()
+    store = BreakpointStore(path)
+    with pytest.raises(ConfigurationError, match="Invalid Code breakpoints"):
+        store.load_options()
+    with pytest.raises(ConfigurationError, match="Invalid Code breakpoints"):
+        store.save({})
+    assert path.read_bytes() == before
+
+
+def test_store_drops_options_of_lines_without_a_breakpoint(tmp_path):
+    from debugpilot.storage.breakpoints import BreakpointOptions
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    other = (root / "other.py").resolve()
+    store.save({(root, source): {2}}, {
+        (root, source): {2: BreakpointOptions(condition="a"),
+                         8: BreakpointOptions(condition="gone")},
+        (root, other): {1: BreakpointOptions(condition="no marks")},
+    })
+    assert store.load_options() == {(root, source): {2: BreakpointOptions(condition="a")}}
+
+
+def test_breakpoint_options_normalizes_blank_fields():
+    from debugpilot.storage.breakpoints import BreakpointOptions, breakpoint_options
+
+    assert breakpoint_options("  ", "") is None
+    assert breakpoint_options(" x > 1 ", " ") == BreakpointOptions(condition="x > 1")
+    assert breakpoint_options(None, "hit {n}") == BreakpointOptions(log_message="hit {n}")
+    with pytest.raises(ValueError):
+        breakpoint_options("x" * 1001, None)
+    # The limit applies to the trimmed text.
+    assert breakpoint_options(" " + "x" * 1000, None) == BreakpointOptions(condition="x" * 1000)
