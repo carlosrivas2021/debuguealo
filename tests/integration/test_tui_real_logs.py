@@ -60,6 +60,8 @@ async def test_live_logs_filter_and_visual_pause_leave_the_container_running(tmp
             table.focus()
             table.move_cursor(row=table.get_row_index(key))
             app._select_focused_row(table)
+            # Selecting a container shows its details; logs open on demand with Ctrl+L.
+            await pilot.press('ctrl+l')
             viewer = app.query_one(LogViewer)
 
             # Live: new lines keep arriving without any further action.
