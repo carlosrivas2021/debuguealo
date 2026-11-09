@@ -21,21 +21,24 @@ async def test_compose_output_is_docked_separate_and_o_restores_control(tmp_path
         assert not app.query_one("#profile-actions").display
         assert app.query_one("#compose-output-viewer", RichLog) is not app.query_one(LogViewer)
         console = app.query_one("#compose-console")
-        assert not console.display
+        # The output card is always present; it starts collapsed with only its button.
+        assert console.display and not console.expanded
+        assert not app.query_one("#compose-output-viewer").display
+        assert app.query_one("#compose-output-toggle").visible
         await pilot.press("o")
         await pilot.pause()
-        assert console.display
-        assert app.query_one("#compose-output-viewer").display
-        assert app.query_one("#compose-output-toggle").visible
+        assert not console.expanded  # no keyboard shortcut on purpose
         await pilot.click("#compose-output-toggle")
         await pilot.pause()
-        assert not console.display
+        assert console.expanded and app.query_one("#compose-output-viewer").display
+        await pilot.click("#compose-output-toggle")
+        await pilot.pause()
+        assert console.display and not console.expanded
         assert not app.query_one("#compose-output-viewer").display
         assert app.query_one("#launch-profiles").has_focus
-        await pilot.press("o")
+        await pilot.click("#compose-output-toggle")
         await pilot.pause()
-        assert console.display
-        assert app.query_one("#compose-output-viewer").display
+        assert console.expanded and app.query_one("#compose-output-viewer").display
 
 
 async def test_native_inventory_scales_scrolls_and_shows_only_published_port_labels():

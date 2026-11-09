@@ -50,7 +50,7 @@ async def test_area_navigation_keeps_container_context_and_isolates_code_errors(
         assert "Invalid code launch" in str(app.query_one("#code-status").render())
         await pilot.press("s", "r", "shift+r", "h", "c")
         assert not app.query_one("#inline-compose").display
-        assert not app.query_one("#compose-console").display
+        assert not app.query_one("#compose-console").expanded
         store.path.write_text(
             json.dumps(
                 {
