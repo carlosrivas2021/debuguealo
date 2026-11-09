@@ -45,7 +45,9 @@ context. A running profile survives area changes; repeated F5 does not restart i
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
 an active profile returns to its context. Same-endpoint attaches are rejected, while distinct
 endpoints may coexist. **Shift+F5** or **Debug** starts Python debugging from that same profile
-and its requested source breakpoints, which **F9** toggles at the source cursor. At a pause, inspect the stack/variables and the
+and its requested source breakpoints, which **F9** toggles at the source cursor. **Shift+F9**
+adds a condition or a log message (logpoint) to the line; see
+[conditional breakpoints and logpoints](code-projects.md#conditional-breakpoints-and-logpoints). At a pause, inspect the stack/variables and the
 yellow-shaded execution line, then use **F5** or **▶ Continue**, **F10** (over), **F11** (in), or
 **Shift+F11** (out). F5 continues only the paused profile under the cursor. Stop cancels startup or ends the
 active Code run/debug tree. Debug output is internal-console only (no interactive stdin).

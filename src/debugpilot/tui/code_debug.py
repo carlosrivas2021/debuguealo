@@ -268,12 +268,14 @@ class CodeDebug(Vertical):
         self.display = True
         self._render_context(context)
         intent = self.browser.breakpoint_snapshot(profile.root)
+        options = self.browser.options_snapshot(profile.root)
         self._set_state(context, f'Starting debug: {profile.name} · {profile.root}')
         context.start_task = self._spawn(
-            context, self._launch(context, profile, generation, intent, previous_session)
+            context,
+            self._launch(context, profile, generation, intent, options, previous_session),
         )
 
-    async def _launch(self, context, profile, generation, intent, previous_session):
+    async def _launch(self, context, profile, generation, intent, options, previous_session):
         try:
             if previous_session is not None:
                 await previous_session.close()
@@ -309,7 +311,7 @@ class CodeDebug(Vertical):
                 else PythonDebugSession
             )
             session = context.session = backend(on_event=event, on_output=output)
-            await self._start(context, session, generation, intent)
+            await self._start(context, session, generation, intent, options)
         except (DebugError, OSError) as error:
             if self._current(context, generation):
                 context.active = False
@@ -319,9 +321,10 @@ class CodeDebug(Vertical):
                 if self.selected is context:
                     self.finished(False)
 
-    async def _start(self, context, session, generation, intent):
+    async def _start(self, context, session, generation, intent, options=None):
         try:
-            await session.start(context.profile, intent)
+            # Without options the call keeps its previous shape for every session type.
+            await session.start(context.profile, intent, *((options,) if options else ()))
             if self._current(context, generation) and self.selected is context:
                 self._verification(context)
         except (DebugError, OSError) as error:
@@ -494,10 +497,10 @@ class CodeDebug(Vertical):
         for context in self.contexts.values():
             if context.active and event.root == context.profile.root.resolve():
                 self._spawn(context, self._update(
-                    context, context.generation, event.path, event.lines
+                    context, context.generation, event.path, event.lines, event.options
                 ))
 
-    async def _update(self, context, generation, path, lines):
+    async def _update(self, context, generation, path, lines, options=None):
         async with context.update_lock:
             if not self._current(context, generation):
                 return
@@ -505,7 +508,8 @@ class CodeDebug(Vertical):
                 if context.start_task is not None and not context.start_task.done():
                     await asyncio.shield(context.start_task)
                 if self._current(context, generation):
-                    await context.session.set_breakpoints(str(path), lines)
+                    await context.session.set_breakpoints(
+                        str(path), lines, *((options,) if options else ()))
                     if self._current(context, generation) and self.selected is context:
                         self._verification(context)
             except DebugError as error:

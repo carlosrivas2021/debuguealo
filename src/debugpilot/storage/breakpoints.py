@@ -151,10 +151,14 @@ class BreakpointStore:
         # Refuse to replace invalid/unreadable state; an absent file is a valid empty store.
         self.load()
         try:
-            canonical_options = {
-                (self._canonical_path(root), self._canonical_path(path)): line_options
-                for (root, path), line_options in (options or {}).items()
-            }
+            canonical_options = {}
+            for (root, path), line_options in (options or {}).items():
+                try:
+                    key = (self._canonical_path(root), self._canonical_path(path))
+                except ValueError:
+                    # Unusable paths can never match a stored mark; their options are dropped.
+                    continue
+                canonical_options.setdefault(key, {}).update(line_options)
             entries = []
             for (root, path), lines in marks.items():
                 canonical_root = self._canonical_path(root)

@@ -16,11 +16,35 @@ from textual.strip import Strip
 from textual.widgets import Button, Static, TextArea, Tree
 
 from debugpilot.core.exceptions import ConfigurationError
-from debugpilot.storage.breakpoints import BreakpointStore
+from debugpilot.storage.breakpoints import BreakpointOptions, BreakpointStore
+from debugpilot.tui.breakpoint_dialog import BreakpointDialog
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
-SOURCE_HINT = "Select a file. F9 or click the gutter to toggle a breakpoint."
+SOURCE_HINT = (
+    "Select a file. F9 or click the gutter to toggle a breakpoint; "
+    "Shift+F9 adds a condition or log message."
+)
+BREAKPOINT_GLYPHS = {
+    "plain": ("●", Style(color="#ef4444", bold=True)),
+    "condition": ("◆", Style(color="#ef4444", bold=True)),
+    "log": ("◇", Style(color="#38bdf8", bold=True)),
+}
+MAX_LABEL_TEXT = 40
+
+
+def breakpoint_kind(options: BreakpointOptions | None) -> str:
+    """A log message makes a logpoint even with a condition: it never stops."""
+    if options is not None and options.log_message:
+        return "log"
+    if options is not None and options.condition:
+        return "condition"
+    return "plain"
+
+
+def _shorten(text: str) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= MAX_LABEL_TEXT else text[:MAX_LABEL_TEXT - 1] + "…"
 
 
 def _overlay(strip: Strip, style: Style) -> Strip:
@@ -39,6 +63,8 @@ class SourceText(TextArea):
     def __init__(self, **kwargs):
         super().__init__(read_only=True, show_line_numbers=True, soft_wrap=False, **kwargs)
         self.breakpoint_lines: tuple[int, ...] = ()
+        # Lines with a condition or log message; others draw the plain dot.
+        self.breakpoint_kinds: dict[int, str] = {}
         self.execution_line: int | None = None
 
     def render_line(self, y: int) -> Strip:
@@ -55,9 +81,10 @@ class SourceText(TextArea):
             return strip
         # Use the gutter's existing margin, preserving line numbers and source geometry.
         column = self.gutter_width - 2
+        mark, style = BREAKPOINT_GLYPHS[self.breakpoint_kinds.get(line, "plain")]
         return Strip.join([
             strip.crop(0, column),
-            Strip([Segment("●", Style(color="#ef4444", bold=True))], 1),
+            Strip([Segment(mark, style)], 1),
             strip.crop(column + 1),
         ])
 
@@ -75,9 +102,11 @@ class SourceBrowser(Vertical):
     """Expand files lazily; keep source intent independent of adapter verification."""
 
     class BreakpointsChanged(Message):
-        def __init__(self, root, path, lines):
+        def __init__(self, root, path, lines, options=None):
             super().__init__()
             self.root, self.path, self.lines = root, path, lines
+            # Line -> BreakpointOptions for the lines that have a condition or log message.
+            self.options = dict(options or {})
 
     # Structural layout lives with the widget so it renders correctly without the app sheet.
     DEFAULT_CSS = """
@@ -108,8 +137,13 @@ class SourceBrowser(Vertical):
             self._marks: dict[tuple[Path, Path], set[int]] = {
                 key: set(lines) for key, lines in self.breakpoint_store.load().items()
             }
+            self._options: dict[tuple[Path, Path], dict[int, BreakpointOptions]] = {
+                key: dict(options)
+                for key, options in self.breakpoint_store.load_options().items()
+            }
         except ConfigurationError as error:
             self._marks = {}
+            self._options = {}
             self._persistence_error = str(error)
         self._loaded = set()
         self._file_node = None
@@ -154,6 +188,7 @@ class SourceBrowser(Vertical):
         self._file_node = None
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = ()
+        editor.breakpoint_kinds = {}
         editor.execution_line = None
         editor.load_text("")
         self.query_one("#source-breakpoint", Button).disabled = True
@@ -245,8 +280,7 @@ class SourceBrowser(Vertical):
             self._file_node = current
         editor = self.query_one(TextArea)
         editor.load_text(source)
-        editor.breakpoint_lines = self.breakpoints(self.root_path, path)
-        editor.refresh()
+        self._refresh_editor_marks()
         if line is not None:
             editor.move_cursor((min(line - 1, editor.document.line_count - 1), 0))
         self.query_one("#source-breakpoint", Button).disabled = False
@@ -265,6 +299,19 @@ class SourceBrowser(Vertical):
         editor = self.query_one(SourceText)
         editor.execution_line = None
         editor.refresh()
+
+    def options_snapshot(self, root):
+        """Detached root-scoped options of marked lines, keyed like breakpoint_snapshot."""
+        root = Path(root).resolve()
+        return {
+            str(path): {line: option for line, option in options.items()
+                        if line in self._marks.get((owner, path), set())}
+            for (owner, path), options in self._options.items()
+            if owner == root and options and self._marks.get((owner, path))
+        }
+
+    def breakpoint_options(self, root: Path, path: Path) -> dict[int, BreakpointOptions]:
+        return dict(self._options.get((root.resolve(), path.resolve()), {}))
 
     def breakpoint_snapshot(self, root):
         """Detached root-scoped requested intent; adapter responses never modify it."""
@@ -304,10 +351,17 @@ class SourceBrowser(Vertical):
         path, _ = node.data
         node.remove_children()
         marks = self.breakpoints(self.root_path, path)
+        options = self.breakpoint_options(self.root_path, path)
         node.allow_expand = bool(marks)
         for line in marks:
             state = self._verification.get((self.root_path, path.resolve(), line), "pending")
-            node.add_leaf(Text(f"Line {line} · {state}"), (path, line))
+            option = options.get(line)
+            detail = ""
+            if breakpoint_kind(option) == "log":
+                detail = f" · log: {_shorten(option.log_message)}"
+            elif breakpoint_kind(option) == "condition":
+                detail = f" · if {_shorten(option.condition)}"
+            node.add_leaf(Text(f"Line {line}{detail} · {state}"), (path, line))
         if marks:
             node.expand()
 
@@ -322,27 +376,69 @@ class SourceBrowser(Vertical):
         if self.file_path is None:
             return
         line = self.query_one(TextArea).cursor_location[0] + 1
-        marks = self._marks.setdefault((self.root_path, self.file_path.resolve()), set())
-        if line in marks:
-            marks.remove(line)
-        else:
+        key = (self.root_path, self.file_path.resolve())
+        # Removing a breakpoint also removes its condition and log message.
+        self._apply_breakpoint(key, line, line not in self._marks.get(key, set()), None)
+
+    def edit_breakpoint(self):
+        """Shift+F9: edit the condition and log message of the line at the cursor."""
+        if self.file_path is None:
+            return
+        line = self.query_one(TextArea).cursor_location[0] + 1
+        key = (self.root_path, self.file_path.resolve())
+
+        def done(result):
+            if result is not None:
+                action, options = result
+                self._apply_breakpoint(key, line, action == "save", options)
+
+        self.app.push_screen(BreakpointDialog(
+            f"{self.file_path.name}:{line}", self._options.get(key, {}).get(line),
+            line in self._marks.get(key, set()),
+        ), done)
+
+    def _apply_breakpoint(self, key, line, present, options):
+        marks = self._marks.setdefault(key, set())
+        line_options = self._options.setdefault(key, {})
+        if present:
             marks.add(line)
-        self._verification.pop((self.root_path, self.file_path.resolve(), line), None)
-        self._show_marks(self._file_node)
-        editor = self.query_one(SourceText)
-        editor.breakpoint_lines = tuple(sorted(marks))
-        editor.refresh()
+        else:
+            marks.discard(line)
+        if present and options is not None:
+            line_options[line] = options
+        else:
+            line_options.pop(line, None)
+        if not line_options:
+            self._options.pop(key, None)
+        self._verification.pop((key[0], key[1], line), None)
+        if self.file_path is not None and self.file_path.resolve() == key[1]:
+            self._show_marks(self._file_node)
+            self._refresh_editor_marks()
         try:
-            self.breakpoint_store.save(self._marks)
+            # Always save marks and options together: saving marks alone drops options.
+            self.breakpoint_store.save(self._marks, self._options)
             self._persistence_error = None
         except ConfigurationError as error:
             self._persistence_error = str(error)
-        self._set_status(
-            f"{self.file_path.name} · read-only"
-        )
+        if self.file_path is not None:
+            self._set_status(f"{self.file_path.name} · read-only")
         self.post_message(self.BreakpointsChanged(
-            self.root_path, self.file_path.resolve(), tuple(sorted(marks))
+            key[0], key[1], tuple(sorted(marks)), self._options.get(key, {})
         ))
+
+    def _refresh_editor_marks(self):
+        editor = self.query_one(SourceText)
+        if self.file_path is None:
+            editor.breakpoint_lines = ()
+            editor.breakpoint_kinds = {}
+        else:
+            editor.breakpoint_lines = self.breakpoints(self.root_path, self.file_path)
+            editor.breakpoint_kinds = {
+                line: kind
+                for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
+                if (kind := breakpoint_kind(option)) != "plain"
+            }
+        editor.refresh()
 
     def _set_status(self, message):
         if self._persistence_error:
