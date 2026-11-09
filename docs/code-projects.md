@@ -190,7 +190,28 @@ rewrites and no source edits. Python script/module grammar and installation guid
 the [Python backend API and limits](python-debugging.md). Go debugging supports only
 `go run main.go [args...]` and `go run . [args...]`; install Delve separately and make
 `dlv` available on the application PATH. See the [Go debugging walkthrough and limits](go-debugging.md).
-Expression evaluation and interactive debug stdin remain unsupported.
+Expressions can be evaluated as [watch expressions](#watch-expressions); interactive debug
+stdin remains unsupported.
+
+## Watch expressions
+
+The debug panel has a **Watch** section between the stack and the variables. Type an
+expression in **+ Add watch expression** and press **Enter**; it is added to the list for
+this project. Select a watch and press **Delete** to remove it. A blank or repeated
+expression is not added, and a project keeps up to 100 watches.
+
+Every watch is evaluated again on each pause (a breakpoint or a step) and when you select
+another stack frame, in that frame's scope. Without a paused session its value shows `—`.
+If an expression fails, its row shows the debugger's error, for example
+`⚠ NameError: name 'count' is not defined`, and the other watches keep working.
+
+Watches work with Python, Go and Node debugging and with Python and Go attach. They are
+saved per project root in `projects/watches.json`, beside the breakpoints file; values are
+never saved.
+
+**A watch runs code in your program.** Evaluating `items.pop()` removes an item on every
+pause, and a call with side effects repeats them. As in VS Code, debugealo does not block
+such expressions, so prefer reading values over calling functions that change state.
 
 ## Attach to an existing Go/Delve target
 
@@ -247,7 +268,7 @@ Local `workspaceFolder` maps to remote `remoteRoot` (for example, local `main.go
 back into the local root and checked for containment before source preview. The configured
 Delve server must be started with compatible source substitution and expose the remote
 DAP target. Attach supports breakpoints, stopped state, stack, scopes, variables, step and
-continue. It does not support expression evaluation, debug stdin, arbitrary endpoints,
+continue, and watch expressions. It does not support debug stdin, arbitrary endpoints,
 starting/stopping Delve, or target lifecycle management. Target stdout/stderr remain
 available through the container's logs; the Code attach session does not present them as
 its debug output stream.
@@ -279,8 +300,8 @@ session's breakpoints and resumes a paused target, which keeps running and can b
 Target output stays in the container's logs. A connection that closes without attaching, such as a
 port probe, can end the `debugpy` listener; recreate the container if attach is then refused.
 
-An endpoint can only be attached once at a time, across both attach kinds. Expression evaluation
-and debug stdin are not supported. Try the workflow with the
+An endpoint can only be attached once at a time, across both attach kinds. Watch expressions
+work; debug stdin is not supported. Try the workflow with the
 [FastAPI debug example](../examples/fastapi-debug/README.md).
 
 ## Debug server-side Node
