@@ -5,7 +5,7 @@ from textual.app import ComposeResult
 from textual.containers import Grid, Vertical
 from textual.widgets import DataTable, Static
 
-from debugpilot.core.models import ContainerInfo, PortMapping
+from debugpilot.core.models import ContainerInfo, ContainerStats, PortMapping
 from debugpilot.tui.container_list import group_style, state_glyph
 
 
@@ -23,6 +23,25 @@ def format_published_port(port: PortMapping) -> str | None:
     return f"{binding}->{port.private_port}/{port.protocol}"
 
 
+def format_bytes(value: int) -> str:
+    size = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if size < 1024 or unit == "GiB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GiB"
+
+
+def format_memory(stats: ContainerStats | None) -> str:
+    if stats is None or stats.memory_usage is None:
+        return "—"
+    text = format_bytes(stats.memory_usage)
+    if stats.memory_limit:
+        share = stats.memory_usage / stats.memory_limit * 100
+        text += f" / {format_bytes(stats.memory_limit)} ({share:.1f}%)"
+    return text
+
+
 def published_ports(container: ContainerInfo) -> str:
     bindings = [value for port in container.ports if (value := format_published_port(port))]
     return ", ".join(bindings) if bindings else "None published"
@@ -32,6 +51,12 @@ class ContainerDetails(Vertical):
     """Four cards populated exclusively from the selected inventory record."""
 
     CARDS = ("Status", "Image", "Network", "Compose")
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._container: ContainerInfo | None = None
+        self._cpu = "—"
+        self._memory = "—"
 
     def compose(self) -> ComposeResult:
         yield Static("Container details · Ctrl+L logs", id="container-details-title", markup=False)
@@ -48,7 +73,18 @@ class ContainerDetails(Vertical):
         """Plain text of every card, in display order."""
         return "\n".join(str(card.render()) for card in self.cards())
 
+    def show_stats(self, cpu: float | None, stats: ContainerStats | None) -> None:
+        """Live CPU and memory for the shown container; None shows a dash."""
+        self._cpu = "—" if cpu is None else f"{cpu:.1f}%"
+        self._memory = format_memory(stats)
+        if self._container is not None:
+            self.show_container(self._container)
+
     def show_container(self, container: ContainerInfo) -> None:
+        if self._container is None or self._container.id != container.id:
+            # Another container: its predecessor's numbers must not linger.
+            self._cpu = self._memory = "—"
+        self._container = container
         glyph, color = state_glyph(container.state)
         title = Text.assemble(
             (f"{glyph} ", color),
@@ -66,6 +102,8 @@ class ContainerDetails(Vertical):
                 ("State", container.state),
                 ("Uptime", container.status or "—"),
                 ("Created", f"{container.created_at:%Y-%m-%d}"),
+                ("CPU", self._cpu),
+                ("Memory", self._memory),
             ),
             (
                 ("Name", container.name),
