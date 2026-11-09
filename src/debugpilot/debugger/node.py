@@ -57,6 +57,12 @@ def cdp_condition(options):
     return f'({options.condition}) && ({log})' if options.condition else log
 
 
+def _display(value):
+    """CDP RemoteObject as shown in variables and watches."""
+    return value.get('unserializableValue', value.get('description',
+                     json.dumps(value.get('value', None))))
+
+
 def _source(url):
     parsed = urlsplit(url)
     if parsed.scheme != 'file' or parsed.netloc not in {'', 'localhost'}:
@@ -289,11 +295,24 @@ class NodeDebugSession(PythonDebugSession):
         for prop in result.get('result', [])[:200]:
             value = prop.get('value')  # Do not invoke getters or evaluate expressions.
             if value is not None:
-                values.append({'name': prop['name'],
-                               'value': value.get('unserializableValue', value.get('description',
-                                        json.dumps(value.get('value', None)))),
+                values.append({'name': prop['name'], 'value': _display(value),
                                'variablesReference': self._reference(value.get('objectId'))})
         return values
+
+    async def evaluate(self, expression, frame_id):
+        """Evaluate a watch expression in a paused call frame; exceptions become errors."""
+        self._stopped()
+        if not any(frame['callFrameId'] == frame_id for frame in self._frames):
+            raise DebugError('Frame is no longer paused.')
+        result = await self._client.request('Debugger.evaluateOnCallFrame', {
+            'callFrameId': frame_id, 'expression': expression, 'generatePreview': False,
+        })
+        details = result.get('exceptionDetails')
+        if details is not None:
+            message = (details.get('exception', {}).get('description')
+                       or details.get('text') or 'Evaluation failed.')
+            raise DebugError(message.splitlines()[0])
+        return _display(result.get('result', {}))
 
     async def _resume(self, command):
         self._stopped()
