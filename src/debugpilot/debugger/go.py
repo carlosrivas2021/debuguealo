@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from debugpilot.debugger.dap import DAPClient, DebugError
-from debugpilot.debugger.python import PythonDebugSession, _breakpoints
+from debugpilot.debugger.python import PythonDebugSession, _intent
 from debugpilot.storage.code_projects import CodeProject
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
@@ -44,7 +44,7 @@ class GoDebugSession(PythonDebugSession):
         super().__init__(on_event, on_output, timeout=timeout)
         self._build_dir = None
 
-    async def start(self, profile, breakpoints):
+    async def start(self, profile, breakpoints, options=None):
         if self.state not in {'idle', 'closed'}:
             raise DebugError('A debug session is already active; Stop before starting again.')
         _, program, args = _target(profile)
@@ -53,11 +53,11 @@ class GoDebugSession(PythonDebugSession):
             message = ('Delve (dlv) is required for Go debugging; install it and add it to PATH. '
                        'No run-mode fallback.')
             raise DebugError(message)
-        intent = dict(_breakpoints(profile.root, source, lines)
-                      for source, lines in breakpoints.items())
+        intent, start_options = _intent(profile.root, breakpoints, options)
         self.profile = CodeProject(profile.name, Path(profile.root), tuple(profile.command))
         self.requested_breakpoints = intent
         self.verified_breakpoints = {}
+        self.breakpoint_options = {}
         self.exit_code = None
         self.thread_id = None
         self.events = asyncio.Queue()
@@ -121,7 +121,7 @@ class GoDebugSession(PythonDebugSession):
             async with asyncio.timeout(self.timeout):
                 await self._initialized.wait()
                 for source, lines in intent.items():
-                    await self.set_breakpoints(source, lines)
+                    await self.set_breakpoints(source, lines, start_options.get(source))
                 await self._client.request('configurationDone')
                 await launch
                 if self.state == 'starting':
