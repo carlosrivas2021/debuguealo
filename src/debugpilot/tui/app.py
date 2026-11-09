@@ -16,7 +16,7 @@ from textual.widgets import Button, Checkbox, DataTable, Footer, Input, Static
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import ConfigurationError, DebugPilotError
-from debugpilot.core.models import ContainerInfo, LogEntry
+from debugpilot.core.models import ContainerInfo, ContainerStats, LogEntry, cpu_percent
 from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject, ComposeUpOptions
 from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.storage.compose_projects import ComposeProjectStore
@@ -136,6 +136,11 @@ class DebugPilotApp(App):
         self._closing = False
         self._ui_tasks: list[asyncio.Task] = []
         self._stream_task: asyncio.Task | None = None
+        # Stats are polled only for the selected running container while its card shows.
+        self._stats_target: str | None = None
+        self._stats_previous: ContainerStats | None = None
+        self._stats_wake = asyncio.Event()
+        self._stats_task: asyncio.Task | None = None
         self._compose_projects: dict[str, ComposeProject] = {}
         self._inline_plan: ComposePlan | None = None
         self._pending_stop: tuple[str, ...] = ()
@@ -301,6 +306,7 @@ class DebugPilotApp(App):
             asyncio.create_task(self._refresh_loop()),
             asyncio.create_task(self._selection_loop()),
         ]
+        self._stats_task = asyncio.create_task(self._stats_loop())
 
     def on_resize(self) -> None:
         self.set_class(self.size.width < 100 or self.size.height < 28, "compact")
@@ -426,6 +432,32 @@ class DebugPilotApp(App):
                 self._update_launch_profiles()
                 self._show_inventory([])
             await asyncio.sleep(self.refresh_interval)
+
+    async def _stats_loop(self) -> None:
+        """Sample one container's stats per interval; nothing is requested without a target."""
+        while not self._closing:
+            self._stats_wake.clear()
+            target = self._stats_target
+            if target is not None:
+                try:
+                    sample = await self.engine.container_stats(target)
+                except (DebugPilotError, ValueError):
+                    sample = None
+                if target == self._stats_target and not self._closing:
+                    cpu = cpu_percent(self._stats_previous, sample) if sample else None
+                    self._stats_previous = sample
+                    self.query_one(ContainerDetails).show_stats(cpu, sample)
+            try:
+                async with asyncio.timeout(self.refresh_interval):
+                    await self._stats_wake.wait()
+            except TimeoutError:
+                pass
+
+    def _set_stats_target(self, target: str | None) -> None:
+        if target != self._stats_target:
+            self._stats_target = target
+            self._stats_previous = None
+            self._stats_wake.set()
 
     @on(Checkbox.Changed, "#show-all")
     def visibility_changed(self, event: Checkbox.Changed) -> None:
@@ -918,6 +950,7 @@ class DebugPilotApp(App):
     def _show_selection_panel(self) -> None:
         """Show container details by default and the log panel only on request."""
         if self.query_one("#container-shell").display:
+            self._set_stats_target(None)
             return
         item = self.selected_container
         details = self.query_one(ContainerDetails)
@@ -934,6 +967,9 @@ class DebugPilotApp(App):
         )
         show_details = item is not None and not self._logs_requested
         show_overview = bool(members) and not self._logs_requested
+        self._set_stats_target(
+            item.id if show_details and item.state == "running" else None
+        )
         if show_details:
             details.show_container(item)
         if show_overview:
@@ -1140,6 +1176,9 @@ class DebugPilotApp(App):
         await self._cancel_terminal_open()
         await self._close_terminal_views()
         self._selection_changed.set()
+        if self._stats_task is not None:
+            self._stats_task.cancel()
+            await asyncio.gather(self._stats_task, return_exceptions=True)
         # Let the selection owner finish any pending stream cleanup rather than
         # cancelling it a second time in the middle of an async generator finally.
         if self._ui_tasks:
