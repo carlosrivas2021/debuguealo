@@ -166,6 +166,63 @@ async def test_terminal_owns_keys_escape_and_does_not_reopen_on_selection(fake_t
     assert fake_terminal[0].closed
 
 
+def footer_keys(app):
+    return {
+        key: active.binding.description
+        for key, active in app.screen.active_bindings.items()
+        if active.binding.show
+    }
+
+
+async def test_footer_shows_the_way_back_while_a_live_shell_owns_the_keys(fake_terminal, tmp_path):
+    docker = Docker()
+    docker.inventory = [item("demo-api", "demo", "api")]
+    app = app_for(docker, tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: app.query_one("#launch-profiles", DataTable).row_count > 0)
+        await select_row(app, pilot, "#launch-profiles", "container:demo-api", "demo-api")
+        assert "q" in footer_keys(app)
+        await pilot.press("c")
+        await until(pilot, lambda: len(fake_terminal) == 1)
+        await pilot.pause()
+        # App shortcuts stay hidden so their keys reach the shell; Esc is advertised.
+        assert footer_keys(app) == {"escape": "Back to list"}
+        await pilot.press("escape")
+        await pilot.pause()
+        assert "q" in footer_keys(app) and "escape" not in footer_keys(app)
+        assert fake_terminal[0].writes == []
+
+
+async def test_o_minimizes_and_restores_the_host_terminal_without_closing_it(
+    fake_terminal, tmp_path
+):
+    docker = Docker()
+    app = app_for(docker, tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        table = app.query_one("#launch-profiles", DataTable)
+        await until(pilot, lambda: table.row_count > 0)
+        table.focus()
+        await pilot.pause()
+        assert footer_keys(app).get("o") == "Host terminal"
+        # With no host shell yet, O opens one, like H.
+        await pilot.press("o")
+        await until(pilot, lambda: len(fake_terminal) == 1)
+        await pilot.pause()
+        host = app.query_one("#host-terminal")
+        pane = app.query_one("#terminal-pane", TerminalPane)
+        await pilot.press("escape")
+        assert footer_keys(app).get("o") == "Host terminal"
+        await pilot.press("o")
+        await pilot.pause()
+        assert host.display and host.has_class("minimized") and not pane.display
+        assert host.region.height <= 2 and pane.active and not fake_terminal[0].closed
+        assert app.focused is table
+        await pilot.press("o")
+        await pilot.pause()
+        assert not host.has_class("minimized") and pane.display and app.focused is pane
+        assert fake_terminal[0].writes == []
+
+
 async def test_host_without_workspace_fails_actionably_and_mount_stays_inactive(
     fake_terminal, tmp_path
 ):

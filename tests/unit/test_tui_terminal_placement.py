@@ -28,7 +28,7 @@ async def test_container_logs_navigation_preserves_pinned_session(
         logs = app.query_one("#logs-panel")
         # A selected profile shows the project overview in the right-hand area.
         before = app.query_one("#project-overview").region
-        assert made == [] and not console.display
+        assert made == [] and not console.expanded
         await select_row(app, pilot, "#launch-profiles",
                          "profile-child:profile:Central:actual-api-17", "actual-api-17")
         await pilot.press("c")
@@ -39,7 +39,7 @@ async def test_container_logs_navigation_preserves_pinned_session(
         assert pane.parent.id == "container-shell"
         shell = pane.parent
         assert shell.parent.id == "right-panel" and shell.region == before
-        assert not logs.display and not console.display and app.focused is pane
+        assert not logs.display and not console.expanded and app.focused is pane
         assert made[0].container[:3] == (
             docker.inventory[0], "unix:///tmp/fixture-docker.sock", service.resolve()
         )
@@ -78,7 +78,7 @@ async def test_view_switch_keeps_host_below_and_only_one_session(
         logs = app.query_one("#logs-panel")
         # A selected profile shows the project overview in the right-hand area.
         before = app.query_one("#project-overview").region
-        assert made == [] and not console.display
+        assert made == [] and not console.expanded
         await select_row(app, pilot, "#launch-profiles",
                          "profile-child:profile:Central:actual-api-17", "actual-api-17")
         await pilot.press("c")
@@ -89,7 +89,7 @@ async def test_view_switch_keeps_host_below_and_only_one_session(
         assert pane.parent.id == "container-shell"
         shell = pane.parent
         assert shell.parent.id == "right-panel" and shell.region == before
-        assert not logs.display and not console.display and app.focused is pane
+        assert not logs.display and not console.expanded and app.focused is pane
         assert made[0].container[:3] == (
             docker.inventory[0], "unix:///tmp/fixture-docker.sock", service.resolve()
         )
@@ -103,9 +103,10 @@ async def test_view_switch_keeps_host_below_and_only_one_session(
         assert made[0].closed and len(made) == 2
         # Closing the container shell returns to the selection's default details view.
         details = app.query_one(ContainerDetails)
-        assert host.active and not pane.active and console.display and details.display
+        host_dock = app.query_one("#host-terminal")
+        assert host.active and not pane.active and host_dock.display and details.display
         assert not logs.display
-        assert host.parent is console and app.focused is host
+        assert host.parent is host_dock and app.focused is host
         assert made[1].host[0] == service.resolve()
         await pilot.press("escape", "c")
         await pilot.pause()

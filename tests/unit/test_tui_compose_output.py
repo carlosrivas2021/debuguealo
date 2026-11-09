@@ -79,7 +79,8 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
         await until(pilot, lambda: ready(app))
         screen = app.screen
         select_key(app, "profile:Orders")
-        await pilot.press("o", "r")
+        await pilot.click("#compose-output-toggle")
+        await pilot.press("r")
         await pilot.click("#inline-compose-confirm")
         await until(pilot, service.started.is_set)
         output = app._compose_output_buffer
@@ -130,7 +131,8 @@ async def test_latest_compose_output_survives_same_profile_refresh_not_other_pro
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
-        await pilot.press("o", "r")
+        await pilot.click("#compose-output-toggle")
+        await pilot.press("r")
         await pilot.click("#inline-compose-confirm")
         await until(
             pilot,

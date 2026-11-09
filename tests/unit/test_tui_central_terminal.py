@@ -16,6 +16,12 @@ from debugpilot.tui.execution_console import ExecutionConsole
 from debugpilot.tui.terminal_view import TerminalPane
 
 
+async def click_output_toggle(pilot):
+    """Click the output card toggle once its position has settled after a resize."""
+    await pilot.pause()
+    await pilot.click("#compose-output-toggle")
+    await pilot.pause()
+
 def central_app(tmp_path, monkeypatch, *, mode="central"):
     workspace = tmp_path / "workspace"
     service = workspace / "service"
@@ -77,14 +83,14 @@ async def test_central_profile_opens_exact_context_and_reveals_hidden_console(
         child = "profile-child:profile:Central:actual-api-17"
         await select_row(app, pilot, "#launch-profiles", child, "actual-api-17")
         assert made == []
-        assert not app.query_one(ExecutionConsole).display
+        assert not app.query_one(ExecutionConsole).expanded
         await pilot.press(key)
         await pilot.pause()
         assert len(made) == 1
         pane = app.query_one("#terminal-pane" if key == "h" else "#container-terminal-pane",
                              TerminalPane)
         console = app.query_one(ExecutionConsole)
-        owner = console if key == "h" else app.query_one("#container-shell")
+        owner = app.query_one("#host-terminal" if key == "h" else "#container-shell")
         assert pane.active and owner.display and pane.region.height > 0
         assert app.focused is pane
         await pilot.press("x", "o")
@@ -99,31 +105,39 @@ async def test_central_profile_opens_exact_context_and_reveals_hidden_console(
             assert pane.context.container.id == "actual-api-17"
         context = pane.context
         await pilot.press("escape")
-        await pilot.click("#compose-output-toggle" if key == "h" else "#container-shell-logs")
-        await pilot.pause()
-        assert not owner.display and pane.active and not made[0].closed
-        app.query_one("#launch-profiles", DataTable).focus()
-        await pilot.press("o" if key == "h" else "c")
-        await pilot.pause()
+        if key == "h":
+            # The host shell is independent of the output card's own toggle.
+            await click_output_toggle(pilot)
+            await pilot.pause()
+            assert console.expanded and owner.display and pane.active and not made[0].closed
+        else:
+            await pilot.click("#container-shell-logs")
+            await pilot.pause()
+            assert not owner.display and pane.active and not made[0].closed
+            app.query_one("#launch-profiles", DataTable).focus()
+            await pilot.press("c")
+            await pilot.pause()
         assert owner.display and pane.active and pane.context == context
         assert len(made) == 1 and not made[0].closed
         await pilot.click("#terminal-close" if key == "h" else "#container-terminal-close")
         await pilot.pause()
         assert made[0].closed and not pane.active
-        assert console.display if key == "h" else app.query_one("#logs-panel").display
+        assert not owner.display if key == "h" else app.query_one("#logs-panel").display
         assert_files_unchanged(launch, compose, original)
     assert made[0].closed
 
 
 @pytest.mark.asyncio
-async def test_hide_button_removes_entire_console_and_o_restores_transcript(tmp_path, monkeypatch):
+async def test_minimize_button_collapses_console_and_expand_restores_transcript(
+    tmp_path, monkeypatch
+):
     app, docker, made, _workspace, _service, launch, compose, original = central_app(
         tmp_path, monkeypatch
     )
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: docker.requested == 2)
         console = app.query_one(ExecutionConsole)
-        await pilot.press("o")
+        await click_output_toggle(pilot)
         await pilot.pause()
         console.append(LogEntry(text="[FIXTURE] Compose exited 0.", severity="info"))
         await pilot.pause()
@@ -133,19 +147,20 @@ async def test_hide_button_removes_entire_console_and_o_restores_transcript(tmp_
         dashboard = app.query_one("#dashboard")
         initial = dashboard.region.height
         assert height > 0 and lines
-        await pilot.click("#compose-output-toggle")
+        assert app.query_one("#sidebar").region.height == initial
+        await click_output_toggle(pilot)
         await pilot.pause()
-        assert not console.display
-        assert dashboard.region.height == initial + height
+        assert not console.expanded and console.region.height <= 3
+        assert dashboard.region.height == initial
         assert app.focused is app.query_one("#launch-profiles", DataTable)
         assert tuple(viewer.lines) == lines and made == []
-        await pilot.press("o")
+        await click_output_toggle(pilot)
         await pilot.pause()
-        assert console.display and dashboard.region.height == initial
+        assert console.expanded and dashboard.region.height == initial
         assert tuple(viewer.lines) == lines and made == []
-        await pilot.press("o")
+        await click_output_toggle(pilot)
         await pilot.pause()
-        assert not console.display and dashboard.region.height == initial + height
+        assert not console.expanded and dashboard.region.height == initial
         assert_files_unchanged(launch, compose, original)
 
 

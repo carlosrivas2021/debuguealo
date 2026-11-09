@@ -1,10 +1,12 @@
 """Native detail rendering for the currently selected Docker container."""
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Grid, Vertical
 from textual.widgets import DataTable, Static
 
 from debugpilot.core.models import ContainerInfo, PortMapping
+from debugpilot.tui.container_list import group_style, state_glyph
 
 
 def format_published_port(port: PortMapping) -> str | None:
@@ -47,31 +49,55 @@ class ContainerDetails(Vertical):
         return "\n".join(str(card.render()) for card in self.cards())
 
     def show_container(self, container: ContainerInfo) -> None:
-        self.query_one("#container-details-title", Static).update(
-            f"Container details · {container.name} · Ctrl+L logs"
+        glyph, color = state_glyph(container.state)
+        title = Text.assemble(
+            (f"{glyph} ", color),
+            (container.name, "bold"),
+            (f"  {container.state}", color),
+            ("  ·  Ctrl+L logs", "bright_black"),
+            no_wrap=True,
+            overflow="ellipsis",
         )
+        self.query_one("#container-details-title", Static).update(title)
         labels = container.labels
+        ports = published_ports(container)
         values = (
             (
-                f"State: {container.state}",
-                f"Uptime: {container.status or '—'}",
-                f"Created: {container.created_at:%Y-%m-%d}",
+                ("State", container.state),
+                ("Uptime", container.status or "—"),
+                ("Created", f"{container.created_at:%Y-%m-%d}"),
             ),
             (
-                f"Name: {container.name}",
-                f"Image: {container.image}",
-                f"ID: {container.id[:12]}",
+                ("Name", container.name),
+                ("Image", container.image),
+                ("ID", container.id[:12]),
             ),
-            ("Published ports:", *published_ports(container).split(", ")),
+            (("Published ports", ""), *((None, port) for port in ports.split(", "))),
             (
-                f"Project: {container.compose_project or '—'}",
-                f"Service: {container.compose_service or '—'}",
-                f"Folder: {labels.get('com.docker.compose.project.working_dir') or '—'}",
+                ("Project", container.compose_project or "—"),
+                ("Service", container.compose_service or "—"),
+                ("Folder", labels.get("com.docker.compose.project.working_dir") or "—"),
             ),
         )
         for card, lines in zip(self.cards(), values, strict=True):
-            card.update("\n".join(lines))
+            card.update(_card_text(lines, state_color=color))
             card.set_class(card.border_title == "Status", f"state-{_state_class(container)}")
+
+
+def _card_text(lines, *, state_color: str) -> Text:
+    """Render `Key: value` lines with muted keys so the values carry the weight."""
+    text = Text()
+    for index, (key, value) in enumerate(lines):
+        if index:
+            text.append("\n")
+        if key is not None:
+            text.append(f"{key}:", style="#7f8c93")
+            if value:
+                text.append(" ")
+        empty = value in {"—", "None published"}
+        style = state_color if key == "State" else ("bright_black" if empty else "#e3e7ea")
+        text.append(value, style=style)
+    return text
 
 
 def _state_class(container: ContainerInfo) -> str:
@@ -100,18 +126,33 @@ class ProjectOverview(Vertical):
                 member.compose_service or member.name,
                 member.state,
                 member.status or "—",
-                published_ports(member),
+                ports if (ports := published_ports(member)) != "None published" else "—",
                 member.image,
             )
             for member in members
         )
         running = sum(member.state == "running" for member in members)
-        title = f"{project} · {running} / {len(rows)} running · Ctrl+L logs"
-        if (title, rows) == self._content:
+        if (project, running, rows) == self._content:
             return  # Refreshes repeat the inventory; keep the table untouched.
-        self._content = (title, rows)
-        self.query_one("#project-overview-title", Static).update(title)
+        self._content = (project, running, rows)
+        self.query_one("#project-overview-title", Static).update(
+            Text.assemble(
+                (project, "bold"),
+                " · ",
+                (f"{running} / {len(rows)} running", group_style(running, len(rows))),
+                (" · Ctrl+L logs", "bright_black"),
+                no_wrap=True,
+                overflow="ellipsis",
+            )
+        )
         table = self.query_one(DataTable)
         table.clear()
-        for row in rows:
-            table.add_row(*row)
+        for service, state, uptime, ports, image in rows:
+            glyph, color = state_glyph(state)
+            table.add_row(
+                service,
+                Text(f"{glyph} {state}", style=color),
+                uptime,
+                ports,
+                image,
+            )

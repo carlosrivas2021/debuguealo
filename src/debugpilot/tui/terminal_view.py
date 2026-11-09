@@ -7,6 +7,7 @@ from pathlib import Path
 import pyte
 from rich.style import Style
 from rich.text import Text
+from textual.binding import Binding
 from textual.events import Key, Paste
 from textual.widget import Widget
 
@@ -30,6 +31,9 @@ class TerminalPane(Widget):
     """Native PTY display/input widget. Construction and mount never start a shell."""
 
     can_focus = True
+    # A live shell disables the app shortcuts so their keys reach the process;
+    # advertising Esc keeps the footer from going blank with no way back.
+    BINDINGS = [Binding("escape", "release_focus", "Back to list")]
 
     def __init__(self, *, escape_hook=None, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -161,6 +165,15 @@ class TerminalPane(Widget):
         self._screen.resize(lines=rows, columns=columns)
         if self._session and self.active:
             self._session.resize(rows, columns)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "release_focus":
+            return self.active and self._escape_hook is not None
+        return True
+
+    def action_release_focus(self) -> None:
+        if self._escape_hook:
+            self._escape_hook()
 
     def on_key(self, event: Key) -> None:
         key = event.key
