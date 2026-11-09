@@ -377,7 +377,7 @@ async def test_shortcuts_reuse_successful_compose_files_with_confirmation(
         await pilot.click("#inline-compose-confirm")
         await until(pilot, lambda: len(service.runs) == 2)
         assert service.runs[-1] == (plan, True)
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         await pilot.press("escape")
         select_key(app, "project:gateway")
         await pilot.pause()
