@@ -91,17 +91,17 @@ async def test_actual_dashboard_visual_rules(tmp_path, monkeypatch, rule):
             ]
         elif rule == "terminal":
             console = app.query_one(ExecutionConsole)
-            assert not console.terminal_pane.display
+            host = app.query_one("#host-terminal")
+            pane = host.terminal_pane
+            assert not host.display
             await pilot.press("h")
-            await until(pilot, lambda: console.terminal_pane.active)
+            await until(pilot, lambda: pane.active)
             await pilot.pause()
-            assert console.terminal_pane.display and console.terminal_pane.region.height > 0
+            assert host.display and pane.region.height > 0
             await pilot.click("#terminal-close")
-            await until(pilot, lambda: not console.terminal_pane.active)
+            await until(pilot, lambda: not pane.active)
             await pilot.pause()
-            assert not console.terminal_pane.display
-            await pilot.press("o")
-            await pilot.pause()
+            assert not host.display
             assert console.region.height <= 3
         else:
             header = table.get_component_rich_style("datatable--header")

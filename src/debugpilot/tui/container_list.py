@@ -15,6 +15,27 @@ class ContainerRow:
     project: str | None = None
 
 
+_STATE_GLYPHS = {
+    "running": ("●", "green"),
+    "restarting": ("↻", "yellow"),
+    "paused": ("◐", "yellow"),
+    "exited": ("○", "red"),
+    "dead": ("✕", "red"),
+}
+
+
+def state_glyph(state: str) -> tuple[str, str]:
+    """Return a shape-distinct glyph and color so state reads without relying on color."""
+    return _STATE_GLYPHS.get(state, ("○", "bright_black"))
+
+
+def group_style(running: int, total: int) -> str:
+    """Color for an `active/total` group counter: all up, partially up, or all down."""
+    if total and running == total:
+        return "bold green"
+    return "bold yellow" if running else "bold bright_black"
+
+
 def container_label(item: ContainerInfo) -> str:
     if item.compose_project:
         for separator in ("-", "_"):
@@ -43,8 +64,8 @@ def container_rows(inventory: list[ContainerInfo]) -> list[ContainerRow]:
         rows.append(
             ContainerRow(
                 key=f"project:{project}" if project is not None else "standalone:",
-                label=f"▾ {project}" if project is not None else "▾ Standalone containers",
-                state=f"{running}/{len(members)} running",
+                label=f"▾ {project}" if project is not None else "▾ Standalone",
+                state=f"{running}/{len(members)}",
                 project=project,
             )
         )

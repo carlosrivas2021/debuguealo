@@ -24,8 +24,15 @@ from debugpilot.storage.compose_projects import ComposeProjectStore
 from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore, profile_services
 from debugpilot.tui.code_workspace import CodeWorkspace
 from debugpilot.tui.container_details import ContainerDetails, ProjectOverview, published_ports
-from debugpilot.tui.container_list import ContainerRow, container_label, container_rows
+from debugpilot.tui.container_list import (
+    ContainerRow,
+    container_label,
+    container_rows,
+    group_style,
+    state_glyph,
+)
 from debugpilot.tui.execution_console import ExecutionConsole
+from debugpilot.tui.host_terminal import HostTerminal
 from debugpilot.tui.log_viewer import LogViewer
 from debugpilot.tui.terminal_view import TerminalPane
 
@@ -59,10 +66,10 @@ class DebugPilotApp(App):
         Binding("ctrl+l", "focus_logs", "Logs"),
         Binding("ctrl+r", "retry_logs", "Retry logs"),
         Binding("d", "show_container_details", "Details"),
-        Binding("o", "toggle_compose_output", "Show/hide console"),
         Binding("space", "toggle_project", "Expand/collapse"),
         Binding("c", "open_container_terminal", "Container shell"),
         Binding("h", "open_host_terminal", "Host Bash"),
+        Binding("o", "toggle_host_terminal", "Host terminal"),
         Binding("r", "recreate_selected", "Recreate"),
         Binding("R,shift+r", "build_selected", "Build + Recreate"),
         Binding("s", "stop_selected", "Stop"),
@@ -124,6 +131,11 @@ class DebugPilotApp(App):
         self._compose_output_profile_key: str | None = None
         self._compose_output_prefix: str | None = None
         self._compose_output_visible = False
+        # Feedback of the last stop; replayed until the next stop or Compose run.
+        self._stop_output: list[LogEntry] = []
+        # Stops run independently in the background; these targets are still in flight.
+        self._stopping: set[str] = set()
+        self._stop_tasks: set[asyncio.Task] = set()
         self._compose_store = ComposeProjectStore()
         self._compose_config_error: str | None = None
         self._launch_store: LaunchProfileStore | None = None
@@ -228,10 +240,17 @@ class DebugPilotApp(App):
                 with Vertical(id="logs-panel"):
                     yield Static("Select a container", id="log-state", markup=False)
                     yield LogViewer()
-        console = ExecutionConsole(id="compose-console", escape_hook=self._focus_terminal_selection)
-        console.display = self._compose_output_visible
-        self._host_terminal_pane = self._terminal_pane = console.terminal_pane
-        yield console
+                # The Compose transcript is a card under the details; the project
+                # list keeps the full height.
+                # Starts collapsed; its own button expands it (no shortcut on purpose).
+                yield ExecutionConsole(id="compose-console")
+                # The host shell docks at the bottom of the right panel, under the output.
+                host = HostTerminal(
+                    id="host-terminal", escape_hook=self._focus_terminal_selection
+                )
+                host.display = False
+                self._host_terminal_pane = self._terminal_pane = host.terminal_pane
+                yield host
         with Horizontal(id="inline-compose"):
             yield Static("", id="inline-compose-message", markup=False)
             yield Button("Confirm", id="inline-compose-confirm", variant="warning")
@@ -297,8 +316,9 @@ class DebugPilotApp(App):
         available = max(
             3, (viewport or 30) - table.styles.scrollbar_size_vertical - 6 * table.cell_padding
         )
-        state_width = min(6, available - 2)
-        port_width = min(14, max(1, available - state_width - 18))
+        # State is a glyph or a short "n/m" counter, so ports and names get the room.
+        state_width = min(5, available - 2)
+        port_width = min(15, max(1, available - state_width - 18))
         name_width = max(1, available - state_width - port_width)
         widths = (name_width, port_width, state_width)
         content = tuple(
@@ -323,27 +343,36 @@ class DebugPilotApp(App):
         else:
             table.clear()
         for row in rows:
-            style = (
-                "bold cyan"
-                if row.container is None
-                else ("green" if row.state == "running" else "yellow")
-            )
-            ports = (
-                published_ports(row.container)
-                if row.container is not None
-                else ""
-            )
-            if ports == "None published":
-                ports = "—"
+            if row.container is None:
+                label_style = "bold #a9c2cc"
+                running, _, total = row.state.partition("/")
+                state = Text(
+                    row.state,
+                    style=(
+                        group_style(int(running), int(total))
+                        if running.isdigit() and total.isdigit()
+                        else "bold yellow"
+                    ),
+                    justify="right",
+                )
+                ports = ""
+            else:
+                active = row.container.state in ACTIVE_STATES
+                label_style = "" if active else "bright_black"
+                glyph, color = state_glyph(row.container.state)
+                state = Text(glyph, style=color, justify="center")
+                ports = published_ports(row.container)
+                if ports == "None published":
+                    ports = "—"
             table.add_row(
+                Text(row.label, style=label_style, overflow="ellipsis", no_wrap=True),
                 Text(
-                    row.label,
-                    style="bold" if row.container is None else "",
+                    ports,
+                    style="bright_black" if ports == "—" else "cyan",
                     overflow="ellipsis",
                     no_wrap=True,
                 ),
-                Text(ports, style="cyan", overflow="ellipsis", no_wrap=True),
-                Text(row.state, style=style, overflow="ellipsis", no_wrap=True),
+                state,
                 key=row.key,
             )
         self._inventory_content[table.id] = content
@@ -414,11 +443,8 @@ class DebugPilotApp(App):
                     key=key,
                     label=f"{'▸' if key in self._collapsed_projects else '▾'} "
                     f"{name} · {profile.project_name or 'Needs setup'}",
-                    state=(
-                        "Pending"
-                        if profile.pending_reason
-                        else f"{running} active" if running else "Stop"
-                    ),
+                    # Non-numeric "…" marks a profile that still needs setup.
+                    state="…" if profile.pending_reason else f"{running}/{len(members)}",
                     project=profile.project_name,
                 )
             )
@@ -780,7 +806,8 @@ class DebugPilotApp(App):
                     self._selected_profile_name = None
                     table.tooltip = Text(
                         f"{row.container.name if row.container else row.label.strip()}\n"
-                        f"State: {row.state}\nService: {row.service or '—'}"
+                        f"State: {row.state if row.container else row.state + ' running'}\n"
+                        f"Service: {row.service or '—'}"
                     )
                     self._select(row.container, project=row.project, row_key=row.key)
 
@@ -906,15 +933,17 @@ class DebugPilotApp(App):
     def _restore_compose_output(self, viewer: LogViewer | None = None) -> None:
         console = self.query_one(ExecutionConsole)
         console.clear()
-        if not self._compose_output_matches_selection():
-            return
-        for entry in self._compose_output_buffer.entries():
+        if self._compose_output_matches_selection():
+            for entry in self._compose_output_buffer.entries():
+                console.append(entry)
+        for entry in self._stop_output:
             console.append(entry)
 
     def _begin_compose_output(
         self, plan: ComposePlan, profile: LaunchProfile | None, profile_key: str | None
     ) -> None:
         self._compose_output_buffer.clear()
+        self._stop_output = []
         self._compose_output_project = plan.project.project_name
         self._compose_output_profile_key = profile_key
         self._compose_output_prefix = (profile.name if profile else None) or (
@@ -1127,6 +1156,22 @@ class DebugPilotApp(App):
         if not self._compose_output_visible:
             self._focus_terminal_selection()
 
+    async def action_toggle_host_terminal(self) -> None:
+        """Open the host shell, or collapse/restore it while keeping the session."""
+        host = self.query_one(HostTerminal)
+        if self._host_terminal_pane is None:
+            return
+        if not self._host_terminal_pane.active:
+            await self.action_open_host_terminal()
+            return
+        minimized = not host.has_class("minimized")
+        host.set_class(minimized, "minimized")
+        host.display = True
+        if minimized:
+            self._focus_terminal_selection()
+        else:
+            self.call_after_refresh(self._host_terminal_pane.focus)
+
     def _left_table_focused(self) -> bool:
         return (
             isinstance(self.focused, DataTable)
@@ -1194,7 +1239,7 @@ class DebugPilotApp(App):
         if self._terminal_pane is self._container_terminal_pane:
             self.query_one("#container-terminal-context", Static).update(message)
         else:
-            self.query_one(ExecutionConsole).set_terminal_status(message)
+            self.query_one(HostTerminal).set_terminal_status(message)
 
     async def _open_terminal(
         self,
@@ -1214,8 +1259,9 @@ class DebugPilotApp(App):
         else:
             if self.query_one("#container-shell").display:
                 self._show_container_terminal(False)
-            self._compose_output_visible = True
-            self.query_one(ExecutionConsole).set_output_visible(True)
+            host = self.query_one(HostTerminal)
+            host.remove_class("minimized")
+            host.display = True
         context_label = (
             f"Container · {target.name} · {target.id[:12]} · {endpoint} · {cwd}"
             if kind == "container" and target is not None
@@ -1240,9 +1286,9 @@ class DebugPilotApp(App):
                         await closing
                         raise
                 if kind == "container":
-                    self.query_one(ExecutionConsole).set_terminal_status(
-                        "Host terminal inactive · H host Bash"
-                    )
+                    host = self.query_one(HostTerminal)
+                    host.set_terminal_status("Host terminal inactive · H host Bash")
+                    host.display = False
                 if kind == "container":
                     await pane.open_container(target, endpoint, cwd)
                 else:
@@ -1282,6 +1328,11 @@ class DebugPilotApp(App):
         await self._close_terminal_views()
         if self._terminal_pane is self._container_terminal_pane:
             self._show_container_terminal(False)
+        else:
+            host = self.query_one(HostTerminal)
+            host.remove_class("minimized")
+            host.display = False
+            self._focus_terminal_selection()
         self._terminal_status("Terminal closed · C container shell · H host Bash")
 
     def action_retry_logs(self) -> None:
@@ -1438,6 +1489,12 @@ class DebugPilotApp(App):
         if self._inline_task is not None and not self._inline_task.done():
             self.notify("A Compose operation is already running.", severity="warning")
             return
+        if self._project_is_stopping(profile.project_name):
+            # Only the project being stopped is off-limits; other projects stay usable.
+            self.notify(
+                f"{profile.project_name} is stopping; wait for it to finish.", severity="warning"
+            )
+            return
         if self._launch_error or self._launch_store is None:
             self.notify(
                 "Fix launch profiles before running Compose: "
@@ -1478,6 +1535,11 @@ class DebugPilotApp(App):
         # Resolve the visibly focused cursor even if a focus event is still queued.
         if isinstance(self.focused, DataTable) and self.focused.id == "launch-profiles":
             self._select_focused_row(self.focused)
+        if self._project_is_stopping(self.selected_project):
+            self.notify(
+                f"{self.selected_project} is stopping; wait for it to finish.", severity="warning"
+            )
+            return
 
         if contextual and (
             not self.selected_project
@@ -1613,6 +1675,10 @@ class DebugPilotApp(App):
         if self.selected_container is None:
             members = self._limit_to_profile_services(members)
         targets = tuple(c.id for c in members if c.state in ACTIVE_STATES)
+        if targets and all(target in self._stopping for target in targets):
+            self.notify("Already stopping; see the output.", severity="warning")
+            return
+        targets = tuple(target for target in targets if target not in self._stopping)
         if not targets or len(targets) > 32:
             self.notify(
                 "Select 1–32 active containers; select a service for larger groups.",
@@ -1651,12 +1717,14 @@ class DebugPilotApp(App):
             return
         if self._pending_stop and (self._inline_task is None or self._inline_task.done()):
             targets, self._pending_stop = self._pending_stop, ()
-            self.query_one("#inline-compose-confirm", Button).disabled = True
-            self.query_one("#inline-compose-cancel", Button).label = "Cancel wait"
-            self.query_one("#inline-compose-message", Static).update(
-                f"Stopping {len(targets)} pinned container(s)…"
-            )
-            self._inline_task = asyncio.create_task(self._run_stop(targets))
+            # Free the bar right away so another stop can be confirmed while Docker
+            # works; progress goes to the output card.
+            self._dismiss_inline_compose()
+            self.query_one(self._selection_table_selector(), DataTable).focus()
+            self._stopping.update(targets)
+            task = asyncio.create_task(self._run_stop(targets))
+            self._stop_tasks.add(task)
+            task.add_done_callback(self._stop_tasks.discard)
             return
         if self._retry_decision is not None and not self._retry_decision.done():
             self.query_one("#inline-compose-confirm", Button).disabled = True
@@ -1830,10 +1898,36 @@ class DebugPilotApp(App):
     def _selection_table_selector(self) -> str:
         return "#launch-profiles"
 
+    def _project_is_stopping(self, project: str | None) -> bool:
+        """Whether any container of this Compose project has a stop in flight."""
+        return bool(project) and any(
+            item.compose_project == project
+            for target in self._stopping
+            if (item := self._inventory.get(target)) is not None
+        )
+
+    def _report_stop(self, text: str, *, severity: str = "info") -> None:
+        """Write a stop step into the output card, which Compose otherwise owns."""
+        if not self._closing:
+            if not self._compose_output_visible:
+                self._compose_output_visible = True
+                self.query_one(ExecutionConsole).set_output_visible(True)
+            entry = LogEntry(stream="combined", text=f"[Stop] {text}"[:16_384], severity=severity)
+            self._stop_output = [*self._stop_output, entry][-200:]
+            self.query_one(ExecutionConsole).append(entry)
+
     async def _run_stop(self, targets: tuple[str, ...]) -> None:
+        names = {item.id: item.name for item in self._inventory.values()}
+        self._report_stop(
+            "Stopping " + ", ".join(names.get(target, target[:12]) for target in targets) + "…"
+        )
         try:
             result = await self.engine.stop_containers(targets, confirmed=True)
             details = "; ".join(f"{key[:12]}: {value}" for key, value in result.failed.items())
+            for target in result.stopped:
+                self._report_stop(f"{names.get(target, target[:12])} stopped.")
+            for target, message in result.failed.items():
+                self._report_stop(f"{names.get(target, target[:12])}: {message}", severity="error")
             self.notify(
                 f"Stop finished: {len(result.stopped)} stopped, "
                 f"{len(result.failed)} failed/unknown. " + details[:500],
@@ -1845,19 +1939,21 @@ class DebugPilotApp(App):
                 self._show_inventory(inventory)
         except asyncio.CancelledError:
             if not self._closing:
+                self._report_stop(
+                    "Wait cancelled; Docker may still stop targets.", severity="warning"
+                )
                 self.notify(
                     "Stop wait cancelled; Docker may still stop targets. No rollback.",
                     severity="warning",
                 )
         except Exception:
             if not self._closing:
+                self._report_stop("Outcome unknown; inspect Docker.", severity="error")
                 self.notify(
                     "Stop outcome is unknown. Inspect Docker before retrying.", severity="warning"
                 )
         finally:
-            if not self._closing:
-                self._dismiss_inline_compose()
-                self.query_one(self._selection_table_selector(), DataTable).focus()
+            self._stopping.difference_update(targets)
 
     @staticmethod
     def _is_missing_image_failure(output: str) -> bool:
@@ -2147,6 +2243,17 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "toggle_host_terminal" and (
+            not self.is_mounted
+            or self._host_terminal_pane is None
+            or self.query_one(CodeWorkspace).display
+            # Without a live shell, O opens one, so it follows H's availability rules.
+            or (
+                not self._host_terminal_pane.active
+                and (not self._left_table_focused() or isinstance(self.screen, ModalScreen))
+            )
+        ):
+            return False
         if self.is_mounted and self.query_one(CodeWorkspace).display and action in {
             "focus_logs", "retry_logs", "show_container_details", "toggle_compose_output",
             "toggle_project", "open_container_terminal", "open_host_terminal",
