@@ -96,6 +96,8 @@ Press **Shift+F9** on a line to open the breakpoint dialog:
 - **Log message**: makes a **logpoint**. It writes the message to the debug output and
   never stops. `{expression}` parts are replaced with their value, for example
   `order {order.id} received`. With a condition too, it logs only when the condition holds.
+  An expression may contain braces, such as `{ {id: user.id}.id }`; an empty `{}` or an
+  unclosed `{` is kept as text.
 
 Leave both fields empty for a plain breakpoint. **Remove** deletes the breakpoint, and
 **Cancel** or **Escape** keeps it unchanged. F9 still toggles a plain breakpoint; on a line
