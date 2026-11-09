@@ -68,8 +68,8 @@ class DebugPilotEngine:
         return await self.spawn(self._docker.list_containers)
 
     async def container_stats(self, container: str) -> ContainerStats:
-        if self._docker is None:
-            raise LifecycleError("No Docker provider has been configured.")
+        if self._docker is None or not hasattr(self._docker, "container_stats"):
+            raise LifecycleError("The Docker provider does not report container stats.")
         return await self.spawn(lambda: self._docker.container_stats(container))
 
     async def stop_containers(
