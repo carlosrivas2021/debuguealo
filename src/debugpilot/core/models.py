@@ -98,3 +98,56 @@ class LogEntry(BaseModel):
     text: str = Field(max_length=16_384)
     severity: Literal["debug", "info", "warning", "error", "critical", "unknown"] = "unknown"
     truncated: bool = False
+
+
+def _count(value) -> int | None:
+    # Docker reports counters as non-negative integers; anything else is "unknown".
+    return value if type(value) is int and value >= 0 else None
+
+
+class ContainerStats(BaseModel):
+    """One Docker stats sample; CPU needs two samples, memory is read directly."""
+
+    model_config = ConfigDict(frozen=True)
+
+    cpu_total: int | None = None
+    system_cpu: int | None = None
+    online_cpus: int | None = None
+    memory_usage: int | None = None
+    memory_limit: int | None = None
+
+    @classmethod
+    def from_docker(cls, value: dict) -> "ContainerStats":
+        cpu = value.get("cpu_stats") or {}
+        usage = cpu.get("cpu_usage") or {}
+        online = _count(cpu.get("online_cpus"))
+        if online is None and isinstance(usage.get("percpu_usage"), list):
+            online = len(usage["percpu_usage"]) or None
+        memory = value.get("memory_stats") or {}
+        used = _count(memory.get("usage"))
+        details = memory.get("stats") or {}
+        # Same as `docker stats`: page cache that can be reclaimed is not "used".
+        inactive = _count(details.get("inactive_file", details.get("total_inactive_file")))
+        if used is not None and inactive is not None and inactive <= used:
+            used -= inactive
+        return cls(
+            cpu_total=_count(usage.get("total_usage")),
+            system_cpu=_count(cpu.get("system_cpu_usage")),
+            online_cpus=online,
+            memory_usage=used,
+            memory_limit=_count(memory.get("limit")),
+        )
+
+
+def cpu_percent(previous: ContainerStats | None, current: ContainerStats) -> float | None:
+    """CPU use between two samples, where 100 means one full CPU (like `docker stats`)."""
+    if previous is None or None in (
+        previous.cpu_total, previous.system_cpu, current.cpu_total, current.system_cpu,
+        current.online_cpus,
+    ):
+        return None
+    cpu_delta = current.cpu_total - previous.cpu_total
+    system_delta = current.system_cpu - previous.system_cpu
+    if cpu_delta < 0 or system_delta <= 0:
+        return None
+    return cpu_delta / system_delta * current.online_cpus * 100
