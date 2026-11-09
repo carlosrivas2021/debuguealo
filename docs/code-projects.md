@@ -96,6 +96,8 @@ Press **Shift+F9** on a line to open the breakpoint dialog:
 - **Log message**: makes a **logpoint**. It writes the message to the debug output and
   never stops. `{expression}` parts are replaced with their value, for example
   `order {order.id} received`. With a condition too, it logs only when the condition holds.
+  An expression may contain braces, such as `{ {id: user.id}.id }`; an empty `{}` or an
+  unclosed `{` is kept as text.
 
 Leave both fields empty for a plain breakpoint. **Remove** deletes the breakpoint, and
 **Cancel** or **Escape** keeps it unchanged. F9 still toggles a plain breakpoint; on a line
@@ -103,7 +105,8 @@ with a condition or log message it removes the breakpoint together with them.
 
 The gutter shows **●** for a plain breakpoint, **◆** for a conditional one and a blue **◇**
 for a logpoint. The file's tree entry shows the details, for example
-**Line 4 · if user_id == 42 · pending** or **Line 7 · log: order {order.id} received · pending**.
+**Line 4 · if user_id == 42 · pending** or **Line 7 · log: order {order.id} received · pending**;
+a line with both shows the condition and the message.
 Changes apply to an active debug session immediately.
 
 Conditions and log messages work with Python, Go and Node debugging and with Python and Go
