@@ -6,7 +6,12 @@ import pyte
 
 from debugpilot.terminal.code_session import CodeSession
 from debugpilot.tui.code_run_context import CodeRunContext
-from debugpilot.tui.terminal_view import MAX_FEED_CHARS, TerminalContext, TerminalPane
+from debugpilot.tui.terminal_view import (
+    MAX_FEED_CHARS,
+    TerminalContext,
+    TerminalPane,
+    resize_screen,
+)
 
 IDLE_TITLE = "Terminal · click to type · Ctrl+J hide/show"
 TYPING_TITLE = "Terminal · typing — Esc to leave"
@@ -82,7 +87,7 @@ class CodeTerminal(TerminalPane):
             # Hidden: a fallback size would shrink later and pyte drops lines from the top.
             return
         rows, columns = self._screen_size()
-        context.screen.resize(lines=rows, columns=columns)
+        resize_screen(context.screen, rows, columns)
         if context.active and context.session is not None:
             context.session.resize(rows, columns)
 
