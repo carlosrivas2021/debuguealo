@@ -19,6 +19,27 @@ SCREEN_COLUMNS = 500
 MAX_FEED_CHARS = 64 * 1024
 
 
+def resize_screen(screen: pyte.Screen, lines: int, columns: int) -> None:
+    """Resize like pyte, but keep output when the screen shrinks.
+
+    pyte clips a shrinking screen at the top, which erases output a process printed
+    before the widget got its real size. Drop from the top only the rows needed to keep
+    the cursor on screen and cut the rest below it.
+    """
+    if lines >= screen.lines:
+        screen.resize(lines=lines, columns=columns)
+        return
+    screen.resize(lines=screen.lines, columns=columns)
+    drop = max(0, screen.cursor.y + 1 - lines)
+    kept = {y - drop: row for y, row in screen.buffer.items() if drop <= y < drop + lines}
+    screen.buffer.clear()
+    screen.buffer.update(kept)
+    screen.cursor.y -= drop
+    screen.lines = lines
+    screen.set_margins()
+    screen.dirty.update(range(lines))
+
+
 @dataclass(frozen=True)
 class TerminalContext:
     kind: str
@@ -162,7 +183,7 @@ class TerminalPane(Widget):
         if not self.size.height:
             return
         rows, columns = self._screen_size()
-        self._screen.resize(lines=rows, columns=columns)
+        resize_screen(self._screen, rows, columns)
         if self._session and self.active:
             self._session.resize(rows, columns)
 

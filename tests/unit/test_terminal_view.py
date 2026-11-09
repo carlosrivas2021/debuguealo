@@ -205,3 +205,93 @@ def test_container_context_is_exposed_without_shell_start(monkeypatch, tmp_path)
     assert pane.context is None
     assert container.id == "a" * 64
     assert Path(tmp_path).is_absolute()
+
+
+def _rows(screen):
+    return [row.rstrip() for row in screen.display]
+
+
+def test_shrinking_screen_keeps_output_above_the_cursor():
+    import pyte
+
+    from debugpilot.tui.terminal_view import resize_screen
+
+    screen = pyte.Screen(80, 24)
+    pyte.Stream(screen).feed("RUN_ONLY\r\n")
+    # Rendering reads every row, which materializes them in pyte's buffer.
+    _rows(screen)
+    resize_screen(screen, 13, 90)
+    assert (screen.lines, screen.columns) == (13, 90)
+    assert _rows(screen)[:2] == ["RUN_ONLY", ""]
+    assert (screen.cursor.y, screen.cursor.x) == (1, 0)
+
+
+def test_shrinking_screen_with_cursor_at_bottom_still_drops_top_rows():
+    import pyte
+
+    from debugpilot.tui.terminal_view import resize_screen
+
+    screen = pyte.Screen(10, 4)
+    pyte.Stream(screen).feed("one\r\ntwo\r\nthree\r\nfour")
+    resize_screen(screen, 2, 10)
+    assert _rows(screen) == ["three", "four"]
+    assert (screen.cursor.y, screen.cursor.x) == (1, 4)
+    pyte.Stream(screen).feed("!")
+    assert _rows(screen) == ["three", "four!"]
+
+
+@pytest.mark.asyncio
+async def test_shrinking_pane_keeps_output_above_the_cursor(monkeypatch, tmp_path):
+    made: list[FakeSession] = []
+
+    def factory(*, on_output, on_exit=None):
+        session = FakeSession(on_output=on_output, on_exit=on_exit)
+        made.append(session)
+        return session
+
+    monkeypatch.setattr("debugpilot.tui.terminal_view.TerminalSession", factory)
+    pane = TerminalPane()
+    async with TerminalApp(pane).run_test() as pilot:
+        await pane.open_host(tmp_path)
+        made[0].emit("hello\r\n")
+        await asyncio.sleep(0)
+        pane.render()
+        made[0].resized.clear()
+        pane.styles.height = 2
+        await pilot.pause()
+        await asyncio.wait_for(made[0].resized.wait(), timeout=2)
+        assert made[0].sizes[-1] == (2, 12)
+        assert pane.render().plain.splitlines()[0].rstrip() == "hello"
+        await pane.close_session()
+
+
+class CodeTerminalApp(App):
+    CSS = "CodeTerminal { width: 30; height: 5; display: none; }"
+
+    def __init__(self, pane):
+        super().__init__()
+        self.pane = pane
+
+    def compose(self) -> ComposeResult:
+        yield self.pane
+
+
+@pytest.mark.asyncio
+async def test_code_output_before_first_layout_survives_the_resize(tmp_path):
+    from types import SimpleNamespace
+
+    from debugpilot.tui.code_terminal import CodeTerminal
+
+    pane = CodeTerminal(on_state=lambda profile, message: None)
+    async with CodeTerminalApp(pane).run_test() as pilot:
+        profile = SimpleNamespace(name="Sample", root=tmp_path)
+        context, created = pane.prepare_profile(profile)
+        assert created
+        # The process can print before the newly shown pane gets its real size.
+        assert (context.screen.lines, context.screen.columns) == (24, 80)
+        pane._accept_context_output(context, context.generation, "RUN_ONLY\r\n")
+        pane.render()
+        await pilot.pause()
+        await pilot.pause()
+        assert context.screen.lines == 5
+        assert pane.render().plain.splitlines()[0].rstrip() == "RUN_ONLY"
