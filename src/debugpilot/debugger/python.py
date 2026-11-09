@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from debugpilot.debugger.dap import DAPClient, DebugError
+from debugpilot.storage.breakpoints import BreakpointOptions
 from debugpilot.storage.code_projects import CodeProject
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
@@ -53,6 +54,42 @@ def _breakpoints(root, source, lines):
     return str(path), intent
 
 
+def _line_options(lines, options):
+    """Options of the requested lines only; anything else never reaches an adapter."""
+    selected = {}
+    for line, option in (options or {}).items():
+        if line not in lines or option is None:
+            continue
+        if not isinstance(option, BreakpointOptions):
+            raise DebugError('Breakpoint options must be BreakpointOptions.')
+        selected[line] = option
+    return selected
+
+
+def _source_breakpoints(lines, options):
+    """DAP SourceBreakpoint entries; a line without options stays {'line': n}."""
+    entries = []
+    for line in lines:
+        entry = {'line': line}
+        option = options.get(line)
+        if option is not None and option.condition:
+            entry['condition'] = option.condition
+        if option is not None and option.log_message:
+            entry['logMessage'] = option.log_message
+        entries.append(entry)
+    return entries
+
+
+def _intent(root, breakpoints, options):
+    """Normalized path -> lines, and the caller's options under the same normalized key."""
+    intent, by_path = {}, {}
+    for source, lines in breakpoints.items():
+        path, lines = _breakpoints(root, source, lines)
+        intent[path] = lines
+        by_path[path] = (options or {}).get(source)
+    return intent, by_path
+
+
 class PythonDebugSession:
     """One active immutable profile snapshot; callbacks are synchronous/nonblocking."""
 
@@ -67,6 +104,7 @@ class PythonDebugSession:
         self.exit_code = None
         self.requested_breakpoints = {}
         self.verified_breakpoints = {}
+        self.breakpoint_options = {}
         self._adapter = None
         self._client = None
         self._starting = None
@@ -123,15 +161,15 @@ class PythonDebugSession:
             if self._cleanup_task is None or self._cleanup_task.done():
                 self._cleanup_task = asyncio.create_task(self._cleanup())
 
-    async def start(self, profile, breakpoints):
+    async def start(self, profile, breakpoints, options=None):
         if self.state not in {'idle', 'closed'}:
             raise DebugError('A debug session is already active; Stop before starting again.')
         interpreter, target = _target(profile)
-        intent = dict(_breakpoints(profile.root, source, lines)
-                      for source, lines in breakpoints.items())
+        intent, start_options = _intent(profile.root, breakpoints, options)
         self.profile = CodeProject(profile.name, Path(profile.root), tuple(profile.command))
         self.requested_breakpoints = intent
         self.verified_breakpoints = {}
+        self.breakpoint_options = {}
         self.exit_code = None
         self.thread_id = None
         self.events = asyncio.Queue()
@@ -178,7 +216,7 @@ class PythonDebugSession:
                 }))
                 await self._initialized.wait()
                 for source, lines in intent.items():
-                    await self.set_breakpoints(source, lines)
+                    await self.set_breakpoints(source, lines, start_options.get(source))
                 await self._client.request('configurationDone')
                 await launch
                 if self.state == 'starting':
@@ -204,15 +242,17 @@ class PythonDebugSession:
             f'fallback. Diagnostics: {self._diagnostic.strip() or "startup timed out"}'
         )
 
-    async def set_breakpoints(self, source, lines):
+    async def set_breakpoints(self, source, lines, options=None):
         if self.profile is None or self._client is None:
             raise DebugError('No active debug session.')
         path, intent = _breakpoints(self.profile.root, source, lines)
+        line_options = _line_options(intent, options)
         result = await self._client.request('setBreakpoints', {
-            'source': {'path': path}, 'breakpoints': [{'line': line} for line in intent],
+            'source': {'path': path}, 'breakpoints': _source_breakpoints(intent, line_options),
             'sourceModified': False,
         })
         self.requested_breakpoints[path] = intent
+        self.breakpoint_options[path] = line_options
         self.verified_breakpoints[path] = result.get('breakpoints', [])
         self._emit({'event': 'breakpoints', 'body': {'path': path,
                     'requested': intent, 'verified': self.verified_breakpoints[path]}})

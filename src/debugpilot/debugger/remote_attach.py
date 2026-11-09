@@ -5,7 +5,12 @@ import contextlib
 from pathlib import Path, PurePosixPath
 
 from debugpilot.debugger.dap import DAPClient, DebugError
-from debugpilot.debugger.python import PythonDebugSession, _breakpoints
+from debugpilot.debugger.python import (
+    PythonDebugSession,
+    _breakpoints,
+    _line_options,
+    _source_breakpoints,
+)
 from debugpilot.storage.code_projects import CodeProject, parse_remote_attach
 
 
@@ -47,15 +52,16 @@ class RemoteAttachSession(PythonDebugSession):
                 'and an absolute POSIX remoteRoot without parent segments.'
             ) from None
 
-    async def start(self, profile, breakpoints):
+    async def start(self, profile, breakpoints, options=None):
         if self.state not in {'idle', 'closed'}:
             raise DebugError('A debug session is already active; Stop before starting again.')
         attach = self._configuration(profile)
-        intent = {}
+        intent, start_options = {}, {}
         for source, lines in breakpoints.items():
             local, _, validated = await asyncio.to_thread(
                 self._local_source_for, profile.root, source, lines)
             intent[str(local)] = validated
+            start_options[str(local)] = (options or {}).get(source)
         self._local_root = await asyncio.to_thread(Path(profile.root).resolve)
         self.profile = CodeProject(profile.name, self._local_root, tuple(profile.command),
                                    getattr(profile, 'node_debug', None),
@@ -63,6 +69,7 @@ class RemoteAttachSession(PythonDebugSession):
         self._remote_root = PurePosixPath(attach.remote_root)
         self.requested_breakpoints = intent
         self.verified_breakpoints = {}
+        self.breakpoint_options = {}
         self.exit_code = None
         self.thread_id = None
         self.events = asyncio.Queue()
@@ -90,7 +97,7 @@ class RemoteAttachSession(PythonDebugSession):
                     'attach', self._attach_arguments(profile.name, attach)))
                 await self._initialized.wait()
                 for source, lines in intent.items():
-                    await self.set_breakpoints(source, lines)
+                    await self.set_breakpoints(source, lines, start_options.get(source))
                 await self._client.request('configurationDone')
                 await attach_request
                 self._configured = True
@@ -123,15 +130,17 @@ class RemoteAttachSession(PythonDebugSession):
                 f'{cls.language} attach source must be inside the workspace folder.') from None
         return local, relative, intent
 
-    async def set_breakpoints(self, source, lines):
+    async def set_breakpoints(self, source, lines, options=None):
         if self.profile is None or self._client is None:
             raise DebugError('No active debug session.')
         local_path, relative, validated = await asyncio.to_thread(
             self._local_source_for, self._local_root, source, lines)
         remote_path = (self._remote_root / PurePosixPath(relative.as_posix())).as_posix()
+        line_options = _line_options(validated, options)
         result = await self._client.request('setBreakpoints', {
             'source': {'path': remote_path},
-            'breakpoints': [{'line': line} for line in validated], 'sourceModified': False,
+            'breakpoints': _source_breakpoints(validated, line_options),
+            'sourceModified': False,
         })
         key = str(local_path)
         if validated:
@@ -139,6 +148,7 @@ class RemoteAttachSession(PythonDebugSession):
         else:
             self._registered_sources.pop(remote_path, None)
         self.requested_breakpoints[key] = validated
+        self.breakpoint_options[key] = line_options
         self.verified_breakpoints[key] = result.get('breakpoints', [])
         self._emit({'event': 'breakpoints', 'body': {'path': key,
                     'requested': validated, 'verified': self.verified_breakpoints[key]}})
