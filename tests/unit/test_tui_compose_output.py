@@ -83,14 +83,14 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
         await pilot.press("r")
         await pilot.click("#inline-compose-confirm")
         await until(pilot, service.started.is_set)
-        output = app._compose_output_buffer
+        output = app._compose_outputs.get("orders")
         transcript = app.query_one("#compose-output-viewer", RichLog)
         await until(
             pilot,
             lambda: any("progress [red]literal[/red]" in line.text for line in transcript.lines),
         )
         assert app.screen is screen
-        assert not app._inline_task.done()
+        assert not app._compose_tasks["orders"].done()
         service.release.set()
         await until(
             pilot,
@@ -101,13 +101,13 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
         assert any("exited 1" in entry.text for entry in output.entries())
         if decision == "enter-cancel":
             await pilot.press("enter")
-            await until(pilot, lambda: app._inline_task.done())
+            await until(pilot, lambda: app._compose_tasks["orders"].done())
             assert len(service.runs) == 1
         else:
             await pilot.click("#inline-compose-confirm")
             await pilot.click("#inline-compose-confirm")
             await until(pilot, lambda: len(service.runs) == 2)
-            await until(pilot, lambda: app._inline_task.done())
+            await until(pilot, lambda: app._compose_tasks["orders"].done())
             assert service.runs[1][1:] == (True, True, "a" * 64)
             assert any("retry failed" in entry.text for entry in output.entries())
             assert any("retry exited 1" in entry.text for entry in output.entries())
@@ -138,13 +138,13 @@ async def test_latest_compose_output_survives_same_profile_refresh_not_other_pro
             pilot,
             lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
         )
-        output = app._compose_output_buffer
+        output = app._compose_outputs.get("orders")
         await until(pilot, lambda: any(MISSING in entry.text for entry in output.entries()))
         retained = output.entries()
         app._show_inventory(list(app._inventory.values()), force=True)
         assert output.entries() == retained
         await pilot.press("enter")
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         select_key(app, "project:catalog")
         await until(pilot, lambda: app.selected_project == "catalog")
         await pilot.pause(0.25)

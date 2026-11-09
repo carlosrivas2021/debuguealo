@@ -3,7 +3,7 @@ import hashlib
 import json
 import re
 from contextlib import aclosing
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from rich.text import Text
@@ -19,10 +19,10 @@ from debugpilot.core.exceptions import ConfigurationError, DebugPilotError
 from debugpilot.core.models import ContainerInfo, LogEntry
 from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject, ComposeUpOptions
 from debugpilot.docker.diagnostics import default_endpoint
-from debugpilot.docker.logs import LogBuffer
 from debugpilot.storage.compose_projects import ComposeProjectStore
 from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore, profile_services
 from debugpilot.tui.code_workspace import CodeWorkspace
+from debugpilot.tui.compose_output import ProjectOutputBuffers
 from debugpilot.tui.container_details import ContainerDetails, ProjectOverview, published_ports
 from debugpilot.tui.container_list import (
     ContainerRow,
@@ -53,6 +53,24 @@ def _plan_scope(plan) -> str:
 def _selection_signature(item: ContainerInfo | None) -> ContainerInfo | None:
     """Selection identity for change detection; Docker's uptime text is ignored."""
     return item.model_copy(update={"status": ""}) if item is not None else None
+
+
+@dataclass(eq=False)
+class _ComposeRun:
+    """State one Compose run owns, so concurrent runs never read each other's globals."""
+
+    plan: ComposePlan
+    service: object
+    profile: LaunchProfile | None
+    profile_key: str | None
+    prefix: str
+    selection: ContainerInfo | None
+    selected_project: str | None
+    revision: int
+
+    @property
+    def project(self) -> str:
+        return self.plan.project.project_name
 
 
 class DebugPilotApp(App):
@@ -122,16 +140,24 @@ class DebugPilotApp(App):
         self._pending_stop: tuple[str, ...] = ()
         self._pending_credential_recreates: list = []
         self._inline_service = None
-        self._inline_task: asyncio.Task | None = None
+        # Credential refresh / batch recreate: exclusive with every other operation.
+        self._credential_task: asyncio.Task | None = None
+        # Latest Compose run task per project; runs of different projects overlap.
+        self._compose_tasks: dict[str, asyncio.Task] = {}
         self._pending_retry_plan: ComposePlan | None = None
         self._pending_retry_fingerprint: str | None = None
         self._retry_decision: asyncio.Future | None = None
-        self._compose_output_buffer = LogBuffer(max_entries=1000, max_bytes=1024 * 1024)
-        self._compose_output_project: str | None = None
-        self._compose_output_profile_key: str | None = None
-        self._compose_output_prefix: str | None = None
+        # Mid-run consents take the inline bar one at a time, after pending previews.
+        self._bar_lock = asyncio.Lock()
+        self._bar_idle = asyncio.Event()
+        self._compose_outputs = ProjectOutputBuffers(
+            max_projects=8,
+            max_entries=1000,
+            max_bytes=1024 * 1024,
+            protected=self._project_is_composing,
+        )
         self._compose_output_visible = False
-        # Feedback of the last stop; replayed until the next stop or Compose run.
+        # Global feedback of recent stops, replayed under every project's output.
         self._stop_output: list[LogEntry] = []
         # Stops run independently in the background; these targets are still in flight.
         self._stopping: set[str] = set()
@@ -921,43 +947,36 @@ class DebugPilotApp(App):
         self._selection_changed.set()
         self._show_selection_panel()
 
-    def _compose_output_matches_selection(self) -> bool:
-        return (
-            self._compose_output_project is not None
-            and self._compose_output_project == self.selected_project
-            and self._compose_output_profile_key is not None
-            and self._compose_output_profile_key == self._selected_profile_key
-            and self._selected_profile is not None
-        )
+    def _compose_output_matches_selection(self, project: str | None) -> bool:
+        """Any row of a Compose project (project, profile or container) shows its output."""
+        return project is not None and project == self.selected_project
 
     def _restore_compose_output(self, viewer: LogViewer | None = None) -> None:
         console = self.query_one(ExecutionConsole)
         console.clear()
-        if self._compose_output_matches_selection():
-            for entry in self._compose_output_buffer.entries():
+        buffer = self._compose_outputs.get(self.selected_project)
+        if buffer is not None:
+            self._compose_outputs.touch(self.selected_project)
+            for entry in buffer.entries():
                 console.append(entry)
         for entry in self._stop_output:
             console.append(entry)
 
-    def _begin_compose_output(
-        self, plan: ComposePlan, profile: LaunchProfile | None, profile_key: str | None
-    ) -> None:
-        self._compose_output_buffer.clear()
-        self._stop_output = []
-        self._compose_output_project = plan.project.project_name
-        self._compose_output_profile_key = profile_key
-        self._compose_output_prefix = (profile.name if profile else None) or (
-            plan.project.project_name
-        )
+    def _begin_compose_output(self, run: _ComposeRun) -> None:
+        # A new run clears only its own project's transcript.
+        self._compose_outputs.reset(run.project)
+        if self._compose_output_matches_selection(run.project) and not self._closing:
+            self._restore_compose_output()
         self._record_compose_output(
-            f"Starting {plan.action}: {plan.project.project_name} / "
-            f"{_plan_scope(plan)}"
+            run, f"Starting {run.plan.action}: {run.project} / {_plan_scope(run.plan)}"
         )
 
-    def _record_compose_output(self, text: str, *, severity: str = "unknown") -> None:
+    def _record_compose_output(
+        self, run: _ComposeRun, text: str, *, severity: str = "unknown"
+    ) -> None:
         if not text:
             return
-        prefix = f"[Compose · {(self._compose_output_prefix or 'profile')[:256]}] "
+        prefix = f"[Compose · {(run.prefix or 'profile')[:256]}] "
         combined = prefix + text
         truncated = len(combined) > 16_384
         entry = LogEntry(
@@ -966,13 +985,13 @@ class DebugPilotApp(App):
             severity=severity,
             truncated=truncated,
         )
-        self._compose_output_buffer.append(entry)
-        if self._compose_output_matches_selection() and not self._closing:
+        self._compose_outputs.append(run.project, entry)
+        if self._compose_output_matches_selection(run.project) and not self._closing:
             self.query_one(ExecutionConsole).append(entry)
 
-    def _write_compose_output(self, text: str) -> None:
+    def _write_compose_output(self, run: _ComposeRun, text: str) -> None:
         for line in text.splitlines():
-            self._record_compose_output(line)
+            self._record_compose_output(run, line)
 
     def _limit_to_profile_services(self, members):
         """Keep only the selected profile's explicit services, when it declares any."""
@@ -1105,9 +1124,15 @@ class DebugPilotApp(App):
 
     async def on_unmount(self) -> None:
         self._closing = True
-        if self._inline_task is not None:
-            self._inline_task.cancel()
-            await asyncio.gather(self._inline_task, return_exceptions=True)
+        operations = [
+            task
+            for task in (self._credential_task, *self._compose_tasks.values())
+            if task is not None
+        ]
+        for task in operations:
+            task.cancel()
+        if operations:
+            await asyncio.gather(*operations, return_exceptions=True)
         if self._launch_open_task is not None:
             self._launch_open_task.cancel()
             await asyncio.gather(self._launch_open_task, return_exceptions=True)
@@ -1486,8 +1511,17 @@ class DebugPilotApp(App):
                 severity="warning",
             )
             return
-        if self._inline_task is not None and not self._inline_task.done():
-            self.notify("A Compose operation is already running.", severity="warning")
+        if self._credential_busy():
+            self.notify("An operation is already running.", severity="warning")
+            return
+        if self._refuse_busy_bar():
+            return
+        if self._project_is_composing(profile.project_name):
+            # Only the busy project is blocked; other projects can run at the same time.
+            self.notify(
+                f"A Compose operation is already running for {profile.project_name}.",
+                severity="warning",
+            )
             return
         if self._project_is_stopping(profile.project_name):
             # Only the project being stopped is off-limits; other projects stay usable.
@@ -1528,18 +1562,26 @@ class DebugPilotApp(App):
         from debugpilot.docker.compose import ComposeService
         from debugpilot.tui.compose_dialog import ComposeDialog
 
-        if self._inline_task is not None and not self._inline_task.done():
-            self.notify("A Compose operation is already running.", severity="warning")
+        if self._credential_busy():
+            self.notify("An operation is already running.", severity="warning")
             return
-        self._dismiss_inline_compose()
+        if self._refuse_busy_bar():
+            return
         # Resolve the visibly focused cursor even if a focus event is still queued.
         if isinstance(self.focused, DataTable) and self.focused.id == "launch-profiles":
             self._select_focused_row(self.focused)
+        if self._project_is_composing(self.selected_project):
+            self.notify(
+                f"A Compose operation is already running for {self.selected_project}.",
+                severity="warning",
+            )
+            return
         if self._project_is_stopping(self.selected_project):
             self.notify(
                 f"{self.selected_project} is stopping; wait for it to finish.", severity="warning"
             )
             return
+        self._dismiss_inline_compose()
 
         if contextual and (
             not self.selected_project
@@ -1653,6 +1695,8 @@ class DebugPilotApp(App):
         self.query_one("#inline-compose-cancel", Button).label = "Cancel"
         self.query_one("#inline-compose-cancel", Button).disabled = False
         self.query_one("#inline-compose").display = False
+        # Wake a mid-run consent waiting for the bar.
+        self._bar_idle.set()
 
     @on(Button.Pressed, "#compose-output-toggle")
     def toggle_compose_output_button(self) -> None:
@@ -1660,8 +1704,10 @@ class DebugPilotApp(App):
 
     @on(Button.Pressed, "#stop-selected")
     def action_stop_selected(self) -> None:
-        if self._inline_task is not None and not self._inline_task.done():
+        if self._credential_busy():
             self.notify("An operation is already running.", severity="warning")
+            return
+        if self._refuse_busy_bar():
             return
         if isinstance(self.focused, DataTable) and self.focused.id == "launch-profiles":
             self._select_focused_row(self.focused)
@@ -1675,6 +1721,20 @@ class DebugPilotApp(App):
         if self.selected_container is None:
             members = self._limit_to_profile_services(members)
         targets = tuple(c.id for c in members if c.state in ACTIVE_STATES)
+        composing = next(
+            (
+                c.compose_project
+                for c in members
+                if c.id in targets and self._project_is_composing(c.compose_project)
+            ),
+            None,
+        )
+        if composing is not None:
+            # Mirrors the stop rule: a project being recreated cannot be stopped meanwhile.
+            self.notify(
+                f"{composing} is being recreated; wait for it to finish.", severity="warning"
+            )
+            return
         if targets and all(target in self._stopping for target in targets):
             self.notify("Already stopping; see the output.", severity="warning")
             return
@@ -1700,8 +1760,10 @@ class DebugPilotApp(App):
 
     @on(Button.Pressed, "#inline-compose-confirm")
     def confirm_inline_compose(self) -> None:
-        if self._pending_credential_recreates and (
-            self._inline_task is None or self._inline_task.done()
+        if (
+            self._pending_credential_recreates
+            and not self._credential_busy()
+            and not self._compose_running()
         ):
             batch, self._pending_credential_recreates = self._pending_credential_recreates, []
             if not self._credential_batch_is_current(batch):
@@ -1713,9 +1775,9 @@ class DebugPilotApp(App):
                 return
             self.query_one("#inline-compose-confirm", Button).disabled = True
             self.query_one("#inline-compose-cancel", Button).label = "Stop CLI"
-            self._inline_task = asyncio.create_task(self._run_credential_recreates(batch))
+            self._credential_task = asyncio.create_task(self._run_credential_recreates(batch))
             return
-        if self._pending_stop and (self._inline_task is None or self._inline_task.done()):
+        if self._pending_stop and not self._credential_busy():
             targets, self._pending_stop = self._pending_stop, ()
             # Free the bar right away so another stop can be confirmed while Docker
             # works; progress goes to the output card.
@@ -1731,9 +1793,7 @@ class DebugPilotApp(App):
             self.query_one("#inline-compose-cancel", Button).disabled = True
             self._retry_decision.set_result(True)
             return
-        if self._inline_plan is None or (
-            self._inline_task is not None and not self._inline_task.done()
-        ):
+        if self._inline_plan is None or self._credential_busy():
             return
         if self._pending_profile is not None:
             try:
@@ -1760,16 +1820,53 @@ class DebugPilotApp(App):
                     severity="warning",
                 )
                 return
-        plan, self._inline_plan = self._inline_plan, None
-        self.query_one("#inline-compose-confirm", Button).disabled = True
-        self.query_one("#inline-compose-cancel", Button).label = "Stop CLI"
-        self.query_one("#inline-compose-message", Static).update(
-            f"Running {plan.action}: {plan.project.project_name} / {_plan_scope(plan)}"
+        plan = self._inline_plan
+        if self._project_is_composing(plan.project.project_name):
+            self._dismiss_inline_compose()
+            self.notify(
+                f"A Compose operation is already running for {plan.project.project_name}.",
+                severity="warning",
+            )
+            return
+        run = self._new_compose_run(
+            plan, self._inline_service, self._pending_profile, self._pending_profile_key
         )
-        self._inline_task = asyncio.create_task(self._run_inline_compose(plan))
+        # Free the bar right away so other projects can be previewed and confirmed while
+        # this run continues; progress goes to the project's output and toasts.
+        self._dismiss_inline_compose()
+        self.query_one(self._selection_table_selector(), DataTable).focus()
+        self._start_compose_run(run)
+
+    def _new_compose_run(
+        self,
+        plan: ComposePlan,
+        service,
+        profile: LaunchProfile | None,
+        profile_key: str | None,
+    ) -> _ComposeRun:
+        return _ComposeRun(
+            plan=plan,
+            service=service,
+            profile=profile,
+            profile_key=profile_key,
+            prefix=(profile.name if profile else None) or plan.project.project_name,
+            selection=self.selected_container,
+            selected_project=self.selected_project,
+            revision=self._selection_revision,
+        )
+
+    def _start_compose_run(self, run: _ComposeRun) -> None:
+        # Forget finished runs whose output was already evicted.
+        retained = set(self._compose_outputs.projects())
+        self._compose_tasks = {
+            project: task
+            for project, task in self._compose_tasks.items()
+            if not task.done() or project in retained
+        }
+        self._compose_tasks[run.project] = asyncio.create_task(self._run_inline_compose(run))
 
     def action_refresh_aws_credentials(self) -> None:
-        if self._inline_task is not None and not self._inline_task.done():
+        if self._credential_busy() or self._compose_running():
             self.notify("An operation is already running.", severity="warning")
             return
         if self._launch_store is None or self._launch_error:
@@ -1796,7 +1893,7 @@ class DebugPilotApp(App):
         self.query_one("#inline-compose").tooltip = None
         self.query_one("#inline-compose").display = True
         self.query_one("#inline-compose-confirm", Button).disabled = True
-        self._inline_task = asyncio.create_task(self._run_credential_refresh(targets))
+        self._credential_task = asyncio.create_task(self._run_credential_refresh(targets))
 
     async def _run_credential_refresh(self, targets) -> None:
         from debugpilot.storage.aws_credentials import refresh_targets
@@ -1886,17 +1983,53 @@ class DebugPilotApp(App):
         return True
 
     async def _run_credential_recreates(self, batch) -> None:
-        for _name, key, plan, service, profile in batch:
-            self._inline_service = service
-            self._pending_profile = profile
-            self._pending_profile_key = key
-            self.query_one("#inline-compose-message", Static).update(
-                f"Running recreate: {plan.project.project_name} / {_plan_scope(plan)}"
-            )
-            await self._run_inline_compose(plan)
+        try:
+            for _name, key, plan, service, profile in batch:
+                run = self._new_compose_run(plan, service, profile, key)
+                # The exclusive batch keeps the bar as its progress line.
+                self.query_one("#inline-compose-message", Static).update(
+                    f"Running recreate: {plan.project.project_name} / {_plan_scope(plan)}"
+                )
+                self.query_one("#inline-compose-confirm", Button).disabled = True
+                self.query_one("#inline-compose-cancel", Button).label = "Stop CLI"
+                self.query_one("#inline-compose").display = True
+                await self._run_inline_compose(run)
+        finally:
+            if not self._closing:
+                self._dismiss_inline_compose()
+                self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def _selection_table_selector(self) -> str:
         return "#launch-profiles"
+
+    def _project_is_composing(self, project: str | None) -> bool:
+        """Whether this Compose project has a Recreate / Build+Recreate run in flight."""
+        task = self._compose_tasks.get(project) if project else None
+        return task is not None and not task.done()
+
+    def _compose_running(self) -> bool:
+        return any(not task.done() for task in self._compose_tasks.values())
+
+    def _credential_busy(self) -> bool:
+        return self._credential_task is not None and not self._credential_task.done()
+
+    def _consent_pending(self) -> bool:
+        return self._retry_decision is not None and not self._retry_decision.done()
+
+    def _bar_has_pending(self) -> bool:
+        """Whether the inline bar holds a preview awaiting the user's decision."""
+        return (
+            self._inline_plan is not None
+            or bool(self._pending_stop)
+            or bool(self._pending_credential_recreates)
+        )
+
+    def _refuse_busy_bar(self) -> bool:
+        """A pending download consent owns the bar; new previews must not replace it."""
+        if self._consent_pending():
+            self.notify("Answer the pending download prompt first.", severity="warning")
+            return True
+        return False
 
     def _project_is_stopping(self, project: str | None) -> bool:
         """Whether any container of this Compose project has a stop in flight."""
@@ -1962,19 +2095,14 @@ class DebugPilotApp(App):
             is not None
         )
 
-    def _retry_profile_is_current(
-        self, plan: ComposePlan, profile: LaunchProfile | None, key: str | None, revision: int
-    ) -> bool:
-        if (
-            profile is None
-            or key is None
-            or self._pending_profile is None
-            or self._pending_profile.raw != profile.raw
-            or self._pending_profile_key != key
-            or self._selected_profile_key != key
-            or self._selection_revision != revision
-            or self._launch_store is None
-        ):
+    def _retry_profile_is_current(self, run: _ComposeRun) -> bool:
+        """Whether the run's own launch profile still resolves to the plan it ran.
+
+        The check is bound to the run, not to the current selection or bar state, so a
+        consent stays valid while the user works with other projects.
+        """
+        profile, key = run.profile, run.profile_key
+        if profile is None or key is None or self._launch_store is None:
             return False
         try:
             current = next(
@@ -1988,62 +2116,82 @@ class DebugPilotApp(App):
             return (
                 current is not None
                 and current.raw == profile.raw
-                and self._project_from_profile(current) == plan.project
+                and self._project_from_profile(current) == run.plan.project
             )
         except (ConfigurationError, ComposeError, OSError):
             return False
 
-    async def _request_inline_download(self, plan: ComposePlan, fingerprint: str) -> bool:
-        self._pending_retry_plan = plan
-        self._pending_retry_fingerprint = fingerprint
-        self.query_one("#inline-compose-message", Static).update(
-            f"Missing image for {plan.project.project_name}. Download missing images and "
-            f"retry {plan.action} / {_plan_scope(plan)}?"
-        )
-        self.query_one("#inline-compose-confirm", Button).label = "Download and retry"
-        self.query_one("#inline-compose-confirm", Button).disabled = False
-        self.query_one("#inline-compose-cancel", Button).label = "Cancel"
-        self.query_one("#inline-compose-cancel", Button).disabled = False
-        self.query_one("#inline-compose").display = True
-        decision = asyncio.get_running_loop().create_future()
-        self._retry_decision = decision
-        self.query_one("#inline-compose-cancel", Button).focus()
-        approved = await decision
-        approved = (
-            approved is True
-            and self._pending_retry_plan is plan
-            and self._pending_retry_fingerprint == fingerprint
-        )
-        self._retry_decision = None
-        self._pending_retry_plan = None
-        self._pending_retry_fingerprint = None
-        return approved
+    async def _request_inline_download(self, run: _ComposeRun, fingerprint: str) -> bool:
+        plan = run.plan
+        async with self._bar_lock:
+            # Never overwrite another pending confirmation; wait until the user answers it.
+            while self._bar_has_pending() and not self._closing:
+                self._bar_idle.clear()
+                await self._bar_idle.wait()
+            if self._closing:
+                return False
+            self._pending_retry_plan = plan
+            self._pending_retry_fingerprint = fingerprint
+            self.query_one("#inline-compose-message", Static).update(
+                f"Missing image for {run.prefix} ({plan.project.project_name}). Download "
+                f"missing images and retry {plan.action} / {_plan_scope(plan)}?"
+            )
+            self.query_one("#inline-compose").tooltip = plan.display
+            self.query_one("#inline-compose-confirm", Button).label = "Download and retry"
+            self.query_one("#inline-compose-confirm", Button).disabled = False
+            self.query_one("#inline-compose-cancel", Button).label = "Cancel"
+            self.query_one("#inline-compose-cancel", Button).disabled = False
+            self.query_one("#inline-compose").display = True
+            decision = asyncio.get_running_loop().create_future()
+            self._retry_decision = decision
+            self.query_one("#inline-compose-cancel", Button).focus()
+            try:
+                approved = await decision
+                return (
+                    approved is True
+                    and self._pending_retry_plan is plan
+                    and self._pending_retry_fingerprint == fingerprint
+                )
+            finally:
+                # A preview opened right after the answer already replaced this consent;
+                # clearing the bar then would silently drop that preview.
+                owns_bar = self._pending_retry_plan is plan
+                self._retry_decision = None
+                self._pending_retry_plan = None
+                self._pending_retry_fingerprint = None
+                if owns_bar and not self._closing:
+                    # The retry reports to the project's output; the bar is free again.
+                    self._dismiss_inline_compose()
+                    self.query_one(self._selection_table_selector(), DataTable).focus()
 
-    async def _run_inline_compose(self, plan: ComposePlan) -> None:
-        selection = self.selected_container
-        project, revision = self.selected_project, self._selection_revision
-        profile, profile_key = self._pending_profile, self._pending_profile_key
-        self._begin_compose_output(plan, profile, profile_key)
+    async def _run_inline_compose(self, run: _ComposeRun) -> None:
+        plan, service = run.plan, run.service
+        self._begin_compose_output(run)
         streamed = [False]
+
+        def record(text: str, *, severity: str = "unknown") -> None:
+            self._record_compose_output(run, text, severity=severity)
 
         def receive_output(line: str) -> None:
             streamed[0] = True
-            self._record_compose_output(line)
+            record(line)
 
         def retain_unstreamed_result(result) -> None:
             if not streamed[0] and result.output:
-                self._write_compose_output(result.output)
+                self._write_compose_output(run, result.output)
 
         try:
-            result = await self._inline_service.run(plan, confirmed=True, on_output=receive_output)
+            result = await service.run(plan, confirmed=True, on_output=receive_output)
             retain_unstreamed_result(result)
-            self._record_compose_output(
+            record(
                 f"Compose exited {result.exit_code}.",
                 severity="info" if result.exit_code == 0 else "error",
             )
             if result.exit_code == 0:
                 self._remember_compose_project(plan.project)
-                await self._refresh_compose_logs(plan, selection, project, revision)
+                await self._refresh_compose_logs(
+                    plan, run.selection, run.selected_project, run.revision
+                )
                 self.notify(
                     f"Compose exited 0: {plan.project.project_name} / "
                     f"{_plan_scope(plan)}.",
@@ -2059,79 +2207,72 @@ class DebugPilotApp(App):
                 )
                 return
 
-            if not self._retry_profile_is_current(plan, profile, profile_key, revision):
-                self._record_compose_output(
-                    "Download retry unavailable because the profile or selection changed.",
+            if not self._retry_profile_is_current(run):
+                record(
+                    "Download retry unavailable because the launch profile changed.",
                     severity="error",
                 )
                 return
             try:
-                retry_fingerprint = await self._inline_service.capture_retry_environment(plan)
+                retry_fingerprint = await service.capture_retry_environment(plan)
             except Exception:
                 retry_fingerprint = None
             if not isinstance(retry_fingerprint, str) or not re.fullmatch(
                 r"[0-9a-f]{64}", retry_fingerprint
             ):
-                self._record_compose_output(
+                record(
                     "Missing-image retry unavailable: runtime inputs could not be verified.",
                     severity="error",
                 )
                 return
-            if not self._retry_profile_is_current(plan, profile, profile_key, revision):
-                self._record_compose_output(
-                    "Download retry unavailable because the profile or selection changed.",
+            if not self._retry_profile_is_current(run):
+                record(
+                    "Download retry unavailable because the launch profile changed.",
                     severity="error",
                 )
                 return
 
-            approved = await self._request_inline_download(plan, retry_fingerprint)
+            approved = await self._request_inline_download(run, retry_fingerprint)
             if not approved or self._closing:
-                self._record_compose_output(
+                record(
                     "Download retry cancelled; no image pull or second Compose run was started."
                 )
                 return
-            if not self._retry_profile_is_current(plan, profile, profile_key, revision):
-                self._record_compose_output(
-                    "Download retry cancelled because the profile or selection changed.",
+            if not self._retry_profile_is_current(run):
+                record(
+                    "Download retry cancelled because the launch profile changed.",
                     severity="error",
                 )
                 self.notify(
-                    "Launch profile or selection changed; download and retry cancelled.",
+                    "Launch profile changed; download and retry cancelled.",
                     severity="warning",
                 )
                 return
 
-            self.query_one("#inline-compose-confirm", Button).label = "Confirm"
-            self.query_one("#inline-compose-confirm", Button).disabled = True
-            self.query_one("#inline-compose-cancel", Button).label = "Stop CLI"
-            self.query_one("#inline-compose-cancel", Button).disabled = False
-            self.query_one("#inline-compose-message", Static).update(
-                f"Downloading missing images and retrying {plan.action}: "
-                f"{plan.project.project_name} / {_plan_scope(plan)}"
-            )
-            self._record_compose_output(
+            record(
                 f"Retrying {plan.action} once with missing-image download explicitly authorized."
             )
             streamed[0] = False
-            retry = await self._inline_service.run(
+            retry = await service.run(
                 plan,
                 confirmed=True,
                 pull_missing=True,
                 retry_fingerprint=retry_fingerprint,
                 on_output=receive_output,
                 retry_preflight=lambda: (
-                    self._retry_profile_is_current(plan, profile, profile_key, revision)
-                    and not self._closing
+                    self._retry_profile_is_current(run) and not self._closing
                 ),
             )
             retain_unstreamed_result(retry)
-            self._record_compose_output(
+            record(
                 f"Compose retry exited {retry.exit_code}.",
                 severity="info" if retry.exit_code == 0 else "error",
             )
             if retry.exit_code == 0:
                 self._remember_compose_project(plan.project)
-                await self._refresh_compose_logs(plan, selection, project, revision)
+                await self._refresh_compose_logs(
+                    plan, run.selection, run.selected_project, run.revision
+                )
                 self.notify(
                     f"Compose retry exited 0: {plan.project.project_name} / "
                     f"{_plan_scope(plan)}.",
@@ -2145,7 +2286,7 @@ class DebugPilotApp(App):
                 )
         except asyncio.CancelledError:
             if not self._closing:
-                self._record_compose_output(
+                record(
                     "Compose operation stopped by user; Docker changes may remain.",
                     severity="warning",
                 )
@@ -2153,17 +2294,11 @@ class DebugPilotApp(App):
                     "CLI stopped; Docker changes may remain. No rollback.", severity="warning"
                 )
         except ComposeError as error:
-            self._record_compose_output(f"Compose failed: {error}", severity="error")
+            record(f"Compose failed: {error}", severity="error")
             self.notify(str(error), severity="warning")
         except Exception:
-            self._record_compose_output(
-                "Compose failed unexpectedly. Inspect Docker before retrying.", severity="error"
-            )
+            record("Compose failed unexpectedly. Inspect Docker before retrying.", severity="error")
             self.notify("Compose failed. Inspect Docker before retrying.", severity="warning")
-        finally:
-            if not self._closing:
-                self._dismiss_inline_compose()
-                self.query_one(self._selection_table_selector(), DataTable).focus()
 
     async def _refresh_compose_logs(
         self, plan: ComposePlan, selection: ContainerInfo | None, project: str | None, revision: int
@@ -2231,8 +2366,11 @@ class DebugPilotApp(App):
             self.query_one("#inline-compose-confirm", Button).disabled = True
             self.query_one("#inline-compose-cancel", Button).disabled = True
             self._retry_decision.set_result(False)
-        elif self._inline_task is not None and not self._inline_task.done():
-            self._inline_task.cancel()
+        elif not self._bar_has_pending() and self._project_is_composing(self.selected_project):
+            # Only the selected project's run stops; other projects keep running.
+            self._compose_tasks[self.selected_project].cancel()
+        elif self._credential_busy():
+            self._credential_task.cancel()
         else:
             if self._logs_requested and not self.query_one("#container-shell").display:
                 # Esc closes on-demand logs and returns to the details view.
@@ -2283,9 +2421,7 @@ class DebugPilotApp(App):
             return False
         if action == "cancel_compose" and isinstance(self.screen, ModalScreen):
             return False
-        if action in {"compose", "start_project"} and (
-            self._inline_task is not None and not self._inline_task.done()
-        ):
+        if action in {"compose", "start_project"} and self._credential_busy():
             return False
         if action in {
             "quit",
