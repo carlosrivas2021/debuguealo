@@ -11,12 +11,21 @@ from docker.errors import APIError, DockerException
 from requests.exceptions import RequestException
 
 from debugpilot.core.exceptions import DockerError
-from debugpilot.core.models import ContainerInfo
+from debugpilot.core.models import ContainerInfo, ContainerStats
 from debugpilot.docker.logs import LogDecoder, read_frames
 from debugpilot.docker.probe import PipeError
 from debugpilot.storage.config import Settings
 
 STOP_TARGET_RE = re.compile(r"(?:[A-Fa-f0-9]{12,64}|[A-Za-z0-9][A-Za-z0-9_.-]{0,127})")
+
+
+def container_name(value) -> str:
+    if not isinstance(value, str) or not value or any(
+        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+        for character in value
+    ):
+        raise DockerError("Invalid container name or ID.")
+    return value
 
 
 def emit(kind: str, **values) -> None:
@@ -93,13 +102,16 @@ def run(settings: Settings, request: dict) -> None:
             emit("ready")
             for raw in containers:
                 emit("container", value=ContainerInfo.from_docker(raw).model_dump(mode="json"))
+        elif request["command"] == "stats":
+            container = container_name(request["container"])
+            # One sample without waiting two collection cycles; never a stream.
+            raw = bounded_json(api, f"/containers/{container}/stats", stream=0, **{"one-shot": 1})
+            if not isinstance(raw, dict):
+                raise DockerError("Docker returned invalid container stats.")
+            emit("ready")
+            emit("stats", value=ContainerStats.from_docker(raw).model_dump(mode="json"))
         elif request["command"] == "logs":
-            container = request["container"]
-            if not container or any(
-                character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
-                for character in container
-            ):
-                raise DockerError("Invalid container name or ID.")
+            container = container_name(request["container"])
             info = bounded_json(api, f"/containers/{container}/json")
             follow = bool(request["follow"])
             params = {
@@ -189,7 +201,7 @@ def run(settings: Settings, request: dict) -> None:
 
 
 def serve(settings: Settings, requests=sys.stdin) -> None:
-    """Answer inventory requests, one JSON line each, until stdin closes.
+    """Answer inventory and stats requests, one JSON line each, until stdin closes.
 
     Every request ends with a ``done`` record so the parent can reuse this
     process instead of paying the Python and Docker SDK import per refresh.
@@ -199,7 +211,7 @@ def serve(settings: Settings, requests=sys.stdin) -> None:
             request = json.loads(line)
         except ValueError:
             request = None
-        if isinstance(request, dict) and request.get("command") == "containers":
+        if isinstance(request, dict) and request.get("command") in {"containers", "stats"}:
             run(settings, request)
         else:
             emit("error", message="Unsupported Docker operation.", retryable=False)

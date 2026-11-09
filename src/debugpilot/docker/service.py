@@ -8,7 +8,7 @@ from contextlib import aclosing
 from pathlib import Path
 
 from debugpilot.core.exceptions import DockerError
-from debugpilot.core.models import ContainerInfo, LogEntry, StopResult
+from debugpilot.core.models import ContainerInfo, ContainerStats, LogEntry, StopResult
 from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.docker.logs import ReplayCursor
 from debugpilot.storage.config import Settings
@@ -54,8 +54,11 @@ class DockerService:
             **({"creationflags": 0x08000000} if os.name == "nt" else {}),
         )
 
-    async def _inventory_records(self) -> list[dict]:
-        """Ask the persistent worker for one inventory, respawning it when needed.
+    async def _inventory_records(self, request: dict | None = None) -> list[dict]:
+        """Ask the persistent worker one request (inventory by default), respawning it when needed.
+
+        Inventory refreshes and stats samples share this worker and its lock, so they take
+        turns on one process instead of spawning one per request.
 
         Any failure, timeout or cancellation mid-request kills the worker, because
         its output stream may no longer line up with the next request.
@@ -78,7 +81,8 @@ class DockerService:
                     self._inventory = (process, directory)
                 process = self._inventory[0]
                 assert process.stdin is not None and process.stdout is not None
-                process.stdin.write(b'{"command": "containers"}\n')
+                line = json.dumps(request or {"command": "containers"}) + "\n"
+                process.stdin.write(line.encode())
                 await process.stdin.drain()
                 while True:
                     async with asyncio.timeout(self.settings.docker_timeout_seconds * 2 + 3):
@@ -188,6 +192,16 @@ class DockerService:
                 raise DockerError("Invalid or oversized container inventory.")
             containers.append(ContainerInfo.model_validate(record["value"]))
         return sorted(containers, key=lambda container: container.name.casefold())
+
+    async def container_stats(self, container: str) -> ContainerStats:
+        """One stats sample for a container, read through the persistent worker."""
+        container = container.removeprefix("/")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", container):
+            raise ValueError("Invalid container name or ID.")
+        records = await self._inventory_records({"command": "stats", "container": container})
+        if len(records) != 1 or records[0].get("kind") != "stats":
+            raise DockerError("Invalid container stats from Docker worker.")
+        return ContainerStats.model_validate(records[0]["value"])
 
     async def stop_containers(
         self,
