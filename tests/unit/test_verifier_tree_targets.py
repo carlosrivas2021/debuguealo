@@ -90,7 +90,8 @@ async def test_stop_confirmation_is_pinned_but_exec_uses_changed_current_target(
         unchanged(originals)
         # Confirmation belongs to the original preview, never to the new cursor.
         assert await pilot.click("#inline-compose-confirm")
-        await until(pilot, lambda: app._inline_task is not None and app._inline_task.done())
+        # Stops run in the background; wait for this one to finish.
+        await until(pilot, lambda: bool(docker.stops) and not app._stopping)
         assert docker.stops == [(("actual-api-17",), True, 10)]
         unchanged(originals)
         await choose(app, pilot, "profile-child:profile:Local:actual-worker-29")
