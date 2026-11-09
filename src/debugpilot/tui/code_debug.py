@@ -7,8 +7,9 @@ from pathlib import Path
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, RichLog, Static
+from textual.widgets import Button, DataTable, Input, RichLog, Static
 
+from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger import (
     DebugError,
     GoAttachSession,
@@ -18,10 +19,24 @@ from debugpilot.debugger import (
     PythonDebugSession,
 )
 from debugpilot.storage.code_projects import is_node_command, is_npm_command
+from debugpilot.storage.watches import MAX_WATCHES_PER_ROOT, WatchStore, watch_expression
+
+MAX_WATCH_VALUE = 200
 
 
 def _attach_language(profile):
     return 'Go' if profile.go_attach is not None else 'Python'
+
+
+def _watch_error(error):
+    # A debugger may return a whole traceback; its last line names the actual error.
+    lines = [line.strip() for line in str(error).splitlines() if line.strip()]
+    return '⚠ ' + (lines[-1] if lines else 'Evaluation failed.')
+
+
+def _watch_value(value):
+    value = ' '.join(str(value).split())
+    return value if len(value) <= MAX_WATCH_VALUE else value[:MAX_WATCH_VALUE - 1] + '…'
 
 
 @dataclass
@@ -41,6 +56,9 @@ class DebugContext:
     state: str = ''
     unexpected_disconnect: bool = False
     frame_row: int = 0
+    # Watch expression -> displayed value for the current pause and frame.
+    watch_values: dict = field(default_factory=dict)
+    watch_frame: object = None
     close_error: str | None = None
     update_lock: object = field(default_factory=asyncio.Lock)
     stopping: bool = False
@@ -61,6 +79,15 @@ class CodeDebug(Vertical):
         self.output = RichLog(id='code-debug-output', max_lines=2000, markup=False, wrap=True)
         self.output.border_title = 'Debug output'
         self.output.display = False
+        self.watch_store = WatchStore()
+        try:
+            self.watches: dict[Path, list[str]] = {
+                root: list(expressions) for root, expressions in self.watch_store.load().items()
+            }
+            self._watch_error = None
+        except ConfigurationError as error:
+            self.watches = {}
+            self._watch_error = str(error)
 
     @property
     def display(self):
@@ -113,11 +140,18 @@ class CodeDebug(Vertical):
             yield Button('Out', id='code-out', disabled=True)
         with Horizontal(id='code-inspection'):
             yield DataTable(id='code-stack', cursor_type='row')
+            yield Input(placeholder='+ Add watch expression', id='code-watch-input')
+            yield DataTable(id='code-watches', cursor_type='row')
             yield Static('Variables: —', id='code-variables', markup=False)
 
     def on_mount(self):
-        self.query_one(DataTable).add_columns('Frame', 'Source', 'Line')
+        self.query_one('#code-stack', DataTable).add_columns('Frame', 'Source', 'Line')
+        watches = self.query_one('#code-watches', DataTable)
+        watches.add_columns('Expression', 'Value')
+        watches.border_title = 'Watch'
         self.display = False
+        if self._watch_error:
+            self.app.notify(self._watch_error, severity='warning')
 
     def _spawn(self, context, coroutine):
         task = asyncio.create_task(coroutine)
@@ -155,7 +189,8 @@ class CodeDebug(Vertical):
     def _clear_view(self):
         if not self.query(DataTable):
             return
-        self.query_one(DataTable).clear()
+        self.query_one('#code-stack', DataTable).clear()
+        self.query_one('#code-watches', DataTable).clear()
         self.query_one('#code-variables', Static).update('Variables: —')
         self.output.clear()
         self.browser.clear_execution()
@@ -175,7 +210,7 @@ class CodeDebug(Vertical):
         """Rebuild the stack for a new pause; output keeps its lines and scroll."""
         if self.selected is not context or not self.query(DataTable):
             return
-        table = self.query_one(DataTable)
+        table = self.query_one('#code-stack', DataTable)
         table.clear()
         for index, frame in enumerate(context.frames):
             table.add_row(frame.get('name', '?'), frame.get('source', {}).get('path', '?'),
@@ -189,6 +224,7 @@ class CodeDebug(Vertical):
         if self.selected is not context or not self.query(DataTable):
             return
         self.query_one('#code-variables', Static).update(context.variables)
+        self._render_watches(context)
         enabled = (
             context.active and context.session is not None
             and context.session.state == 'stopped'
@@ -201,6 +237,87 @@ class CodeDebug(Vertical):
         if context.execution is not None:
             root, path, line = context.execution
             self.browser.show_execution(root, path, line)
+
+    def _watches(self, context):
+        return self.watches.get(Path(context.profile.root).resolve(), [])
+
+    def _render_watches(self, context):
+        if self.selected is not context or not self.query('#code-watches'):
+            return
+        table = self.query_one('#code-watches', DataTable)
+        row = table.cursor_row
+        table.clear()
+        paused = context.session is not None and context.session.state == 'stopped'
+        for expression in self._watches(context):
+            value = context.watch_values.get(expression, '—') if paused else '—'
+            table.add_row(expression, value)
+        if table.row_count:
+            table.move_cursor(row=min(row, table.row_count - 1))
+
+    async def _evaluate_watches(self, context, generation, pause, frame_id):
+        values = {}
+        for expression in list(self._watches(context)):
+            if not self._paused(context, generation, pause):
+                return
+            try:
+                values[expression] = _watch_value(
+                    await context.session.evaluate(expression, frame_id))
+            except DebugError as error:
+                # One failing watch never stops the others.
+                values[expression] = _watch_error(error)
+        if self._paused(context, generation, pause):
+            context.watch_values = values
+
+    async def _refresh_watches(self, context, generation, pause):
+        await self._evaluate_watches(context, generation, pause, context.watch_frame)
+        if self._paused(context, generation, pause):
+            self._render_watches(context)
+
+    def _save_watches(self):
+        try:
+            self.watch_store.save(self.watches)
+        except ConfigurationError as error:
+            self.app.notify(str(error), severity='warning')
+
+    @on(Input.Submitted, '#code-watch-input')
+    def add_watch(self, event):
+        event.input.value = ''
+        context = self.selected
+        if context is None:
+            return
+        try:
+            expression = watch_expression(event.value)
+        except ValueError as error:
+            self.app.notify(str(error), severity='warning')
+            return
+        watches = self.watches.setdefault(Path(context.profile.root).resolve(), [])
+        if expression in watches:
+            return
+        if len(watches) >= MAX_WATCHES_PER_ROOT:
+            self.app.notify('A project can keep at most 100 watch expressions.',
+                            severity='warning')
+            return
+        watches.append(expression)
+        self._save_watches()
+        self._render_watches(context)
+        if (context.active and context.session is not None
+                and context.session.state == 'stopped' and context.watch_frame is not None):
+            self._spawn(context, self._refresh_watches(
+                context, context.generation, context.pause))
+
+    def on_key(self, event):
+        table = self.query('#code-watches')
+        if event.key != 'delete' or not table or self.app.focused is not table.first():
+            return
+        event.stop()
+        context = self.selected
+        watches = self._watches(context) if context is not None else []
+        row = table.first().cursor_row
+        if 0 <= row < len(watches):
+            watches.pop(row)
+            context.watch_values.pop(str(table.first().get_row_at(row)[0]), None)
+            self._save_watches()
+            self._render_watches(context)
 
     def _set_state(self, context, message):
         context.state = message
@@ -348,6 +465,8 @@ class CodeDebug(Vertical):
         context.variables = 'Variables: —'
         context.execution = None
         context.frame_row = 0
+        context.watch_values = {}
+        context.watch_frame = None
         self._render_pause(context)
 
     def _event(self, context, generation, message):
@@ -443,6 +562,10 @@ class CodeDebug(Vertical):
             values.extend(f"{value['name']} = {value.get('value', '')}" for value in variables)
         if not self._paused(context, generation, pause):
             return
+        context.watch_frame = frame['id']
+        await self._evaluate_watches(context, generation, pause, frame['id'])
+        if not self._paused(context, generation, pause):
+            return
         context.variables = '\n'.join(values) or 'Variables: —'
         path = frame.get('source', {}).get('path')
         context.execution = (
@@ -457,6 +580,7 @@ class CodeDebug(Vertical):
             context.pause += 1
             context.variables = 'Variables: —'
             context.execution = None
+            context.watch_values = {}
             context.frame_row = event.cursor_row
             self._render_inspection(context)
             self._spawn(context, self._select_frame(
