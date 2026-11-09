@@ -97,6 +97,7 @@ class DebugPilotApp(App):
         Binding("f5", "run_code", "Run code"),
         Binding("shift+f5", "debug_code", "Debug"),
         Binding("f9", "toggle_breakpoint", show=False),
+        Binding("shift+f9", "edit_breakpoint", show=False),
         Binding("f10", "code_step_over", "Step over"),
         Binding("f11", "code_step_in", "Step in"),
         Binding("shift+f11", "code_step_out", "Step out"),
@@ -1401,6 +1402,13 @@ class DebugPilotApp(App):
         else:
             self.action_debugger_unavailable()
 
+    def action_edit_breakpoint(self) -> None:
+        workspace = self.query_one(CodeWorkspace)
+        if workspace.display:
+            workspace.edit_breakpoint()
+        else:
+            self.action_debugger_unavailable()
+
     def action_compose(self) -> None:
         self.action_open_launch_file()
 
@@ -2408,7 +2416,9 @@ class DebugPilotApp(App):
             or isinstance(self.screen, ModalScreen)
         ):
             return False
-        if action in {"run_code", "toggle_breakpoint", "toggle_area"} and isinstance(
+        if action in {
+            "run_code", "toggle_breakpoint", "edit_breakpoint", "toggle_area",
+        } and isinstance(
             self.screen, ModalScreen
         ):
             return False
