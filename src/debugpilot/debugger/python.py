@@ -279,6 +279,20 @@ class PythonDebugSession:
             'variablesReference': reference, 'start': 0, 'count': 200,
         })).get('variables', [])
 
+    async def evaluate(self, expression, frame_id):
+        """Evaluate a watch expression in a paused frame; the debugger's error is raised."""
+        self._stopped()
+        try:
+            body = await self._client.request('evaluate', {
+                'expression': expression, 'frameId': frame_id, 'context': 'watch',
+            })
+        except DebugError as error:
+            # Delve keeps the reason in the response detail ("could not find symbol ...").
+            if error.detail:
+                raise DebugError(error.detail) from None
+            raise
+        return str(body.get('result', ''))
+
     async def _resume(self, command):
         thread = self._stopped()
         # Clear stale thread state before awaiting: a stopped event can precede the response.
