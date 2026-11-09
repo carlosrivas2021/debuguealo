@@ -357,10 +357,10 @@ class SourceBrowser(Vertical):
             state = self._verification.get((self.root_path, path.resolve(), line), "pending")
             option = options.get(line)
             detail = ""
-            if breakpoint_kind(option) == "log":
-                detail = f" · log: {_shorten(option.log_message)}"
-            elif breakpoint_kind(option) == "condition":
-                detail = f" · if {_shorten(option.condition)}"
+            if option is not None and option.condition:
+                detail += f" · if {_shorten(option.condition)}"
+            if option is not None and option.log_message:
+                detail += f" · log: {_shorten(option.log_message)}"
             node.add_leaf(Text(f"Line {line}{detail} · {state}"), (path, line))
         if marks:
             node.expand()

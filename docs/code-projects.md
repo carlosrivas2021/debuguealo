@@ -105,7 +105,8 @@ with a condition or log message it removes the breakpoint together with them.
 
 The gutter shows **●** for a plain breakpoint, **◆** for a conditional one and a blue **◇**
 for a logpoint. The file's tree entry shows the details, for example
-**Line 4 · if user_id == 42 · pending** or **Line 7 · log: order {order.id} received · pending**.
+**Line 4 · if user_id == 42 · pending** or **Line 7 · log: order {order.id} received · pending**;
+a line with both shows the condition and the message.
 Changes apply to an active debug session immediately.
 
 Conditions and log messages work with Python, Go and Node debugging and with Python and Go

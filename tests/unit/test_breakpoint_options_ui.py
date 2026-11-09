@@ -163,3 +163,13 @@ async def test_editing_a_condition_while_debugging_updates_the_session(monkeypat
             condition='answer == 0')}))
         await pilot.click('#code-continue')
         await until(pilot, lambda: 'Exited: 0' in rendered(app, '#code-run-state'))
+
+
+async def test_label_shows_condition_and_log_message_together(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        await edit(pilot, app, condition='answer > 1', log='seen {answer}')
+        assert labels(browser) == ['Line 4 · if answer > 1 · log: seen {answer} · pending']
+        assert '◇' in glyph(browser, 4)
