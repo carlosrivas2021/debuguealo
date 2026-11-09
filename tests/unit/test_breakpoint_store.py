@@ -139,3 +139,28 @@ def test_breakpoint_options_normalizes_blank_fields():
         breakpoint_options("x" * 1001, None)
     # The limit applies to the trimmed text.
     assert breakpoint_options(" " + "x" * 1000, None) == BreakpointOptions(condition="x" * 1000)
+
+
+def test_save_with_invalid_options_keeps_the_existing_file(tmp_path):
+    from debugpilot.storage.breakpoints import BreakpointOptions
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    store.save({(root, source): {2}}, {(root, source): {2: BreakpointOptions(condition="a")}})
+    before = store.path.read_bytes()
+    with pytest.raises(ConfigurationError, match="Cannot save Code breakpoints"):
+        store.save({(root, source): {2}},
+                   {(root, source): {2: BreakpointOptions(condition="x" * 1001)}})
+    assert store.path.read_bytes() == before
+
+
+def test_save_ignores_options_of_files_without_marks_even_with_unusable_paths(tmp_path):
+    from debugpilot.storage.breakpoints import BreakpointOptions
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    store.save({(root, source): {2}}, {
+        (root, source): {2: BreakpointOptions(condition="kept")},
+        ("relative", "path.py"): {1: BreakpointOptions(condition="no marks")},
+    })
+    assert store.load_options() == {(root, source): {2: BreakpointOptions(condition="kept")}}

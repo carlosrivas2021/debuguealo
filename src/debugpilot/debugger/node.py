@@ -10,7 +10,12 @@ from urllib.request import url2pathname
 
 from debugpilot.debugger.dap import DebugError
 from debugpilot.debugger.inspector import InspectorClient
-from debugpilot.debugger.python import PythonDebugSession, _breakpoints
+from debugpilot.debugger.python import (
+    PythonDebugSession,
+    _breakpoints,
+    _intent,
+    _line_options,
+)
 from debugpilot.storage.code_projects import is_npm_command, valid_node_target
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
@@ -21,6 +26,35 @@ _GRAMMAR = (
 )
 _ANSI = re.compile(r'\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]')
 _ENDPOINT = re.compile(r'^Debugger listening on (ws://127\.0\.0\.1:[1-9]\d*/[\da-f-]{36})$')
+
+
+def _js_template(message):
+    """A JS template literal for a logpoint; {expr} parts are interpolated, the rest literal."""
+    parts, rest = [], message
+    while rest:
+        start = rest.find('{')
+        end = rest.find('}', start + 1) if start >= 0 else -1
+        if start < 0 or end < 0:
+            parts.append(_js_literal(rest))
+            break
+        parts.append(_js_literal(rest[:start]))
+        parts.append(f'${{({rest[start + 1:end]})}}')
+        rest = rest[end + 1:]
+    return '`' + ''.join(parts) + '`'
+
+
+def _js_literal(text):
+    return text.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
+
+
+def cdp_condition(options):
+    """CDP has no logpoints: log through the condition and return false, like VS Code."""
+    if options is None:
+        return ''
+    if not options.log_message:
+        return options.condition or ''
+    log = f'console.log({_js_template(options.log_message)}), false'
+    return f'({options.condition}) && ({log})' if options.condition else log
 
 
 def _source(url):
@@ -111,7 +145,7 @@ class NodeDebugSession(PythonDebugSession):
         elif method == 'transportClosed' and not self._exiting:
             self._event({'event': 'transportClosed', 'body': params})
 
-    async def start(self, profile, breakpoints):
+    async def start(self, profile, breakpoints, options=None):
         if self.state not in {'idle', 'closed'}:
             raise DebugError('A debug session is already active; Stop before starting again.')
         command = profile.command
@@ -119,8 +153,7 @@ class NodeDebugSession(PythonDebugSession):
             command = profile.node_debug
         if not valid_node_target(command):
             raise DebugError(_GRAMMAR)
-        intent = dict(_breakpoints(profile.root, source, lines)
-                      for source, lines in breakpoints.items())
+        intent, start_options = _intent(profile.root, breakpoints, options)
         try:
             argv = command_argv(tuple(command))
         except RuntimeError as error:
@@ -130,6 +163,7 @@ class NodeDebugSession(PythonDebugSession):
         self.profile = profile
         self.requested_breakpoints = intent
         self.verified_breakpoints = {}
+        self.breakpoint_options = {}
         self.exit_code = None
         self.thread_id = None
         self.events = asyncio.Queue()
@@ -158,7 +192,7 @@ class NodeDebugSession(PythonDebugSession):
                 await self._client.request('Runtime.enable')
                 await self._client.request('Debugger.enable')
                 for path, lines in intent.items():
-                    await self.set_breakpoints(path, lines)
+                    await self.set_breakpoints(path, lines, start_options.get(path))
                 await self._client.request('Runtime.runIfWaitingForDebugger')
                 await self._paused.wait()
                 identity = await self._client.request('Runtime.evaluate', {
@@ -191,23 +225,27 @@ class NodeDebugSession(PythonDebugSession):
         finally:
             self._starting = None
 
-    async def set_breakpoints(self, source, lines):
+    async def set_breakpoints(self, source, lines, options=None):
         if self.profile is None or self._client is None:
             raise DebugError('No active debug session.')
         path, intent = _breakpoints(self.profile.root, source, lines)
+        line_options = _line_options(intent, options)
         previous = self.verified_breakpoints.get(path, [])
         for entry in previous:
             await self._client.request('Debugger.removeBreakpoint', {'breakpointId': entry['id']})
         entries = []
         source_url = (await asyncio.to_thread(Path(path).resolve)).as_uri()
         for line in intent:
-            result = await self._client.request('Debugger.setBreakpointByUrl', {
-                'url': source_url, 'lineNumber': line - 1,
-            })
+            request = {'url': source_url, 'lineNumber': line - 1}
+            condition = cdp_condition(line_options.get(line))
+            if condition:
+                request['condition'] = condition
+            result = await self._client.request('Debugger.setBreakpointByUrl', request)
             locations = result.get('locations', [])
             entries.append({'id': result['breakpointId'], 'verified': bool(locations),
                             'line': locations[0]['lineNumber'] + 1 if locations else line})
         self.requested_breakpoints[path] = intent
+        self.breakpoint_options[path] = line_options
         self.verified_breakpoints[path] = entries
         self._emit({'event': 'breakpoints', 'body': {'path': path}})
         return entries
