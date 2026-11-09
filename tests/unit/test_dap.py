@@ -78,3 +78,41 @@ async def test_dap_pending_request_fails_boundedly(failure):
         finally:
             await client.close()
         await asyncio.wait_for(finished.wait(), 2)
+
+
+@pytest.mark.parametrize('body', [
+    {'error': {'id': 3000, 'format': 'Failed to launch: Build error: undefined: x'}},
+    None,
+], ids=['with-detail', 'without-detail'])
+async def test_request_without_deadline_outlasts_client_timeout_and_keeps_failure_detail(body):
+    finished = asyncio.Event()
+
+    async def adapter(reader, writer):
+        try:
+            request = await receive(reader)
+            # Slower than the client's own 0.2 s timeout, like a Delve build.
+            await asyncio.sleep(0.5)
+            response = {'type': 'response', 'request_seq': request['seq'],
+                        'success': False, 'message': 'Failed to launch'}
+            if body is not None:
+                response['body'] = body
+            await send(writer, response)
+            await reader.read()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            finished.set()
+
+    async with await asyncio.start_server(adapter, '127.0.0.1', 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection('127.0.0.1', port)
+        client = DAPClient(reader, writer, lambda event: None, timeout=0.2)
+        try:
+            with pytest.raises(DebugError) as raised:
+                await client.request('launch', deadline=None)
+            assert str(raised.value) == 'Failed to launch'
+            expected = body['error']['format'] if body else None
+            assert raised.value.detail == expected
+        finally:
+            await client.close()
+        await asyncio.wait_for(finished.wait(), 2)
