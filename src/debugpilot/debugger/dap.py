@@ -8,6 +8,23 @@ import json
 class DebugError(RuntimeError):
     """Debug startup, protocol, or adapter error; never a request to run normally."""
 
+    # The adapter's detailed text for a failed response, such as Delve's build output.
+    detail: str | None = None
+
+
+def _response_error(message):
+    error = DebugError(message.get('message', 'DAP failure'))
+    body = message.get('body')
+    failure = body.get('error') if isinstance(body, dict) else None
+    detail = failure.get('format') if isinstance(failure, dict) else None
+    if isinstance(detail, str) and detail.strip():
+        error.detail = detail.strip()
+    return error
+
+
+# Sentinel: use the client's own timeout. None is a valid explicit value (no deadline).
+_CLIENT_TIMEOUT = object()
+
 
 class DAPClient:
     def __init__(self, reader, writer, on_event, *, timeout=15):
@@ -29,13 +46,14 @@ class DAPClient:
         await self.writer.drain()
         return self._sequence
 
-    async def request(self, command, arguments=None):
+    async def request(self, command, arguments=None, *, deadline=_CLIENT_TIMEOUT):
+        """Send one request; ``deadline=None`` waits with no limit (for example a build)."""
         # Register before sending; a response can arrive during drain().
         sequence = self._sequence + 1
         future = asyncio.get_running_loop().create_future()
         self._pending[sequence] = future
         try:
-            async with asyncio.timeout(self.timeout):
+            async with asyncio.timeout(self.timeout if deadline is _CLIENT_TIMEOUT else deadline):
                 await self._send({'type': 'request', 'command': command,
                                   'arguments': arguments or {}})
                 return await future
@@ -64,7 +82,7 @@ class DAPClient:
                         if message.get('success'):
                             future.set_result(message.get('body', {}))
                         else:
-                            future.set_exception(DebugError(message.get('message', 'DAP failure')))
+                            future.set_exception(_response_error(message))
                 elif message['type'] == 'event':
                     self.on_event(message)
                 elif message['type'] == 'request':
