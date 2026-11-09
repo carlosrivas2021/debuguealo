@@ -85,8 +85,8 @@ an inline confirmation with the pinned profile; changing its saved configuration
 confirmation invalidates the preview. Escape cancels without running Docker. Builds
 and recreation may interrupt services; inspect Docker after partial failures.
 
-Selecting a container shows detail cards and selecting a profile shows a project
-overview; neither streams logs. **Ctrl+L** opens the selection's logs (combined project
+Selecting a container shows detail cards, with live CPU and memory for a running
+container, and selecting a profile shows a project overview; neither streams logs. **Ctrl+L** opens the selection's logs (combined project
 logs are tagged by container origin) and **D** or **Esc** closes them. **Ctrl+R**
 reconnects open logs. Dashboard logs show only each container's current execution. Successful
 recreation refreshes inventory, clears the old view and reconnects after container IDs

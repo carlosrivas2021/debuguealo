@@ -12,8 +12,8 @@ S5. Approved design verbatim: "**Se corta solo** cuando cambiás la selección, 
 ## Tasks
 T1 | S3,S4 | done: worker `stats` (stream=0, one-shot=1, bounded_json) accepted by serve; container_name() shared with logs; ContainerStats.from_docker (cgroup v1/v2, stopped -> None) and cpu_percent | route: inline | Risk: none | commit: see PR 1
 T2 | S3 | done: _inventory_records(request) serves inventory and stats on one worker and lock; DockerService/engine/protocol container_stats(); RED ImportError/AttributeError -> GREEN unit 6 + real Docker 2 (busy container >10% CPU, stopped has no values); worker/service/integration tests pass except the stale logs test fixed by PR #25 | route: inline | Risk: none | commit: see PR 1
-T3 | S2,S4,S5 | todo: details card CPU/memory rows; 2 s polling only for the selected, visible container; stops on selection change, hidden card, app exit | route: inline | commit: -
-T4 | S1-S5 | todo: docs and verification | route: inline | commit: -
+T3 | S2,S4,S5 | done: Status card CPU/Memory rows (— until two samples; memory with limit %); app _stats_loop samples only _stats_target (selected running container with its card shown) per refresh_interval, woken on target change; no Docker call without a target; cancelled on unmount; engine raises LifecycleError for providers without stats -> dashes; RED 4 failed -> GREEN 5 passed; TUI suite 200 passed | route: inline | Risk: none | commit: see PR 2
+T4 | S1-S5 | done: docs/tui.md explains sampling (no stream, no extra process, when it stops) and README mentions live CPU/memory | route: inline | commit: see PR 2
 
 ## Log
 L1. 2026-11-09 user concern (S1), then "si" approving the design quoted in S2-S5.
