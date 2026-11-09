@@ -97,7 +97,9 @@ async def test_success_reconnects_current_execution_and_discards_stale_view(
         viewer = app.query_one(LogViewer)
         await until(pilot, lambda: bool(viewer.buffer.entries()))
         await pilot.press(key, "enter")
-        await until(pilot, lambda: app._inline_task is not None and app._inline_task.done())
+        await until(
+            pilot, lambda: "orders" in app._compose_tasks and app._compose_tasks["orders"].done()
+        )
         await until(pilot, lambda: any("run 1 startup" in e.text for e in viewer.buffer.entries()))
         assert len(service.runs) == 1
         container_entries = [
@@ -106,7 +108,7 @@ async def test_success_reconnects_current_execution_and_discards_stale_view(
             if entry.text.startswith(("[api]", "[worker]"))
         ]
         assert set(container_entries) == {"[api] run 1 startup", "[worker] run 1 startup"}
-        output = app._compose_output_buffer.entries()
+        output = app._compose_outputs.get("orders").entries()
         assert any("[Compose · Orders] Starting" in e.text for e in output)
         assert any("[Compose · Orders] Compose exited 0" in e.text for e in output)
         assert not any("[Compose · Orders]" in e.text for e in viewer.buffer.entries())
@@ -137,14 +139,14 @@ async def test_failed_or_cancelled_operation_preserves_current_stream(
         saved = app._compose_store.path.read_bytes()
         opened, closed = docker.opened.copy(), docker.closed.copy()
         await pilot.press("r", "enter")
-        await until(pilot, lambda: app._inline_task is not None)
+        await until(pilot, lambda: "orders" in app._compose_tasks)
         if cancel:
             await pilot.press("escape")
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         entries = viewer.buffer.entries()
         assert all(entry in entries for entry in before)
         if not cancel:
-            output = app._compose_output_buffer.entries()
+            output = app._compose_outputs.get("orders").entries()
             assert any("Complete" in entry.text for entry in output)
             assert any("Compose exited 1" in entry.text for entry in output)
         assert docker.opened == opened and docker.closed == closed
@@ -165,7 +167,7 @@ async def test_completion_does_not_retarget_unrelated_selection(tmp_path, monkey
         await until(pilot, lambda: docker.opened[-1:] == ["catalog-api"])
         count = len(docker.opened)
         service.release.set()
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         assert app.selected_container.id == "catalog-api"
         assert len(docker.opened) == count
 
@@ -216,7 +218,7 @@ async def test_temporary_stopped_state_does_not_lose_restart_target(tmp_path, mo
         await until(pilot, lambda: app.selected_container is None)
         docker.inventory[index] = original
         service.release.set()
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         await until(pilot, lambda: app.selected_project == "orders")
         assert app._selection_key == "profile:Orders"
         await until(

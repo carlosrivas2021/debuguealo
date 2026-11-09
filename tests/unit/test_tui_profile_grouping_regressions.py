@@ -150,7 +150,10 @@ async def test_child_actions_retain_child_selection_and_log_target(tmp_path, mon
                 await pilot.press("escape")
             else:
                 await pilot.click("#inline-compose-confirm")
-                await until(pilot, lambda: app._inline_task is not None and app._inline_task.done())
+                await until(
+                    pilot,
+                    lambda: "owned" in app._compose_tasks and app._compose_tasks["owned"].done(),
+                )
         await pilot.pause(0.1)
         assert app._selection_key == child_key
         assert app.selected_container is not None and app.selected_container.id == "b"
