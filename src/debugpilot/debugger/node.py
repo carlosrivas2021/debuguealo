@@ -29,18 +29,38 @@ _ENDPOINT = re.compile(r'^Debugger listening on (ws://127\.0\.0\.1:[1-9]\d*/[\da
 
 
 def _js_template(message):
-    """A JS template literal for a logpoint; {expr} parts are interpolated, the rest literal."""
-    parts, rest = [], message
-    while rest:
-        start = rest.find('{')
-        end = rest.find('}', start + 1) if start >= 0 else -1
-        if start < 0 or end < 0:
-            parts.append(_js_literal(rest))
-            break
-        parts.append(_js_literal(rest[:start]))
-        parts.append(f'${{({rest[start + 1:end]})}}')
-        rest = rest[end + 1:]
+    """A JS template literal for a logpoint.
+
+    A balanced {expr} is interpolated, so it may contain braces such as an object literal.
+    An empty {} or an unclosed brace stays literal text: either would otherwise make the
+    condition throw, and Node would then neither log nor report anything.
+    """
+    parts, literal, index = [], [], 0
+    while index < len(message):
+        if message[index] == '{':
+            end = _closing_brace(message, index)
+            if end is not None and message[index + 1:end].strip():
+                parts.append(_js_literal(''.join(literal)))
+                literal = []
+                parts.append(f'${{({message[index + 1:end]})}}')
+                index = end + 1
+                continue
+        literal.append(message[index])
+        index += 1
+    parts.append(_js_literal(''.join(literal)))
     return '`' + ''.join(parts) + '`'
+
+
+def _closing_brace(text, start):
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == '{':
+            depth += 1
+        elif text[index] == '}':
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
 
 
 def _js_literal(text):
