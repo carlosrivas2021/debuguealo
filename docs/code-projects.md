@@ -87,6 +87,38 @@ Do not use this runner for detached background services intended to survive the 
 The red dot stays aligned while scrolling and reappears when you reopen the marked
 file. Red indicates requested intent, **not debugger verification**.
 
+## Conditional breakpoints and logpoints
+
+Press **Shift+F9** on a line to open the breakpoint dialog:
+
+- **Condition**: the debugger stops only when the expression is true in the target's
+  language, for example `user_id == 42` (Python, Go) or `userId === 42` (Node).
+- **Log message**: makes a **logpoint**. It writes the message to the debug output and
+  never stops. `{expression}` parts are replaced with their value, for example
+  `order {order.id} received`. With a condition too, it logs only when the condition holds.
+
+Leave both fields empty for a plain breakpoint. **Remove** deletes the breakpoint, and
+**Cancel** or **Escape** keeps it unchanged. F9 still toggles a plain breakpoint; on a line
+with a condition or log message it removes the breakpoint together with them.
+
+The gutter shows **●** for a plain breakpoint, **◆** for a conditional one and a blue **◇**
+for a logpoint. The file's tree entry shows the details, for example
+**Line 4 · if user_id == 42 · pending** or **Line 7 · log: order {order.id} received · pending**.
+Changes apply to an active debug session immediately.
+
+Conditions and log messages work with Python, Go and Node debugging and with Python and Go
+attach. The debugger evaluates them, not debugealo, so an invalid expression is handled by
+each debugger: Python reports the error in the debug output, Go marks the breakpoint
+**unverified** in the file tree, and Node accepts it but never stops there. Node has no
+native logpoints: the message is
+logged with `console.log` from a condition that never stops, as VS Code does. On Node, a
+conditional breakpoint on the very first line of a program can stop once at startup.
+
+They are saved with the breakpoint in `projects/breakpoints.json`, each up to 1000
+characters. A file without conditions or log messages keeps exactly the previous format.
+Versions of debugealo older than this feature refuse a file that contains them, so
+removing them, or going back to plain breakpoints, keeps the file readable by those versions.
+
 Source files and `launch.json` are never edited by this pane. Requested breakpoints use
 1-based line numbers, are isolated by project root and file, and persist in the central
 `projects/breakpoints.json` beside the Code `launch.json`. Two profiles sharing a root

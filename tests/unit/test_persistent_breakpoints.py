@@ -71,7 +71,7 @@ async def test_breakpoint_write_failure_keeps_ui_responsive_without_saved_claim(
     app, roots, _ = debug_app(monkeypatch, tmp_path)
     state = tmp_path / '.debugpilot' / 'projects' / 'breakpoints.json'
 
-    def fail_save(_store, _marks):
+    def fail_save(_store, _marks, _options=None):
         raise ConfigurationError(
             "Cannot save Code breakpoints; check the projects directory permissions."
         )

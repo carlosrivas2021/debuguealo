@@ -17,7 +17,10 @@ from debugpilot.tui.source_browser import SourceBrowser
 
 class CodeWorkspace(Vertical):
     # Shown in the footer only while focus is inside Code; the app-level F9 stays hidden.
-    BINDINGS = [Binding("f9", "app.toggle_breakpoint", "Breakpoint")]
+    BINDINGS = [
+        Binding("f9", "app.toggle_breakpoint", "Breakpoint"),
+        Binding("shift+f9", "app.edit_breakpoint", "Condition"),
+    ]
 
     def __init__(self):
         super().__init__(id="code-workspace")
@@ -356,6 +359,15 @@ class CodeWorkspace(Vertical):
             )
             return
         browser.toggle_breakpoint()
+
+    def edit_breakpoint(self):
+        browser = self.query_one(SourceBrowser)
+        if browser.file_path is None:
+            self.app.notify(
+                "Open a source file before editing a breakpoint.", severity="warning"
+            )
+            return
+        browser.edit_breakpoint()
 
     @on(SourceBrowser.BreakpointsChanged)
     def breakpoints_changed(self, event):
