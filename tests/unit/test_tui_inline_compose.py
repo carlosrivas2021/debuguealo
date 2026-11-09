@@ -88,9 +88,11 @@ async def test_running_inline_operation_rejects_overlap_and_cancels_cleanly(tmp_
         app.action_recreate_selected()
         app.action_build_selected()
         assert app.screen is screen and len(service.runs) == 1
-        await pilot.click("#inline-compose-cancel")
+        # The bar is freed on confirm (S3); Esc cancels the selected project's run (S5).
+        assert not app.query_one("#inline-compose").display
+        await pilot.press("escape")
         await until(pilot, service.closed.is_set)
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         assert not app.query_one("#inline-compose").display
 
 
@@ -130,7 +132,7 @@ async def test_enter_immediately_after_shortcut_confirms_once(
         assert plan.project.project_name == "orders"
         assert plan.service is None
         assert app.screen is screen
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         await pilot.press("enter")
         assert len(service.runs) == 1
 
@@ -172,14 +174,14 @@ async def test_inline_failure_shows_literal_output_and_missing_image_consent(tmp
             lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
         )
         assert app.screen is screen
-        output = app._compose_output_buffer
+        output = app._compose_outputs.get("orders")
         entries = output.entries()
         assert len(service.runs) == 1
         assert service.runs[0][1:] == (True, False)
         assert any("No such image: alpine:3.22" in entry.text for entry in entries)
         assert any("[red]literal[/red]" in entry.text for entry in entries)
         await pilot.click("#inline-compose-confirm")
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         assert len(service.runs) == 2
         assert service.runs[1][1:] == (True, True)
         assert any("retry failed" in entry.text for entry in output.entries())
@@ -225,7 +227,7 @@ async def test_missing_image_consent_cancel_never_retries(tmp_path, monkeypatch,
             await pilot.click("#inline-compose-cancel")
         else:
             await pilot.press("escape")
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         assert len(service.runs) == 1
         assert app.query_one("#launch-profiles").has_focus
 
@@ -257,8 +259,8 @@ async def test_generic_failure_shows_output_without_download_action(tmp_path, mo
         screen = app.screen
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
-        await until(pilot, lambda: app._inline_task.done())
-        output = app._compose_output_buffer
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
+        output = app._compose_outputs.get("orders")
         assert app.screen is screen
         assert any(
             "registry authentication failed" in entry.text for entry in output.entries()
@@ -304,12 +306,12 @@ async def test_changed_profile_cancels_pending_download_retry(tmp_path, monkeypa
         document["configurations"][0]["custom"] = "changed"
         app._launch_store.path.write_text(json.dumps(document))
         await pilot.click("#inline-compose-confirm")
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         assert len(service.runs) == 1
         assert app._inline_plan is None
         assert any(
             "retry cancelled" in entry.text.lower()
-            for entry in app._compose_output_buffer.entries()
+            for entry in app._compose_outputs.get("orders").entries()
         )
 
 
@@ -339,8 +341,8 @@ async def test_empty_failure_output_has_actionable_fallback(tmp_path, monkeypatc
         await until(pilot, lambda: ready(app))
         select_key(app, "profile:Orders")
         await pilot.press("r", "enter")
-        await until(pilot, lambda: app._inline_task.done())
-        entries = app._compose_output_buffer.entries()
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
+        entries = app._compose_outputs.get("orders").entries()
         assert any("Compose exited 9" in entry.text for entry in entries)
         assert not any("No output was retained" in entry.text for entry in entries)
 
@@ -381,8 +383,8 @@ async def test_retry_failure_is_shown_without_automatic_loop(tmp_path, monkeypat
             lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
         )
         await pilot.click("#inline-compose-confirm")
-        await until(pilot, lambda: app._inline_task.done())
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
         assert len(service.runs) == 2
-        entries = app._compose_output_buffer.entries()
+        entries = app._compose_outputs.get("orders").entries()
         assert any("retry failed" in entry.text for entry in entries)
         assert any("retry exited 1" in entry.text for entry in entries)

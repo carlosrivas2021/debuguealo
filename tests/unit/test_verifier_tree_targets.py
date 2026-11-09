@@ -143,7 +143,9 @@ async def test_recreate_same_project_profiles_keep_options_and_reject_stale_prof
             previous = len(service.runs)
             unchanged(originals)
             assert await pilot.click("#inline-compose-confirm")
-            await until(pilot, lambda: app._inline_task is not None and app._inline_task.done())
+            await until(
+                pilot, lambda: "demo" in app._compose_tasks and app._compose_tasks["demo"].done()
+            )
             assert len(service.runs) == previous + 1
             plan, confirmed = service.runs[-1]
             assert confirmed is True and plan.project == project and plan.service is None
