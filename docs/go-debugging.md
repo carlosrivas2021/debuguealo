@@ -174,8 +174,8 @@ The attach request uses DAP `mode: "remote"` and maps the local `workspaceFolder
 `remoteRoot`. Breakpoints are sent using mapped remote paths; stack-frame sources are mapped
 back to local workspace paths and checked for containment before Code opens them. The API
 reuses the Python debugger's inspection and stepping methods. It supports breakpoints,
-stack, scopes, variables, stepping, and continue, but not expression evaluation or
-interactive debug stdin.
+stack, scopes, variables, stepping, continue and watch expressions, but not interactive
+debug stdin.
 
 `close()` clears only this session's registered remote breakpoints, then resumes the target
 if it is stopped before sending DAP `disconnect` with `terminateDebuggee: false`. Requested
@@ -193,5 +193,6 @@ than claiming it resumed. Delve must already be running and reachable on the con
 endpoint. The backend does not start or stop Delve, manage the container, or modify the
 target's source tree.
 
-Go launch support does not include tests, binary targets, persistent breakpoints,
-expression evaluation or interactive debug stdin.
+Go launch support does not include tests, binary targets, persistent breakpoints or
+interactive debug stdin. Watch expressions are evaluated by Delve with its own expression
+syntax.
