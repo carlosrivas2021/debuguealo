@@ -54,6 +54,13 @@ change F5's existing run command. Delve must already be installed and available 
 on the application PATH; the backend does not install or update tools. Missing Delve has
 an explicit error and does not launch Go in run mode.
 
+Delve compiles the program before debugging starts, and the state shows `Debug building`
+meanwhile. The build has no deadline, because a first build with an empty Go build cache or
+a large project can take minutes without anything being wrong; press **Stop** to cancel it.
+Connecting to Delve and configuring the session still use the startup timeout. A failed
+build is reported at once as `Unable to build the Go program: ...`, and the compiler output
+appears in the debug output.
+
 ## Code UI walkthrough
 
 Create a dedicated sample in a trusted folder, for example `go-sample/main.go`:

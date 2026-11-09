@@ -1,8 +1,10 @@
 """Required real Go/Delve evidence through the public session API; no tool skips."""
 
 import asyncio
+import os
 import shutil
 import socket
+import sys
 from pathlib import Path
 
 import pytest
@@ -44,10 +46,10 @@ async def test_real_breakpoint_stack_locals_steps_and_exit(tmp_path, target, mon
     launch_requests = []
     request = DAPClient.request
 
-    async def capture_request(client, command, arguments=None):
+    async def capture_request(client, command, arguments=None, **options):
         if command == 'launch':
             launch_requests.append(arguments.copy())
-        return await request(client, command, arguments)
+        return await request(client, command, arguments, **options)
 
     monkeypatch.setattr(
         'debugpilot.debugger.go.DAPClient.request', capture_request)
@@ -244,3 +246,125 @@ async def test_stop_removes_owned_descendant(tmp_path):
         assert session.state == 'closed'
     finally:
         await session.close()
+
+
+def slow_go(tmp_path, monkeypatch, seconds):
+    """Put a `go` on PATH whose builds take `seconds` longer; it records each build PID."""
+    real_go = shutil.which('go')
+    tools = tmp_path.parent / f'{tmp_path.name}-slow-go'
+    tools.mkdir()
+    builds = tools / 'builds'
+    wrapper = tools / 'go'
+    wrapper.write_text(
+        '#!/bin/sh\n'
+        f'if [ "$1" = build ]; then echo $$ >> "{builds}"; sleep {seconds}; fi\n'
+        f'exec "{real_go}" "$@"\n')
+    wrapper.chmod(0o755)
+    monkeypatch.setenv('PATH', f'{tools}{os.pathsep}{os.environ["PATH"]}')
+    return builds
+
+
+def running(pid):
+    status = Path(f'/proc/{pid}/status')
+    return status.exists() and 'zombie' not in status.read_text(errors='replace').lower()
+
+
+def collect_states(states):
+    return lambda message: (
+        states.append(message['body']['state']) if message.get('event') == 'state' else None)
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='the slow go wrapper is a POSIX shell script')
+async def test_build_longer_than_startup_timeout_is_not_an_error(tmp_path, monkeypatch):
+    profile = project(tmp_path)
+    (tmp_path / 'main.go').write_text('package main\nfunc main(){}\n')
+    slow_go(tmp_path, monkeypatch, 4)
+    states = []
+    session = GoDebugSession(on_event=collect_states(states), timeout=2)
+    try:
+        await asyncio.wait_for(session.start(profile, {}), 60)
+        assert states[:2] == ['starting', 'building']
+        assert 'running' in states or 'closed' in states
+    finally:
+        await session.close()
+
+
+async def test_build_error_is_reported_without_waiting_for_a_timeout(tmp_path):
+    profile = project(tmp_path)
+    (tmp_path / 'main.go').write_text('package main\nfunc main(){ undefinedCall() }\n')
+    output = []
+    session = GoDebugSession(on_output=lambda category, text: output.append(text), timeout=60)
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    with pytest.raises(DebugError, match='^Unable to build the Go program: .*Build error'):
+        await asyncio.wait_for(session.start(profile, {}), 120)
+    # Generous for a cold build, still well below the 60 s startup timeout.
+    assert loop.time() - started < 45
+    # Delve sends the compiler message to the debug output, which the UI shows.
+    assert 'undefinedCall' in ''.join(output)
+    assert session.state == 'closed'
+    await session.close()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='the slow go wrapper is a POSIX shell script')
+async def test_stop_during_build_cancels_start_and_ends_the_build(tmp_path, monkeypatch):
+    profile = project(tmp_path)
+    (tmp_path / 'main.go').write_text('package main\nfunc main(){}\n')
+    builds = slow_go(tmp_path, monkeypatch, 30)
+    states = []
+    session = GoDebugSession(on_event=collect_states(states), timeout=2)
+    task = asyncio.create_task(session.start(profile, {}))
+    async with asyncio.timeout(30):
+        while not builds.exists() or 'building' not in states:  # noqa: ASYNC110
+            await asyncio.sleep(0.05)
+    await session.close()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert session.state == 'closed'
+    pid = int(builds.read_text().split()[0])
+    async with asyncio.timeout(5):
+        while running(pid):  # noqa: ASYNC110 — poll the observable build process
+            await asyncio.sleep(0.05)
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='the fake dlv is a POSIX script')
+async def test_delve_crash_during_build_keeps_the_startup_error(tmp_path, monkeypatch):
+    profile = project(tmp_path)
+    (tmp_path / 'main.go').write_text('package main\nfunc main(){}\n')
+    tools = tmp_path.parent / f'{tmp_path.name}-fake-dlv'
+    tools.mkdir()
+    fake = tools / 'dlv'
+    # Answers initialize like Delve, then prints a fatal error and dies on launch.
+    fake.write_text(f'''#!{sys.executable}
+import json, os, socket, sys
+port = int(sys.argv[sys.argv.index('--listen') + 1].rsplit(':', 1)[1])
+server = socket.create_server(('127.0.0.1', port))
+connection, _ = server.accept()
+stream = connection.makefile('rb')
+while True:
+    header = b''
+    while not header.endswith(b'\\r\\n\\r\\n'):
+        header += stream.read(1)
+    request = json.loads(stream.read(int(header.split(b':')[1])))
+    if request['command'] == 'launch':
+        print('fatal: delve crashed while building', file=sys.stderr, flush=True)
+        os._exit(3)
+    data = json.dumps({{'type': 'response', 'seq': 1, 'request_seq': request['seq'],
+                        'command': request['command'], 'success': True, 'body': {{}}}}).encode()
+    connection.sendall(b'Content-Length: %d\\r\\n\\r\\n' % len(data) + data)
+''')
+    fake.chmod(0o755)
+    monkeypatch.setenv('PATH', f'{tools}{os.pathsep}{os.environ["PATH"]}')
+    session = GoDebugSession(timeout=30)
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    with pytest.raises(DebugError) as raised:
+        await asyncio.wait_for(session.start(profile, {}), 60)
+    message = str(raised.value)
+    assert message.startswith(f'Unable to start Go debugging with Delve at {fake}.')
+    assert 'No run-mode fallback.' in message
+    # The reason replaces the old generic 'startup timed out' after the full timeout.
+    assert 'Debug adapter disconnected' in message
+    assert loop.time() - started < 10
+    assert session.state == 'closed'
+    await session.close()

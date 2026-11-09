@@ -60,12 +60,30 @@ func main() {
     local_source.write_text(source, encoding='utf-8')
     source_bytes = local_source.read_bytes(), remote_source.read_bytes()
 
+    go_env = {**os.environ, 'GOTOOLCHAIN': 'local', 'GOWORK': 'off',
+              'GOPROXY': 'off', 'GOSUMDB': 'off'}
+    # Build first, with the same unoptimized flags as `dlv debug`. A cold build cache can
+    # take tens of seconds under load and must not eat into Delve's startup deadline.
+    binary = tmp_path / 'target'
+    build = await asyncio.create_subprocess_exec(
+        shutil.which('go') or 'go', 'build', '-gcflags=all=-N -l', '-o', str(binary), '.',
+        cwd=remote, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        env=go_env,
+    )
+    try:
+        async with asyncio.timeout(300):
+            build_output, _ = await build.communicate()
+    except TimeoutError:
+        build.kill()
+        await build.wait()
+        pytest.fail('Building the Go fixture took longer than 300 s.')
+    assert build.returncode == 0, build_output.decode(errors='replace')
+
     process = await asyncio.create_subprocess_exec(
-        dlv, 'debug', '--headless', '--accept-multiclient', '--api-version=2',
-        '--listen', f'127.0.0.1:{dap_port}', '.', cwd=remote,
+        dlv, 'exec', str(binary), '--headless', '--accept-multiclient', '--api-version=2',
+        '--listen', f'127.0.0.1:{dap_port}', cwd=remote,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, 'GOTOOLCHAIN': 'local', 'GOWORK': 'off',
-             'GOPROXY': 'off', 'GOSUMDB': 'off'},
+        env=go_env,
     )
     startup_lines = []
     listening = asyncio.Event()
