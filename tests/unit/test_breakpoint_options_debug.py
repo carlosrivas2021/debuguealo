@@ -146,7 +146,16 @@ async def test_dap_payload_without_options_is_unchanged(tmp_path):
      '(ok) && (console.log(`v=${(v)}`), false)'),
     (BreakpointOptions(log_message='tick `$x` \\ {open'),
      'console.log(`tick \\`\\$x\\` \\\\ {open`), false'),
-], ids=['none', 'condition', 'logpoint', 'both', 'escaped'])
+    (BreakpointOptions(log_message='empty {} braces'),
+     'console.log(`empty {} braces`), false'),
+    (BreakpointOptions(log_message='nested { {a: 1}.a } end'),
+     'console.log(`nested ${( {a: 1}.a )} end`), false'),
+    (BreakpointOptions(log_message='open {x and } then {y}'),
+     'console.log(`open ${(x and )} then ${(y)}`), false'),
+    (BreakpointOptions(log_message='unclosed {x'),
+     'console.log(`unclosed {x`), false'),
+], ids=['none', 'condition', 'logpoint', 'both', 'escaped', 'empty-braces', 'nested-braces',
+        'two-placeholders', 'unclosed'])
 def test_node_condition_expresses_conditions_and_logpoints(options, expected):
     from debugpilot.debugger.node import cdp_condition
 
@@ -177,3 +186,19 @@ async def test_attach_sends_options_with_the_mapped_remote_path(tmp_path, sessio
     key = str(source.resolve())
     assert session.breakpoint_options[key] == {
         1: BreakpointOptions(condition='ready', log_message='value {v}')}
+
+
+async def test_real_node_logpoint_with_nested_braces_logs(tmp_path):
+    profile, source, line = program(tmp_path, 'node')
+    output = []
+    session = NodeDebugSession(on_output=lambda category, text: output.append(text))
+    try:
+        await session.start(profile, {str(source): (line,)}, {
+            str(source): {line: BreakpointOptions(log_message='i={ {v: i}.v } {}')}})
+        name, _ = await next_event(session, 'stopped', 'terminated')
+        assert name == 'terminated'
+        text = ''.join(output)
+        for value in range(5):
+            assert f'i={value} {{}}' in text
+    finally:
+        await session.close()
