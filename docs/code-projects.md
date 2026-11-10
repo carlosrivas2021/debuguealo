@@ -39,12 +39,17 @@ processes. Container action shortcuts are inactive in Code.
 ## Layout
 
 Code is laid out like an IDE: profile names and the file tree on the left (the tree's root
-is the selected profile's folder), source in the center, the **Debug** panel (controls, stack, variables) on the right while a debug
+is the selected profile's folder; the **PROFILES** title shows how many there are), source in
+the center, the **Debug** panel (controls, stack, variables) on the right while a debug
 session is selected, and the bottom area below: the Code terminal for runs or **Debug output**
 for debug sessions. **O** hides or shows the bottom area, the same key that shows the host
 terminal in Containers; typing an "o" in a text field or a terminal still types it. The footer lists the shortcuts
 available in the current area. Selecting a profile shows one bottom view: its live session,
 otherwise the run or debug view you used last for that profile.
+
+The profile list keeps room for six profiles. Drag the gray line between the profiles and
+the files, or press **Alt+Up** / **Alt+Down**, to give either one more rows; the file tree
+always keeps at least four.
 
 **Ctrl+Left** and **Ctrl+Right** move focus between the panes in screen order: profiles,
 file tree and source, wrapping around at either end; from a button they go to the
