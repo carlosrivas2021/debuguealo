@@ -77,3 +77,22 @@ async def test_live_code_terminal_keeps_ctrl_arrows(monkeypatch, tmp_path):
         await press(pilot, 'ctrl+left')
         assert app.focused is terminal
         await pilot.click('#code-stop')
+
+
+async def test_live_code_terminal_receives_o_instead_of_hiding_the_output(monkeypatch, tmp_path):
+    from test_code_run_ui import setup_app
+
+    app = setup_app(monkeypatch, tmp_path, "print('READY', flush=True); input()")
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.click('#area-code')
+        await pilot.press('f5')
+        terminal = app.query_one('#code-terminal')
+        await until(pilot, lambda: 'READY' in terminal.render().plain)
+        terminal.focus()
+        await pilot.pause()
+        sent = []
+        monkeypatch.setattr(terminal._session, 'write', sent.append)
+        await press(pilot, 'o')
+        assert sent == ['o']
+        assert app.query_one('#code-bottom').display
+        await pilot.click('#code-stop')
