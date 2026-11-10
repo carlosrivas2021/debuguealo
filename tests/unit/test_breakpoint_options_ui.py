@@ -267,3 +267,32 @@ async def test_conditions_show_as_dim_hints_after_the_code(monkeypatch, tmp_path
         assert 'if ' not in line3 and 'log:' not in line3
         # A line too long for the view keeps its detail in the panel below instead.
         assert 'if len(long)' not in editor.render_line(5).text
+
+
+async def test_edit_panel_opens_where_the_read_only_panel_is(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        pane = browser.query_one('#source-pane')
+        # Creating: no read-only panel yet, so it opens at the bottom of the source pane.
+        await pilot.press('shift+f9')
+        await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
+        await pilot.pause()
+        box = app.screen.query_one('#breakpoint-box').region
+        assert (box.x, box.width, box.bottom) == (pane.region.x, pane.region.width,
+                                                 pane.region.bottom)
+        app.screen.query_one('#breakpoint-condition', Input).value = 'answer > 40'
+        await pilot.press('enter')
+        await until(pilot, lambda: not isinstance(app.screen, BreakpointDialog))
+        await pilot.pause()
+        info = app.query_one('#breakpoint-info').region
+        # Editing: it opens exactly over the read-only panel.
+        await pilot.press('shift+f9')
+        await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
+        await pilot.pause()
+        box = app.screen.query_one('#breakpoint-box').region
+        assert (box.x, box.width, box.bottom) == (info.x, info.width, info.bottom)
+        editor = browser.query_one(TextArea)
+        assert editor.region.y + 3 - editor.scroll_offset.y < box.y
+        await pilot.press('escape')
