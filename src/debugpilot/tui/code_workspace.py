@@ -24,6 +24,8 @@ class CodeWorkspace(Vertical):
     BINDINGS = [
         Binding("f9", "app.toggle_breakpoint", "Breakpoint"),
         Binding("shift+f9", "app.edit_breakpoint", "Condition"),
+        # Same key as the host terminal in Containers; text fields still type an "o".
+        Binding("o", "app.toggle_code_terminal", "Output"),
         # Priority: the read-only source would otherwise use them for word jumps.
         Binding("ctrl+left", "focus_pane(-1)", "Pane ←", priority=True),
         Binding("ctrl+right", "focus_pane(1)", "Pane →", priority=True),
@@ -75,7 +77,7 @@ class CodeWorkspace(Vertical):
         yield self._browser
 
     def toggle_terminal(self) -> None:
-        """Ctrl+J collapses the bottom area: run terminal or debug output."""
+        """O collapses the bottom area: run terminal or debug output."""
         self._bottom.display = not self._bottom.display
         if not self._bottom.display and self.app.focused in self._bottom.query("*"):
             self.query_one(DataTable).focus()

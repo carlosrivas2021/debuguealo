@@ -13,7 +13,7 @@ from debugpilot.tui.terminal_view import (
     resize_screen,
 )
 
-IDLE_TITLE = "Terminal · click to type · Ctrl+J hide/show"
+IDLE_TITLE = "Terminal · click to type · O hide/show"
 TYPING_TITLE = "Terminal · typing — Esc to leave"
 
 
