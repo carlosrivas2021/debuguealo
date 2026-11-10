@@ -118,15 +118,18 @@ class TerminalSession:
 
     async def _open(
         self, argv: list[str], cwd: Path, dimensions: tuple[int, int],
-        env: dict[str, str] | None = None,
+        env: dict[str, str] | None = None, *, docker_config: bool | None = None,
     ) -> None:
         if not await asyncio.to_thread(cwd.is_dir):
             raise TerminalUnavailable(f"Terminal working directory does not exist: {cwd}")
         if not self._closed:
             await self.close_session()
+        # A private Docker config isolates container shells; by default it follows `env`,
+        # as before. Code runs pass their environment without it.
+        isolate = env is not None if docker_config is None else docker_config
         docker_config = None
         try:
-            if env is not None:
+            if isolate:
                 docker_config = tempfile.TemporaryDirectory(prefix="debugpilot-exec-")
                 env = {**env, "DOCKER_CONFIG": docker_config.name}
             if _windows_platform():

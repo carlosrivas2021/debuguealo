@@ -38,7 +38,7 @@ and controlled reconnect/cancellation. The terminal dashboard adds keyboard sele
 live logs, bounded search/filter/pause controls and explicit connection errors.
 The **Code** area registers project folders using a separate central `projects/launch.json`
 and runs the selected profile without debug using **F5**, with an interactive console and
-**Stop** control. **Shift+F5** debugs Python and supported Go profiles with the same
+**Stop** control; profiles can add environment variables with `env` and `envFile`. **Shift+F5** debugs Python and supported Go profiles with the same
 profile: mark read-only source, pause at a breakpoint, inspect stack/variables, step and
 Continue. **Shift+F9** gives a breakpoint a condition or turns it into a logpoint that writes
 to the debug output without stopping, and the **Watch** section re-evaluates expressions on

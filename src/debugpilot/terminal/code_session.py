@@ -12,15 +12,20 @@ from pathlib import Path
 from debugpilot.terminal.session import TerminalSession, TerminalUnavailable
 
 
-def command_argv(command: tuple[str, ...]) -> list[str]:
-    executable = shutil.which(command[0])
+def command_argv(command: tuple[str, ...], env: dict[str, str] | None = None) -> list[str]:
+    # A profile's PATH decides which executable runs, as it would in a shell.
+    def which(name):
+        # Without a profile environment the lookup stays exactly as before.
+        return shutil.which(name) if env is None else shutil.which(name, path=env.get("PATH"))
+
+    executable = which(command[0])
     if not executable:
         raise TerminalUnavailable(f"Executable not found: {command[0]}")
     if os.name == "nt" and Path(executable).suffix.lower() in {".cmd", ".bat"}:
         # npm's Windows shim is a batch file. Run its JS entry directly to avoid
         # cmd.exe interpreting metacharacters in user-supplied argv arguments.
         entry = Path(executable).parent / "node_modules/npm/bin/npm-cli.js"
-        node = shutil.which("node")
+        node = which("node")
         if Path(executable).stem.lower() != "npm" or not entry.is_file() or not node:
             raise TerminalUnavailable(
                 "Batch launchers are unsupported; use the underlying executable or script."
@@ -38,9 +43,9 @@ class CodeSession(TerminalSession):
         self.error: str | None = None
         self._stopping = False
 
-    async def open_command(self, command, cwd, rows=24, columns=80):
+    async def open_command(self, command, cwd, rows=24, columns=80, env=None):
         await self.close_session()
-        argv = command_argv(tuple(command))
+        argv = command_argv(tuple(command), env)
         self.exit_code = None
         self.error = None
         self._stopping = False
@@ -49,7 +54,8 @@ class CodeSession(TerminalSession):
         status = Path(self._status_dir.name) / "status.json"
         try:
             await self._open(
-                [sys.executable, str(helper), str(status), *argv], cwd, (rows, columns)
+                [sys.executable, str(helper), str(status), *argv], cwd, (rows, columns),
+                env, docker_config=False,
             )
         except BaseException:
             self._cleanup_status()

@@ -7,9 +7,10 @@ import socket
 import sys
 from pathlib import Path
 
+from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger.dap import DAPClient, DebugError
 from debugpilot.storage.breakpoints import BreakpointOptions
-from debugpilot.storage.code_projects import CodeProject
+from debugpilot.storage.code_projects import CodeProject, profile_environment, profile_variables
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
 _GRAMMAR = (
@@ -39,7 +40,8 @@ def _target(profile):
         source = Path(tail[0])
         target = {'program': str(profile.root / source), 'args': tail[1:]}
     try:
-        argv = command_argv(command)
+        # The profile's PATH picks the interpreter, as it does for Run.
+        argv = command_argv(command, _environment(profile))
     except RuntimeError as error:
         raise DebugError(str(error)) from error
     return argv[0], target
@@ -52,6 +54,22 @@ def _breakpoints(root, source, lines):
     if any(type(line) is not int or line < 1 for line in intent):
         raise DebugError('Breakpoints require positive 1-based integer lines.')
     return str(path), intent
+
+
+def _environment(profile):
+    """The profile's full environment (None without env/envFile), as a debug error."""
+    try:
+        return profile_environment(profile)
+    except ConfigurationError as error:
+        raise DebugError(str(error)) from None
+
+
+def _profile_variables(profile):
+    """The profile's env/envFile variables, with configuration errors as debug errors."""
+    try:
+        return profile_variables(profile)
+    except ConfigurationError as error:
+        raise DebugError(str(error)) from None
 
 
 def _line_options(lines, options):
@@ -165,6 +183,7 @@ class PythonDebugSession:
         if self.state not in {'idle', 'closed'}:
             raise DebugError('A debug session is already active; Stop before starting again.')
         interpreter, target = _target(profile)
+        variables = _profile_variables(profile)
         intent, start_options = _intent(profile.root, breakpoints, options)
         self.profile = CodeProject(profile.name, Path(profile.root), tuple(profile.command))
         self.requested_breakpoints = intent
@@ -212,6 +231,7 @@ class PythonDebugSession:
                     'console': 'internalConsole', 'redirectOutput': True,
                     'subProcess': False, 'justMyCode': True,
                     'pythonArgs': ['-u'] if '-u' in profile.command[1:2] else [],
+                    **({'env': variables} if variables else {}),
                     **target,
                 }))
                 await self._initialized.wait()
