@@ -4,6 +4,7 @@ from itertools import islice
 from pathlib import Path
 from stat import S_ISREG
 
+from rich.cells import cell_len
 from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text
@@ -21,6 +22,8 @@ from debugpilot.tui.breakpoint_dialog import BreakpointDialog
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
+HINT_STYLE = Style(color="#6b7780", italic=True)
+HINT_GAP = 4
 SOURCE_HINT = (
     "Select a file. F9 or click the gutter to toggle a breakpoint; "
     "Shift+F9 adds a condition or log message."
@@ -40,6 +43,15 @@ def breakpoint_kind(options: BreakpointOptions | None) -> str:
     if options is not None and options.condition:
         return "condition"
     return "plain"
+
+
+def _breakpoint_hint(options: BreakpointOptions | None) -> str:
+    parts = []
+    if options is not None and options.condition:
+        parts.append(f"if {' '.join(options.condition.split())}")
+    if options is not None and options.log_message:
+        parts.append(f"log: {' '.join(options.log_message.split())}")
+    return " · ".join(parts)
 
 
 def _shorten(text: str) -> str:
@@ -65,11 +77,33 @@ class SourceText(TextArea):
         self.breakpoint_lines: tuple[int, ...] = ()
         # Lines with a condition or log message; others draw the plain dot.
         self.breakpoint_kinds: dict[int, str] = {}
+        # Dim text drawn after a line's code: its condition and/or log message.
+        self.breakpoint_hints: dict[int, str] = {}
         self.execution_line: int | None = None
 
+    def _with_hint(self, strip: Strip, line: int) -> Strip:
+        hint = self.breakpoint_hints.get(line)
+        if not hint or line > self.document.line_count:
+            return strip
+        code = self.document.get_line(line - 1).expandtabs(self.indent_width).rstrip()
+        start = self.gutter_width + cell_len(code) + HINT_GAP - self.scroll_offset.x
+        room = strip.cell_length - start
+        # Only where the code leaves room; otherwise the panel below has the detail.
+        if start < self.gutter_width + HINT_GAP or room < min(cell_len(hint), 12):
+            return strip
+        if cell_len(hint) > room:
+            hint = hint[:room - 1] + "…"
+        background = next(iter(strip.crop(start, start + 1)), None)
+        base = background.style if background is not None and background.style else Style()
+        return Strip.join([
+            strip.crop(0, start),
+            Strip([Segment(hint, base + HINT_STYLE)], cell_len(hint)),
+            strip.crop(start + cell_len(hint)),
+        ])
+
     def render_line(self, y: int) -> Strip:
-        strip = super().render_line(y)
         line = y + self.scroll_offset.y + 1
+        strip = self._with_hint(super().render_line(y), line)
         if line == self.execution_line:
             gutter = self.gutter_width
             strip = Strip.join([
@@ -195,6 +229,7 @@ class SourceBrowser(Vertical):
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = ()
         editor.breakpoint_kinds = {}
+        editor.breakpoint_hints = {}
         editor.execution_line = None
         editor.load_text("")
         self.query_one("#source-breakpoint", Button).disabled = True
@@ -476,12 +511,18 @@ class SourceBrowser(Vertical):
         if self.file_path is None:
             editor.breakpoint_lines = ()
             editor.breakpoint_kinds = {}
+            editor.breakpoint_hints = {}
         else:
             editor.breakpoint_lines = self.breakpoints(self.root_path, self.file_path)
             editor.breakpoint_kinds = {
                 line: kind
                 for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
                 if (kind := breakpoint_kind(option)) != "plain"
+            }
+            editor.breakpoint_hints = {
+                line: hint
+                for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
+                if (hint := _breakpoint_hint(option))
             }
         editor.refresh()
         self._refresh_breakpoint_info()
