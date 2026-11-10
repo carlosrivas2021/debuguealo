@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
 
+from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger.dap import DebugError
 from debugpilot.debugger.inspector import InspectorClient
 from debugpilot.debugger.python import (
@@ -16,7 +17,11 @@ from debugpilot.debugger.python import (
     _intent,
     _line_options,
 )
-from debugpilot.storage.code_projects import is_npm_command, valid_node_target
+from debugpilot.storage.code_projects import (
+    is_npm_command,
+    profile_environment,
+    valid_node_target,
+)
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
 _GRAMMAR = (
@@ -188,6 +193,11 @@ class NodeDebugSession(PythonDebugSession):
             command = profile.node_debug
         if not valid_node_target(command):
             raise DebugError(_GRAMMAR)
+        try:
+            # Node runs as our own process, so it takes the full environment directly.
+            environment = profile_environment(profile)
+        except ConfigurationError as error:
+            raise DebugError(str(error)) from None
         intent, start_options = _intent(profile.root, breakpoints, options)
         try:
             argv = command_argv(tuple(command))
@@ -216,7 +226,8 @@ class NodeDebugSession(PythonDebugSession):
             async with asyncio.timeout(self.timeout):
                 self._adapter = CodeSession(self._output, self._process_exit)
                 await self._adapter.open_command(
-                    (argv[0], '--inspect-brk=127.0.0.1:0', str(target), *argv[2:]), profile.root)
+                    (argv[0], '--inspect-brk=127.0.0.1:0', str(target), *argv[2:]), profile.root,
+                    env=environment)
                 self._emit({'event': 'adapterStarted', 'body': {}})
                 await self._endpoint.wait()
                 if self._url is None:

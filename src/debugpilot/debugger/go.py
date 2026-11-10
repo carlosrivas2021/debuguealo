@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from debugpilot.debugger.dap import DAPClient, DebugError
-from debugpilot.debugger.python import PythonDebugSession, _intent
+from debugpilot.debugger.python import PythonDebugSession, _intent, _profile_variables
 from debugpilot.storage.code_projects import CodeProject
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
@@ -48,6 +48,7 @@ class GoDebugSession(PythonDebugSession):
         if self.state not in {'idle', 'closed'}:
             raise DebugError('A debug session is already active; Stop before starting again.')
         _, program, args = _target(profile)
+        variables = _profile_variables(profile)
         dlv = shutil.which('dlv')
         if not dlv:
             message = ('Delve (dlv) is required for Go debugging; install it and add it to PATH. '
@@ -99,6 +100,7 @@ class GoDebugSession(PythonDebugSession):
                 'mode': 'debug', 'program': program, 'cwd': str(self.profile.root),
                 'args': list(args), 'output': output, 'outputMode': 'remote',
                 'buildFlags': '-buildvcs=false', 'stopOnEntry': False,
+                **({'env': variables} if variables else {}),
             }, deadline=None))
             self._state('building')
             initialized = asyncio.create_task(self._initialized.wait())

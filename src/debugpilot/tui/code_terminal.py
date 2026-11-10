@@ -4,6 +4,8 @@ import asyncio
 
 import pyte
 
+from debugpilot.core.exceptions import ConfigurationError
+from debugpilot.storage.code_projects import profile_environment
 from debugpilot.terminal.code_session import CodeSession
 from debugpilot.tui.code_run_context import CodeRunContext
 from debugpilot.tui.terminal_view import (
@@ -114,8 +116,10 @@ class CodeTerminal(TerminalPane):
             self._bind_context(context)
         try:
             rows, columns = self._screen_size()
+            # envFile is read now, so a missing or invalid file stops the run here.
+            environment = profile_environment(context.profile)
             await session.open_command(
-                context.profile.command, context.profile.root, rows, columns
+                context.profile.command, context.profile.root, rows, columns, environment
             )
             if context.generation == generation and not context.stopping:
                 if context.state.startswith("Exited:"):
@@ -133,7 +137,7 @@ class CodeTerminal(TerminalPane):
             if not session._closed:
                 await session.close_session()
             raise
-        except (OSError, RuntimeError) as error:
+        except (OSError, RuntimeError, ConfigurationError) as error:
             if context.generation == generation and not context.stopping:
                 context.pending = False
                 context.active = False
