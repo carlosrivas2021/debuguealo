@@ -12,11 +12,16 @@ from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.code_projects import CodeProjectStore
 from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
+from debugpilot.tui.pane_splitter import PaneSplitter
 from debugpilot.tui.source_browser import SourceBrowser
 from debugpilot.tui.terminal_view import TerminalPane
 
 # Left to right on screen; Ctrl+Left/Right move between them.
 PANES = ("#code-projects", "#source-tree", "#source-text")
+# The profile list keeps room for six profiles until resized; the file tree keeps four rows.
+DEFAULT_PROFILE_ROWS = 6
+MIN_PROFILE_ROWS = 2
+MIN_TREE_ROWS = 4
 
 
 class CodeWorkspace(Vertical):
@@ -28,6 +33,9 @@ class CodeWorkspace(Vertical):
         Binding("o", "app.toggle_code_terminal", "Output"),
         # Same key as stopping a container in Containers.
         Binding("s", "stop_run", "Stop"),
+        # Move the boundary between profiles and files, like dragging the splitter.
+        Binding("alt+up", "resize_profiles(-1)", show=False),
+        Binding("alt+down", "resize_profiles(1)", show=False),
         # Priority: the read-only source would otherwise use them for word jumps.
         Binding("ctrl+left", "focus_pane(-1)", "Pane ←", priority=True),
         Binding("ctrl+right", "focus_pane(1)", "Pane →", priority=True),
@@ -38,6 +46,7 @@ class CodeWorkspace(Vertical):
         self.store = CodeProjectStore()
         self._profiles = {}
         self._shutting_down = False
+        self._profile_rows = DEFAULT_PROFILE_ROWS
         # Last view the user chose per profile ("run" or "debug"), used when neither is live.
         self._last_view: dict[str, str] = {}
         self._run_button = Button("▶ Run", id="code-run")
@@ -53,9 +62,16 @@ class CodeWorkspace(Vertical):
             escape_hook=lambda: self.query_one(DataTable).focus(),
         )
         profiles = Vertical(
-            Static("PROFILES", id="code-title", classes="pane-title"),
+            # The count sits at the right end of the title row.
+            Horizontal(
+                Static("PROFILES", id="code-title"),
+                Static("", id="code-count"),
+                id="code-title-row", classes="pane-title",
+            ),
             Static("", id="code-status", markup=False),
-            DataTable(id="code-projects", cursor_type="row", zebra_stripes=True),
+            DataTable(id="code-projects", cursor_type="row", zebra_stripes=True,
+                      show_header=False),
+            PaneSplitter(id="code-profiles-splitter"),
             id="code-profiles-pane",
         )
         # The debug panel is built first so it can sit beside the editor inside the browser.
@@ -118,8 +134,9 @@ class CodeWorkspace(Vertical):
             keys = [profile.name for profile in profiles]
             if selected in keys:
                 table.move_cursor(row=keys.index(selected))
+            # The count lives in the title; the status line only explains problems.
             message = (
-                f"{len(profiles)} profile(s)"
+                ""
                 if profiles
                 else f"No code profiles. Open launch.json to register projects: {self.store.path}"
             )
@@ -137,7 +154,12 @@ class CodeWorkspace(Vertical):
             for profile in live.values():
                 table.add_row(profile.name, key=profile.name)
             message = str(error)
-        self.query_one("#code-status", Static).update(message)
+        status = self.query_one("#code-status", Static)
+        status.update(message)
+        status.display = bool(message)
+        self.query_one("#code-count", Static).update(
+            str(len(self._profiles)) if self._profiles else ""
+        )
         self.select_source_project()
 
     @on(DataTable.RowHighlighted, "#code-projects")
@@ -354,7 +376,7 @@ class CodeWorkspace(Vertical):
         self._sync_controls()
 
     def check_action(self, action, parameters):
-        if action == "stop_run":
+        if action in {"stop_run", "resize_profiles"}:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
             if isinstance(focused, Input) or (
@@ -434,6 +456,24 @@ class CodeWorkspace(Vertical):
             if self._pane.selected_context is context:
                 self._state(context.state)
                 self._sync_controls()
+
+    def action_resize_profiles(self, rows: int) -> None:
+        self._set_profile_rows(self._profile_rows + rows)
+
+    @on(PaneSplitter.Moved)
+    def _splitter_moved(self, event) -> None:
+        self._set_profile_rows(self._profile_rows + event.rows)
+
+    def _set_profile_rows(self, rows: int) -> None:
+        """Resize the profile list, leaving the file tree at least MIN_TREE_ROWS."""
+        table = self.query_one("#code-projects", DataTable)
+        limit = rows
+        tree = self.query("#source-tree")
+        if tree and table.size.height:
+            # The list and the tree share the room left by the fixed rows around them.
+            limit = table.size.height + tree.first().size.height - MIN_TREE_ROWS
+        self._profile_rows = max(MIN_PROFILE_ROWS, min(rows, limit))
+        table.styles.height = self._profile_rows
 
     async def action_stop_run(self) -> None:
         await self.stop()
