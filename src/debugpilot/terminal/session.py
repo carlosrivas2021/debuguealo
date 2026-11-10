@@ -77,11 +77,29 @@ GROUP_GRACE_SECONDS = 2.0
 GROUP_KILL_WAIT_SECONDS = 1.0
 
 
+def _group_alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # macOS answers EPERM, not ESRCH, while only zombie or exiting members remain
+        # (e.g. descendants awaiting reaping after the leader was waited on): nothing
+        # in the group can still run or be signalled.
+        return False
+    return True
+
+
+def _signal_group(pgid: int, sig: int) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 async def _wait_for_group_exit(pgid: int, deadline: float) -> bool:
     while True:
-        try:
-            os.killpg(pgid, 0)
-        except ProcessLookupError:
+        if not _group_alive(pgid):
             return True
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -216,10 +234,7 @@ class TerminalSession:
                 try:
                     await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=0.5)
                 except TimeoutError:
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
+                    _signal_group(process.pid, signal.SIGKILL)
                     try:
                         await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=1.0)
                     except TimeoutError:
@@ -303,10 +318,7 @@ class TerminalSession:
                             terminated = True
                         await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=0.5)
                     except TimeoutError:
-                        try:
-                            os.killpg(process.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
+                        _signal_group(process.pid, signal.SIGKILL)
                         try:
                             await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=1.0)
                         except TimeoutError:
@@ -317,22 +329,12 @@ class TerminalSession:
                     # Reaping the helper alone is insufficient: closing the PTY can end it
                     # at once while owned descendants in its process group are still
                     # shutting down. Give them their grace period, then force the group.
-                    try:
-                        os.killpg(process.pid, 0)
-                    except ProcessLookupError:
-                        pass
-                    else:
+                    if _group_alive(process.pid):
                         if not terminated:
-                            try:
-                                os.killpg(process.pid, signal.SIGTERM)
-                            except ProcessLookupError:
-                                pass
+                            _signal_group(process.pid, signal.SIGTERM)
                         graceful = started + GROUP_GRACE_SECONDS
                         if not await _wait_for_group_exit(process.pid, graceful):
-                            try:
-                                os.killpg(process.pid, signal.SIGKILL)
-                            except ProcessLookupError:
-                                pass
+                            _signal_group(process.pid, signal.SIGKILL)
                             forced = graceful + GROUP_KILL_WAIT_SECONDS
                             if not await _wait_for_group_exit(process.pid, forced):
                                 raise TimeoutError(
