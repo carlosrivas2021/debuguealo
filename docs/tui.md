@@ -41,7 +41,7 @@ shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch fil
 **Open code launch.json** opens the separate central code configuration directly.
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
 the source, in screen order. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
-terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **Stop** ends only the selected Code
+terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **S** or **Stop** ends only the selected Code
 context. A running profile survives area changes; repeated F5 does not restart it. Distinct
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
 an active profile returns to its context. Same-endpoint attaches are rejected, while distinct
