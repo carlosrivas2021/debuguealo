@@ -18,4 +18,6 @@ class CodeRunContext:
     active: bool = False
     stopping: bool = False
     state: str = ""
+    # How the last run ended ("stopped", "exited 0", ...); empty while it has not ended.
+    ended: str = ""
     close_task: object = None
