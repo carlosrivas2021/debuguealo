@@ -39,7 +39,8 @@ starting or stopping processes. `Ctrl+T` is unavailable while a modal is open or
 terminal pane has focus (press `Esc` first). Code lists registered project folders and command arguments; container
 shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
-In Code, **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
+In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
+the source, in screen order. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
 terminal to type; **Escape** returns focus to profiles and **Ctrl+J** hides or shows it. **Stop** ends only the selected Code
 context. A running profile survives area changes; repeated F5 does not restart it. Distinct
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting

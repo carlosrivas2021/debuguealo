@@ -45,6 +45,12 @@ for debug sessions. **Ctrl+J** hides or shows the bottom area. The footer lists 
 available in the current area. Selecting a profile shows one bottom view: its live session,
 otherwise the run or debug view you used last for that profile.
 
+**Ctrl+Left** and **Ctrl+Right** move focus between the panes in screen order: profiles,
+file tree and source, wrapping around at either end; from a button they go to the
+profiles. They skip the buttons, and in the source they replace the word jump of the
+read-only view. In a text field or while typing into the terminal they keep their usual
+word movement.
+
 F5 and Shift+F5 never move focus, so the arrow keys keep moving between profiles. Click the
 terminal to type into the program; its border turns yellow and reads
 **typing — Esc to leave**. **Escape** returns to the profiles, even after the program exited.
@@ -111,6 +117,10 @@ a condition or log message it removes the breakpoint together with them.
 | empty | set | Never stops; writes the message every time the line runs. |
 | set | set | Never stops; writes the message only when the condition is true. |
 | empty | empty | Plain breakpoint: always stops. |
+
+With the cursor on a line that has a condition or log message, a read-only panel below the
+source shows them and what they do, for example `if answer > 40   stops only when true`. It
+disappears on other lines, and **Shift+F9** edits them.
 
 The gutter shows **●** for a plain breakpoint, **◆** for a conditional one and a blue **◇**
 for a logpoint. The file's tree entry shows the details, for example
