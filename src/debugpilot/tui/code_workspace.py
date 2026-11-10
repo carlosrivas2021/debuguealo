@@ -6,13 +6,17 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Static
+from textual.widgets import Button, DataTable, Input, Static
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.code_projects import CodeProjectStore
 from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
 from debugpilot.tui.source_browser import SourceBrowser
+from debugpilot.tui.terminal_view import TerminalPane
+
+# Left to right on screen; Ctrl+Left/Right move between them.
+PANES = ("#code-projects", "#source-tree", "#source-text")
 
 
 class CodeWorkspace(Vertical):
@@ -20,6 +24,9 @@ class CodeWorkspace(Vertical):
     BINDINGS = [
         Binding("f9", "app.toggle_breakpoint", "Breakpoint"),
         Binding("shift+f9", "app.edit_breakpoint", "Condition"),
+        # Priority: the read-only source would otherwise use them for word jumps.
+        Binding("ctrl+left", "focus_pane(-1)", "Pane ←", priority=True),
+        Binding("ctrl+right", "focus_pane(1)", "Pane →", priority=True),
     ]
 
     def __init__(self):
@@ -350,6 +357,32 @@ class CodeWorkspace(Vertical):
         self._show_bottom()
         self._debug.start(profile)
         self._sync_controls()
+
+    def check_action(self, action, parameters):
+        if action == "focus_pane":
+            focused = self.app.focused
+            # Text fields and live terminals keep Ctrl+arrows for moving by word.
+            if isinstance(focused, Input) or (
+                isinstance(focused, TerminalPane) and focused.active
+            ):
+                return False
+        return True
+
+    def action_focus_pane(self, step: int) -> None:
+        panes = [pane for selector in PANES for pane in self.query(selector)
+                 if pane.display and pane.focusable]
+        if not panes:
+            return
+        focused = self.app.focused
+        current = next((index for index, pane in enumerate(panes)
+                        if focused is pane or (focused is not None and pane in focused.ancestors)),
+                       None)
+        if current is None:
+            # From a button or another widget, start at the profiles.
+            panes[0].focus()
+            return
+        # Past either end, wrap around to the other one.
+        panes[(current + step) % len(panes)].focus()
 
     def toggle_breakpoint(self):
         browser = self.query_one(SourceBrowser)
