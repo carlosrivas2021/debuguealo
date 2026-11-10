@@ -102,6 +102,9 @@ class DebugPilotApp(App):
         Binding("f11", "code_step_in", "Step in"),
         Binding("shift+f11", "code_step_out", "Step out"),
         Binding("ctrl+j", "toggle_code_terminal", "Terminal"),
+        # Containers only; Code has its own pane order. Text fields keep word movement.
+        Binding("ctrl+left", "container_pane(-1)", "Pane ←"),
+        Binding("ctrl+right", "container_pane(1)", "Pane →"),
     ]
 
     def __init__(
@@ -1187,6 +1190,27 @@ class DebugPilotApp(App):
         await self.engine.close()
 
     @on(Button.Pressed, "#container-shell-logs")
+    def action_container_pane(self, step: int) -> None:
+        """Move between the list and the focusable view on the right, wrapping around."""
+        panes = [self.query_one("#launch-profiles", DataTable)]
+        if self.query_one("#logs-panel").display:
+            panes.append(self.query_one("#log-entries", DataTable))
+        elif self.query_one(ProjectOverview).display:
+            panes.append(self.query_one("#project-overview-table", DataTable))
+        focused = self.focused
+        current = next((index for index, pane in enumerate(panes)
+                        if focused is pane or (focused is not None and pane in focused.ancestors)),
+                       None)
+        if current is None and focused is not None and any(
+            container in focused.ancestors
+            for container in (self.query_one("#logs-panel"), self.query_one(ProjectOverview))
+        ):
+            current = len(panes) - 1
+        if current is None:
+            panes[0].focus()
+            return
+        panes[(current + step) % len(panes)].focus()
+
     def action_focus_logs(self) -> None:
         if self.query_one("#container-shell").display:
             self.query_one("#container-shell").display = False
@@ -2444,7 +2468,7 @@ class DebugPilotApp(App):
             "toggle_project", "open_container_terminal", "open_host_terminal",
             "recreate_selected", "build_selected", "stop_selected", "cancel_compose",
             "compose", "start_project", "restart_selected", "rebuild_selected",
-            "refresh_aws_credentials",
+            "refresh_aws_credentials", "container_pane",
         }:
             return False
         if action in {
