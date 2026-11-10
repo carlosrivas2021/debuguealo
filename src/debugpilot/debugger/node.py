@@ -77,8 +77,17 @@ def cdp_condition(options):
     return f'({options.condition}) && ({log})' if options.condition else log
 
 
+_FUNCTION_NAME = re.compile(r'(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)?')
+
+
 def _display(value):
-    """CDP RemoteObject as shown in variables and watches."""
+    """CDP RemoteObject as shown in variables and watches; functions by name, not source."""
+    if value.get('type') == 'function':
+        description = (value.get('description') or '').lstrip()
+        if description.startswith('class'):
+            return description.split('{', 1)[0].strip()
+        match = _FUNCTION_NAME.match(description)
+        return f"ƒ {(match.group(1) if match else None) or 'anonymous'}()"
     return value.get('unserializableValue', value.get('description',
                      json.dumps(value.get('value', None))))
 

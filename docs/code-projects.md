@@ -220,6 +220,12 @@ stdin remains unsupported.
 
 ## Watch expressions
 
+The debug panel has three titled sections: **Call stack**, **Watch** and **Variables**. In
+the call stack, frames without a source file (runtime internals such as Node's module
+loader) are dimmed so your own functions stand out. Each variable takes one line: a
+multi-line value shows its first line followed by `…`, and Node functions show by name,
+for example `ƒ crear_mensaje()` or `class Pedido`.
+
 The debug panel has a **Watch** section between the stack and the variables. Type an
 expression in **+ Add watch expression** and press **Enter**; it is added to the list for
 this project. Select a watch and press **Delete** to remove it. A blank or repeated

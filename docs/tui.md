@@ -124,6 +124,11 @@ Memory excludes reclaimable page cache, also like `docker stats`, and shows the 
 when Docker reports one. Sampling stops when you select another row, open the logs or
 quit; stopped containers and project overviews are never sampled.
 
+**Ctrl+Left** and **Ctrl+Right** move focus between the list and the view on the right that
+can take it: the open logs or a project's overview table. They wrap around, and do nothing
+while only a container's detail cards are shown. In the log filter and search fields they
+keep moving the cursor by word.
+
 Logs open only on request: `Ctrl+L` follows the selected container, or the combined
 logs of the project's active containers. `D` or `Esc` closes the logs and returns to the
 details, and selecting another row closes them too. Selecting a saved profile links log
