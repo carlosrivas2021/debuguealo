@@ -26,7 +26,7 @@ def posix_adapter(monkeypatch):
     signals = []
     reads = []
     chunks = iter((b"hello ", b"\xc3", b"\xa9", b""))
-    state = SimpleNamespace(race=False, argv=None, exited=False)
+    state = SimpleNamespace(race=False, argv=None, exited=False, zombie_group=False)
 
     class Process:
         pid = 12345
@@ -42,6 +42,9 @@ def posix_adapter(monkeypatch):
 
     def killpg(pid, sig):
         signals.append((pid, sig))
+        if state.exited and state.zombie_group:
+            # macOS: a group holding only zombie members answers EPERM, not ESRCH.
+            raise PermissionError(1, "Operation not permitted")
         if sig == 0 and state.exited:
             raise ProcessLookupError
 
@@ -132,6 +135,19 @@ async def test_close_while_posix_reader_sleeps(posix_adapter, tmp_path):
         adapter.release.set()
         await asyncio.gather(closing, return_exceptions=True)
         await session.close_session()
+
+
+@pytest.mark.asyncio
+async def test_close_treats_zombie_only_group_as_exited(posix_adapter, tmp_path):
+    adapter = posix_adapter
+    adapter.state.zombie_group = True
+    exits = []
+    session = TerminalSession(lambda _text: None, lambda: exits.append("exit"))
+    await session.open_host(tmp_path)
+    await asyncio.wait_for(session.close_session(), 2)
+    assert exits == ["exit"]
+    assert adapter.signals == [(12345, signal.SIGTERM), (12345, 0)]
+    assert session.process is None
 
 
 @pytest.mark.asyncio
