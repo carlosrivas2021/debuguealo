@@ -60,7 +60,14 @@ terminal to type into the program; its border turns yellow and reads
 
 1. Select a profile in **Code** (left sidebar) and press **F5** or click **▶ Run**.
 2. Click the Code terminal to type interactive input. **Escape** returns focus to profiles.
-3. Click **Stop** to end that Code process tree. After stopping or exit, run again with F5.
+3. Press **S** (or click **Stop**) to end that Code process tree. After stopping or exit,
+   run again with F5.
+
+While a program runs, the terminal title reads **● running · s stop**. When it stops or ends,
+a marker closes its output (`── Stopped ──`, `── Exited: 0 ──`), the cursor disappears and
+the title becomes **Terminal · stopped** or **Terminal · exited N**, so a finished service
+never looks like it is still waiting. In a text field or while typing into the terminal,
+**S** types the letter instead.
 
 Each saved profile can own at most one pending or active Code run. Different profiles
 may run simultaneously and may run alongside local debug contexts. F5 on a profile that

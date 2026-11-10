@@ -26,6 +26,8 @@ class CodeWorkspace(Vertical):
         Binding("shift+f9", "app.edit_breakpoint", "Condition"),
         # Same key as the host terminal in Containers; text fields still type an "o".
         Binding("o", "app.toggle_code_terminal", "Output"),
+        # Same key as stopping a container in Containers.
+        Binding("s", "stop_run", "Stop"),
         # Priority: the read-only source would otherwise use them for word jumps.
         Binding("ctrl+left", "focus_pane(-1)", "Pane ←", priority=True),
         Binding("ctrl+right", "focus_pane(1)", "Pane →", priority=True),
@@ -352,6 +354,13 @@ class CodeWorkspace(Vertical):
         self._sync_controls()
 
     def check_action(self, action, parameters):
+        if action == "stop_run":
+            focused = self.app.focused
+            # A text field or a live terminal types the letter instead.
+            if isinstance(focused, Input) or (
+                isinstance(focused, TerminalPane) and focused.active
+            ):
+                return False
         if action == "focus_pane":
             focused = self.app.focused
             # Text fields and live terminals keep Ctrl+arrows for moving by word.
@@ -425,6 +434,9 @@ class CodeWorkspace(Vertical):
             if self._pane.selected_context is context:
                 self._state(context.state)
                 self._sync_controls()
+
+    async def action_stop_run(self) -> None:
+        await self.stop()
 
     @on(Button.Pressed, "#code-stop")
     async def stop(self):
