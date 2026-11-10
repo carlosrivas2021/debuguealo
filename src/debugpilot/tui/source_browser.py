@@ -4,6 +4,7 @@ from itertools import islice
 from pathlib import Path
 from stat import S_ISREG
 
+from rich.cells import cell_len
 from rich.segment import Segment
 from rich.style import Style
 from rich.text import Text
@@ -17,10 +18,12 @@ from textual.widgets import Button, Static, TextArea, Tree
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.breakpoints import BreakpointOptions, BreakpointStore
-from debugpilot.tui.breakpoint_dialog import BreakpointDialog
+from debugpilot.tui.breakpoint_dialog import DIALOG_ROWS, BreakpointDialog
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
+HINT_STYLE = Style(color="#6b7780", italic=True)
+HINT_GAP = 4
 SOURCE_HINT = (
     "Select a file. F9 or click the gutter to toggle a breakpoint; "
     "Shift+F9 adds a condition or log message."
@@ -40,6 +43,15 @@ def breakpoint_kind(options: BreakpointOptions | None) -> str:
     if options is not None and options.condition:
         return "condition"
     return "plain"
+
+
+def _breakpoint_hint(options: BreakpointOptions | None) -> str:
+    parts = []
+    if options is not None and options.condition:
+        parts.append(f"if {' '.join(options.condition.split())}")
+    if options is not None and options.log_message:
+        parts.append(f"log: {' '.join(options.log_message.split())}")
+    return " · ".join(parts)
 
 
 def _shorten(text: str) -> str:
@@ -65,11 +77,33 @@ class SourceText(TextArea):
         self.breakpoint_lines: tuple[int, ...] = ()
         # Lines with a condition or log message; others draw the plain dot.
         self.breakpoint_kinds: dict[int, str] = {}
+        # Dim text drawn after a line's code: its condition and/or log message.
+        self.breakpoint_hints: dict[int, str] = {}
         self.execution_line: int | None = None
 
+    def _with_hint(self, strip: Strip, line: int) -> Strip:
+        hint = self.breakpoint_hints.get(line)
+        if not hint or line > self.document.line_count:
+            return strip
+        code = self.document.get_line(line - 1).expandtabs(self.indent_width).rstrip()
+        start = self.gutter_width + cell_len(code) + HINT_GAP - self.scroll_offset.x
+        room = strip.cell_length - start
+        # Only where the code leaves room; otherwise the panel below has the detail.
+        if start < self.gutter_width + HINT_GAP or room < min(cell_len(hint), 12):
+            return strip
+        if cell_len(hint) > room:
+            hint = hint[:room - 1] + "…"
+        background = next(iter(strip.crop(start, start + 1)), None)
+        base = background.style if background is not None and background.style else Style()
+        return Strip.join([
+            strip.crop(0, start),
+            Strip([Segment(hint, base + HINT_STYLE)], cell_len(hint)),
+            strip.crop(start + cell_len(hint)),
+        ])
+
     def render_line(self, y: int) -> Strip:
-        strip = super().render_line(y)
         line = y + self.scroll_offset.y + 1
+        strip = self._with_hint(super().render_line(y), line)
         if line == self.execution_line:
             gutter = self.gutter_width
             strip = Strip.join([
@@ -120,6 +154,9 @@ class SourceBrowser(Vertical):
     SourceBrowser #source-status { width: 1fr; height: auto; }
     SourceBrowser #source-breakpoint { width: auto; }
     SourceBrowser #source-text { height: 1fr; }
+    SourceBrowser #breakpoint-info {
+        height: auto; border: round $accent; background: $surface; padding: 0 1;
+    }
     """
 
     def __init__(self, *, sidebar_header=None, editor_side=None, bottom=None):
@@ -163,6 +200,9 @@ class SourceBrowser(Vertical):
                             yield Static(SOURCE_HINT, id="source-status", markup=False)
                             yield Button("● Breakpoint", id="source-breakpoint", disabled=True)
                         yield SourceText(id="source-text")
+                        info = Static("", id="breakpoint-info", markup=False)
+                        info.display = False
+                        yield info
                     if self._editor_side is not None:
                         yield self._editor_side
                 if self._bottom is not None:
@@ -189,6 +229,7 @@ class SourceBrowser(Vertical):
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = ()
         editor.breakpoint_kinds = {}
+        editor.breakpoint_hints = {}
         editor.execution_line = None
         editor.load_text("")
         self.query_one("#source-breakpoint", Button).disabled = True
@@ -384,17 +425,26 @@ class SourceBrowser(Vertical):
         """Shift+F9: edit the condition and log message of the line at the cursor."""
         if self.file_path is None:
             return
-        line = self.query_one(TextArea).cursor_location[0] + 1
+        editor = self.query_one(TextArea)
+        line = editor.cursor_location[0] + 1
         key = (self.root_path, self.file_path.resolve())
 
         def done(result):
             if result is not None:
-                action, options = result
-                self._apply_breakpoint(key, line, action == "save", options)
+                _, options = result
+                self._apply_breakpoint(key, line, True, options)
 
+        info = self.query_one("#breakpoint-info")
+        # Open where the read-only panel is, or where it would appear: below the source.
+        region = info.region if info.display else self.query_one("#source-pane").region
+        rows = editor.scrollable_content_region.height
+        if not info.display and line - 1 - editor.scroll_offset.y > rows - DIALOG_ROWS - 1:
+            # The panel will cover the last rows; keep the edited line above it.
+            editor.scroll_to(y=line - rows + DIALOG_ROWS, animate=False)
         self.app.push_screen(BreakpointDialog(
-            f"{self.file_path.name}:{line}", self._options.get(key, {}).get(line),
-            line in self._marks.get(key, set()),
+            f"{self.file_path.name}:{line}", editor.document.get_line(line - 1),
+            self._options.get(key, {}).get(line),
+            anchor=(region.x, region.bottom, region.width),
         ), done)
 
     def _apply_breakpoint(self, key, line, present, options):
@@ -426,11 +476,50 @@ class SourceBrowser(Vertical):
             key[0], key[1], tuple(sorted(marks)), self._options.get(key, {})
         ))
 
+    @on(TextArea.SelectionChanged, "#source-text")
+    def _cursor_moved(self, _event):
+        self._refresh_breakpoint_info()
+
+    def _refresh_breakpoint_info(self):
+        """Show the cursor line's condition and log message, read-only, below the source."""
+        if not self.query("#breakpoint-info"):
+            return
+        panel = self.query_one("#breakpoint-info", Static)
+        option = None
+        if self.file_path is not None:
+            line = self.query_one(SourceText).cursor_location[0] + 1
+            key = (self.root_path, self.file_path.resolve())
+            if line in self._marks.get(key, set()):
+                option = self._options.get(key, {}).get(line)
+        if breakpoint_kind(option) == "plain":
+            panel.display = False
+            return
+        muted = "#7f8c93"
+        text = Text()
+        if option.condition:
+            # A logpoint never stops, so its condition only decides whether it prints.
+            meaning = "only when true" if option.log_message else "stops only when true"
+            text.append("if   ", style=muted)
+            text.append(option.condition)
+            text.append(f"   {meaning}", style=muted)
+        if option.log_message:
+            if text:
+                text.append("\n")
+            text.append("log  ", style=muted)
+            text.append(option.log_message)
+            text.append("   prints without stopping", style=muted)
+        text.append("\nShift+F9 edit · F9 remove", style=muted)
+        kind = "logpoint" if option.log_message else "conditional breakpoint"
+        panel.border_title = f"{self.file_path.name}:{line} · {kind}"
+        panel.update(text)
+        panel.display = True
+
     def _refresh_editor_marks(self):
         editor = self.query_one(SourceText)
         if self.file_path is None:
             editor.breakpoint_lines = ()
             editor.breakpoint_kinds = {}
+            editor.breakpoint_hints = {}
         else:
             editor.breakpoint_lines = self.breakpoints(self.root_path, self.file_path)
             editor.breakpoint_kinds = {
@@ -438,7 +527,13 @@ class SourceBrowser(Vertical):
                 for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
                 if (kind := breakpoint_kind(option)) != "plain"
             }
+            editor.breakpoint_hints = {
+                line: hint
+                for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
+                if (hint := _breakpoint_hint(option))
+            }
         editor.refresh()
+        self._refresh_breakpoint_info()
 
     def _set_status(self, message):
         if self._persistence_error:

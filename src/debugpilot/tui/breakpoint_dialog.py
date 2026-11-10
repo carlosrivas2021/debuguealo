@@ -1,68 +1,85 @@
-"""Edit one breakpoint's condition and log message (logpoint)."""
+"""Edit one breakpoint's condition and log message (logpoint) without hiding the line."""
 
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Static
+from textual.widgets import Input, Label, Static
 
 from debugpilot.storage.breakpoints import BreakpointOptions, breakpoint_options
 
-HELP = (
-    "Leave both fields empty for a plain breakpoint. A log message makes a logpoint: it "
-    "writes to the debug output and does not stop. Use {expression} to include values."
-)
+HINT = "Enter save · Esc cancel · F9 removes the breakpoint"
+MAX_TITLE_CODE = 60
+# Border plus three rows; fixed so the panel can be placed before its first frame.
+DIALOG_ROWS = 5
 
 
 class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None]):
-    """Dismisses with ("save", options), ("remove", None), or None when cancelled."""
+    """A short panel placed where the read-only breakpoint panel sits, below the line.
+
+    Dismisses with ("save", options), where None means a plain breakpoint, or None
+    when cancelled. Removing a breakpoint stays on F9.
+    """
 
     BINDINGS = [("escape", "cancel", "Cancel")]
     DEFAULT_CSS = """
-    BreakpointDialog { align: center middle; background: $background 80%; }
-    BreakpointDialog > Vertical {
-        width: 90%; max-width: 80; height: auto; border: round $accent;
-        background: $surface; padding: 1;
+    BreakpointDialog { align: center bottom; background: transparent; }
+    BreakpointDialog #breakpoint-box {
+        width: 100%; max-width: 110; height: 5; border: round $accent;
+        background: $surface; padding: 0 1;
     }
-    BreakpointDialog Static { height: auto; }
-    BreakpointDialog #breakpoint-status { color: $error; }
-    BreakpointDialog Horizontal { height: 3; margin-top: 1; }
-    BreakpointDialog Button { width: 1fr; }
+    BreakpointDialog Horizontal { height: 1; }
+    BreakpointDialog Label { width: 5; color: $text-muted; }
+    BreakpointDialog Input { width: 1fr; }
+    BreakpointDialog #breakpoint-status { height: 1; color: $text-muted; }
+    BreakpointDialog #breakpoint-status.error { color: $error; }
     """
 
-    def __init__(self, location: str, options: BreakpointOptions | None, exists: bool):
+    def __init__(self, location: str, code: str, options: BreakpointOptions | None,
+                 anchor: tuple[int, int, int] | None = None):
         super().__init__()
         self.location = location
+        self.code = " ".join(code.split())
         self.options = options
-        self.exists = exists
+        # (x, bottom, width) on screen: the read-only panel's place, so both share it.
+        self.anchor = anchor
 
     def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Label(f"BREAKPOINT · {self.location}")
-            yield Static(HELP, markup=False)
-            yield Label("Condition")
-            yield Input(
-                value=(self.options.condition or "") if self.options else "",
-                placeholder="user_id == 42",
-                id="breakpoint-condition",
-            )
-            yield Label("Log message")
-            yield Input(
-                value=(self.options.log_message or "") if self.options else "",
-                placeholder="order {order.id} received",
-                id="breakpoint-log",
-            )
-            yield Static("", id="breakpoint-status", markup=False)
+        with Vertical(id="breakpoint-box") as box:
+            if self.anchor is not None:
+                # Placed now, not after layout, so it never appears elsewhere first.
+                x, bottom, width = self.anchor
+                self.styles.align = ("left", "top")
+                box.styles.width = width
+                box.styles.max_width = width
+                box.styles.height = DIALOG_ROWS
+                box.styles.offset = (x, max(0, bottom - DIALOG_ROWS))
+            code = self.code
+            if len(code) > MAX_TITLE_CODE:
+                code = code[:MAX_TITLE_CODE - 1] + "…"
+            box.border_title = f"{self.location} · {code}" if code else self.location
             with Horizontal():
-                yield Button("Save", id="breakpoint-save", variant="primary")
-                yield Button("Remove", id="breakpoint-remove", disabled=not self.exists)
-                yield Button("Cancel", id="breakpoint-cancel")
+                yield Label("if")
+                yield Input(
+                    value=(self.options.condition or "") if self.options else "",
+                    placeholder="stop only when true, e.g. user_id == 42",
+                    id="breakpoint-condition",
+                    compact=True,
+                )
+            with Horizontal():
+                yield Label("log")
+                yield Input(
+                    value=(self.options.log_message or "") if self.options else "",
+                    placeholder="print without stopping, e.g. order {order.id} received",
+                    id="breakpoint-log",
+                    compact=True,
+                )
+            yield Static(HINT, id="breakpoint-status", markup=False)
 
     def on_mount(self) -> None:
         self.query_one("#breakpoint-condition", Input).focus()
 
     @on(Input.Submitted)
-    @on(Button.Pressed, "#breakpoint-save")
     def save_breakpoint(self) -> None:
         try:
             options = breakpoint_options(
@@ -70,14 +87,11 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
                 self.query_one("#breakpoint-log", Input).value,
             )
         except ValueError as error:
-            self.query_one("#breakpoint-status", Static).update(str(error))
+            status = self.query_one("#breakpoint-status", Static)
+            status.update(str(error))
+            status.add_class("error")
             return
         self.dismiss(("save", options))
 
-    @on(Button.Pressed, "#breakpoint-remove")
-    def remove_breakpoint(self) -> None:
-        self.dismiss(("remove", None))
-
-    @on(Button.Pressed, "#breakpoint-cancel")
     def action_cancel(self) -> None:
         self.dismiss(None)

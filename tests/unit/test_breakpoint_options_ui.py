@@ -39,7 +39,7 @@ async def edit(pilot, app, condition='', log=''):
     await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
     app.screen.query_one('#breakpoint-condition', Input).value = condition
     app.screen.query_one('#breakpoint-log', Input).value = log
-    await pilot.click('#breakpoint-save')
+    await pilot.press('enter')
     await until(pilot, lambda: not isinstance(app.screen, BreakpointDialog))
 
 
@@ -107,12 +107,15 @@ async def test_dialog_prefills_removes_cancels_and_validates(monkeypatch, tmp_pa
         await pilot.press('shift+f9')
         await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
         app.screen.query_one('#breakpoint-condition', Input).value = 'x' * 1001
-        await pilot.click('#breakpoint-save')
+        await pilot.press('enter')
         await pilot.pause()
         assert isinstance(app.screen, BreakpointDialog)
         assert '1000 characters' in str(app.screen.query_one('#breakpoint-status', Static).render())
-        await pilot.click('#breakpoint-remove')
+        # The dialog only edits; F9 removes the breakpoint with its options.
+        assert not app.screen.query('#breakpoint-remove')
+        await pilot.press('escape')
         await until(pilot, lambda: not isinstance(app.screen, BreakpointDialog))
+        await pilot.press('f9')
         assert browser.breakpoints(*key) == ()
         assert store(tmp_path).load_options() == {}
         # Saving with both fields blank makes a plain breakpoint.
@@ -173,3 +176,140 @@ async def test_label_shows_condition_and_log_message_together(monkeypatch, tmp_p
         await edit(pilot, app, condition='answer > 1', log='seen {answer}')
         assert labels(browser) == ['Line 4 · if answer > 1 · log: seen {answer} · pending']
         assert '◇' in glyph(browser, 4)
+
+
+async def test_compact_dialog_shows_the_line_and_leaves_it_visible(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        editor = browser.query_one(TextArea)
+        await pilot.press('shift+f9')
+        await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
+        await pilot.pause()
+        box = app.screen.query_one('#breakpoint-box')
+        assert 'main.py:4' in str(box.border_title)
+        assert 'answer = increment(answer)' in str(box.border_title)
+        # The edited line stays on screen above the dialog.
+        line_y = editor.region.y + 3 - editor.scroll_offset.y
+        assert line_y < box.region.y
+        assert box.region.height <= 6
+        # The screen behind the panel is not dimmed or covered.
+        assert app.screen.styles.background.a == 0
+        hint = str(app.screen.query_one('#breakpoint-status', Static).render())
+        assert 'Enter save' in hint and 'Esc cancel' in hint
+        # Each field says what it does: a condition stops, a log message prints.
+        condition = app.screen.query_one('#breakpoint-condition', Input).placeholder
+        log = app.screen.query_one('#breakpoint-log', Input).placeholder
+        assert condition.startswith('stop only when true')
+        assert log.startswith('print without stopping')
+        await pilot.press('escape')
+
+
+def info(app):
+    panel = app.query_one('#breakpoint-info', Static)
+    return panel.display, str(panel.render()), str(panel.border_title)
+
+
+async def test_cursor_on_a_conditional_line_shows_its_options_read_only(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        await open_main(pilot, app, 4)
+        await edit(pilot, app, condition='answer > 40')
+        await open_main(pilot, app, 5)
+        await edit(pilot, app, condition='answer > 1', log='seen {answer}')
+        await open_main(pilot, app, 3)
+        await pilot.press('f9')  # A plain breakpoint has nothing to show.
+        assert info(app)[0] is False
+        browser = await open_main(pilot, app, 4)
+        shown, text, title = info(app)
+        assert shown and 'main.py:4' in title
+        assert 'if' in text and 'answer > 40' in text and 'stops only when true' in text
+        assert 'log' not in text
+        assert 'Shift+F9 edit' in text and 'F9 remove' in text
+        await open_main(pilot, app, 5)
+        shown, text, _ = info(app)
+        assert shown and 'seen {answer}' in text and 'prints without stopping' in text
+        # With a log message the line never stops, so the condition only filters the log.
+        assert 'answer > 1' in text and 'stops only' not in text and 'only when true' in text
+        # The panel sits below the editor, so the cursor line stays visible.
+        editor = browser.query_one(TextArea)
+        panel = app.query_one('#breakpoint-info')
+        assert editor.region.y + 4 - editor.scroll_offset.y < panel.region.y
+        await open_main(pilot, app, 1)  # No breakpoint here.
+        assert info(app)[0] is False
+        await open_main(pilot, app, 4)
+        await pilot.press('f9')  # Removing the breakpoint hides it.
+        assert info(app)[0] is False
+
+
+async def test_conditions_show_as_dim_hints_after_the_code(monkeypatch, tmp_path):
+    app, roots, _ = debug_app(monkeypatch, tmp_path)
+    source = roots[0] / 'main.py'
+    source.write_text(source.read_text() + 'long = "' + 'x' * 200 + '"\n')
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        await edit(pilot, app, condition='answer > 40')
+        await open_main(pilot, app, 5)
+        await edit(pilot, app, log='seen {answer}')
+        await open_main(pilot, app, 6)
+        await edit(pilot, app, condition='len(long) > 1')
+        await open_main(pilot, app, 3)
+        await pilot.press('f9')
+        editor = browser.query_one(TextArea)
+        line4, line5, line3 = (editor.render_line(row).text for row in (3, 4, 2))
+        # The hint follows the code on the same line, after a gap.
+        code_end = line4.index('increment(answer)') + len('increment(answer)')
+        assert line4.index('if answer > 40') > code_end + 2
+        assert 'log: seen {answer}' in line5
+        assert 'if ' not in line3 and 'log:' not in line3
+        # A line too long for the view keeps its detail in the panel below instead.
+        assert 'if len(long)' not in editor.render_line(5).text
+
+
+async def test_edit_panel_opens_where_the_read_only_panel_is(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        pane = browser.query_one('#source-pane')
+        # Creating: no read-only panel yet, so it opens at the bottom of the source pane.
+        await pilot.press('shift+f9')
+        await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
+        await pilot.pause()
+        box = app.screen.query_one('#breakpoint-box').region
+        assert (box.x, box.width, box.bottom) == (pane.region.x, pane.region.width,
+                                                 pane.region.bottom)
+        app.screen.query_one('#breakpoint-condition', Input).value = 'answer > 40'
+        await pilot.press('enter')
+        await until(pilot, lambda: not isinstance(app.screen, BreakpointDialog))
+        await pilot.pause()
+        info = app.query_one('#breakpoint-info').region
+        # Editing: it opens exactly over the read-only panel.
+        await pilot.press('shift+f9')
+        await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
+        await pilot.pause()
+        box = app.screen.query_one('#breakpoint-box').region
+        assert (box.x, box.width, box.bottom) == (info.x, info.width, info.bottom)
+        editor = browser.query_one(TextArea)
+        assert editor.region.y + 3 - editor.scroll_offset.y < box.y
+        await pilot.press('escape')
+
+
+async def test_edit_panel_is_placed_before_its_first_frame(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        pane = browser.query_one('#source-pane').region
+        dialog = BreakpointDialog('main.py:4', 'answer = increment(answer)', None,
+                                  anchor=(pane.x, pane.bottom, pane.width))
+        # Right after mounting, before any refresh, it already sits at its final place:
+        # it never shows up at the top and then moves down.
+        await app.push_screen(dialog)
+        box = dialog.query_one('#breakpoint-box')
+        assert (box.styles.offset.x.value, box.styles.offset.y.value) == (
+            pane.x, pane.bottom - box.styles.height.value)
+        await pilot.press('escape')
