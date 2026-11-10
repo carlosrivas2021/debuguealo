@@ -52,7 +52,6 @@ class CodeWorkspace(Vertical):
             Static("PROFILES", id="code-title", classes="pane-title"),
             Static("", id="code-status", markup=False),
             DataTable(id="code-projects", cursor_type="row", zebra_stripes=True),
-            Static("", id="code-profile-details", markup=False),
             id="code-profiles-pane",
         )
         # The debug panel is built first so it can sit beside the editor inside the browser.
@@ -169,7 +168,6 @@ class CodeWorkspace(Vertical):
         )
         run_context = self._pane.selected_context
         debug_context = self._debug.selected
-        self._show_profile_details(profile)
         # The status line describes the view that is actually shown.
         if self._apply_view(profile) == "debug" and debug_context is not None:
             self._state(debug_context.state)
@@ -186,13 +184,6 @@ class CodeWorkspace(Vertical):
             and (selected.active or selected.unexpected_disconnect) else "Stop"
         )
         self._sync_controls()
-
-    def _show_profile_details(self, profile):
-        details = "" if profile is None else (
-            f"{profile.root}\n{list(profile.command)!r}" if profile.command
-            else f"{profile.root}\nattach-only"
-        )
-        self.query_one("#code-profile-details", Static).update(details)
 
     def _apply_view(self, profile):
         """Show exactly one of the run terminal or the debug panel for the selection."""

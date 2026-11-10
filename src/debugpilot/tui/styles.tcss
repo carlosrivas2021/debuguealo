@@ -14,7 +14,6 @@ BreakpointDialog { background: transparent; }
 .pane-title { height: 1; padding: 0 1; color: #a9c2cc; text-style: bold; background: #171c20; }
 #code-profiles-pane { height: auto; max-height: 45%; }
 #code-status { height: auto; max-height: 3; padding: 0 1; color: #9db5bf; }
-#code-profile-details { height: auto; max-height: 4; padding: 0 1; color: #697279; border-top: solid #2b3439; }
 #code-projects { height: auto; max-height: 16; min-height: 3; scrollbar-size-horizontal: 0; }
 #source-tree { height: 1fr; background: #101518; color: #c8cdd1; }
 #source-main { width: 1fr; }
