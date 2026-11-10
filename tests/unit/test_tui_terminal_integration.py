@@ -300,17 +300,19 @@ async def test_close_button_can_cancel_pending_host_open(monkeypatch, tmp_path):
         responsive = False
         startup_cancelled = False
         try:
-            await asyncio.wait_for(entered.wait(), 2)
+            await asyncio.wait_for(entered.wait(), 10)
             app.query_one("#terminal-close", Button).press()
             try:
-                await asyncio.wait_for(closed.wait(), 0.5)
+                # The startup stays held until `release`, so a blocked close never finishes
+                # however long this waits; the margin only absorbs a loaded machine.
+                await asyncio.wait_for(closed.wait(), 5)
                 responsive = True
                 startup_cancelled = cancelled.is_set()
             except TimeoutError:
                 pass
         finally:
             release.set()
-            await asyncio.wait_for(opening, 2)
+            await asyncio.wait_for(opening, 10)
         await pilot.pause()
         assert responsive, "Close terminal was blocked by pending H startup"
         assert startup_cancelled, "Close must cancel the pending startup owner"
