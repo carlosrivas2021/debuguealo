@@ -38,8 +38,8 @@ processes. Container action shortcuts are inactive in Code.
 
 ## Layout
 
-Code is laid out like an IDE: profile names and the file tree on the left (the selected
-profile's folder and command appear under the list), source in the center, the **Debug** panel (controls, stack, variables) on the right while a debug
+Code is laid out like an IDE: profile names and the file tree on the left (the tree's root
+is the selected profile's folder), source in the center, the **Debug** panel (controls, stack, variables) on the right while a debug
 session is selected, and the bottom area below: the Code terminal for runs or **Debug output**
 for debug sessions. **O** hides or shows the bottom area, the same key that shows the host
 terminal in Containers; typing an "o" in a text field or a terminal still types it. The footer lists the shortcuts
