@@ -26,8 +26,9 @@ def container(identity, state="running"):
 
 
 async def wait_until(pilot, condition):
-    # Await observable state rather than racing the inventory timer under load.
-    async with asyncio.timeout(3):
+    # Await observable state rather than racing the inventory timer under load. It returns
+    # as soon as the condition holds; the generous deadline only bounds a real failure.
+    async with asyncio.timeout(15):
         while not condition():
             await pilot.pause(0.02)
 
@@ -173,6 +174,9 @@ async def test_rapid_selection_during_cleanup_opens_only_latest_stream_once():
         # Each selection closes logs; request them for the latest one before cleanup ends.
         app.action_focus_logs()
         docker.cleanup_gate.set()
+        # Wait for the stream to open instead of a fixed delay, which a loaded machine
+        # can outlast; then settle and check it opened only once, for the latest row.
+        await wait_until(pilot, lambda: len(docker.opened) >= 2)
         await pilot.pause(0.2)
         assert docker.opened == ["api", "worker"]
         assert docker.closed == ["api"]
