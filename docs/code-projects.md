@@ -73,13 +73,45 @@ selected context's `Starting`, `Running`, `Exited: <code>`, `Stopped`, or startu
 A new run after exit starts with a fresh terminal screen. Quitting debugealo stops all
 owned Code runs, including startup in progress.
 
-Commands inherit the environment and run in their configured folder, using argv rather
-than a host shell. On Windows, npm's standard `npm.cmd` entry is resolved to Node plus
+Commands inherit debugealo's environment, plus the profile's own variables (see
+[environment variables](#environment-variables)), and run in their configured folder, using
+argv rather than a host shell. On Windows, npm's standard `npm.cmd` entry is resolved to Node plus
 `npm-cli.js`; other batch launchers require their underlying executable/script instead.
 Missing executables and unavailable PTY support produce errors, not a shell fallback.
 Windows uses an owned kill-on-close Job Object; POSIX uses an owned process group.
 Remaining descendants are terminated on stop **and when the main command exits**.
 Do not use this runner for detached background services intended to survive the profile.
+
+## Environment variables
+
+A profile can add variables for **Run** (F5) and **Debug** (Shift+F5) with two optional fields:
+
+```json
+{
+  "name": "API",
+  "workspaceFolder": "/home/me/api",
+  "command": ["python", "main.py"],
+  "env": { "API_URL": "http://localhost:8000", "DEBUG": "1" },
+  "envFile": ".env"
+}
+```
+
+- **`env`** sets variables directly. Names use letters, digits and underscores and do not
+  start with a digit; values are text, and an empty string is allowed.
+- **`envFile`** reads a file relative to the `workspaceFolder`, without `..`. Each line is
+  `NAME=value`; blank lines and lines starting with `#` are ignored, `export ` is allowed,
+  and a value may be wrapped in single or double quotes. Nothing is expanded: `$HOME` stays
+  literal. Prefer it for secrets, so they stay in the project and out of the central
+  `launch.json`.
+
+Variables are layered: debugealo's own environment, then `envFile`, then `env`, so `env`
+wins. The file is read each time you run or debug, so edits apply without reloading the
+profiles. A missing or invalid file stops the run with its name and line number; values are
+never shown in errors. A `PATH` set this way also decides which executable runs.
+
+They apply to Python, Go and Node runs and debug sessions. Attach profiles (`goAttach`,
+`pythonAttach`) reject them: the target already runs in its container, which owns its
+environment.
 
 ## Browse source and mark pending breakpoints
 
