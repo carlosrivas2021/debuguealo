@@ -13,7 +13,7 @@ MAX_TITLE_CODE = 60
 
 
 class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None]):
-    """A short panel docked at the bottom so the edited line stays visible above it.
+    """A short panel placed where the read-only breakpoint panel sits, below the line.
 
     Dismisses with ("save", options), where None means a plain breakpoint, or None
     when cancelled. Removing a breakpoint stays on F9.
@@ -33,11 +33,14 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
     BreakpointDialog #breakpoint-status.error { color: $error; }
     """
 
-    def __init__(self, location: str, code: str, options: BreakpointOptions | None):
+    def __init__(self, location: str, code: str, options: BreakpointOptions | None,
+                 anchor: tuple[int, int, int] | None = None):
         super().__init__()
         self.location = location
         self.code = " ".join(code.split())
         self.options = options
+        # (x, bottom, width) on screen: the read-only panel's place, so both share it.
+        self.anchor = anchor
 
     def compose(self) -> ComposeResult:
         with Vertical(id="breakpoint-box") as box:
@@ -65,6 +68,20 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
 
     def on_mount(self) -> None:
         self.query_one("#breakpoint-condition", Input).focus()
+        if self.anchor is not None:
+            x, _, width = self.anchor
+            self.styles.align = ("left", "top")
+            box = self.query_one("#breakpoint-box")
+            box.styles.width = width
+            box.styles.max_width = width
+            box.styles.offset = (x, 0)
+            # The height is known only after layout; then rest the panel on the anchor.
+            self.call_after_refresh(self._rest_on_anchor)
+
+    def _rest_on_anchor(self) -> None:
+        x, bottom, _ = self.anchor
+        box = self.query_one("#breakpoint-box")
+        box.styles.offset = (x, max(0, bottom - box.outer_size.height))
 
     @on(Input.Submitted)
     def save_breakpoint(self) -> None:

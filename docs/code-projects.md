@@ -95,8 +95,9 @@ file. Red indicates requested intent, **not debugger verification**.
 
 ## Conditional breakpoints and logpoints
 
-Press **Shift+F9** on a line to open a short breakpoint panel at the bottom of the screen.
-The source stays visible above it, and its title shows the file, line and code. It has two
+Press **Shift+F9** on a line to open a short breakpoint panel below the source, in the same
+place as the read-only panel described below. The source stays visible above it, and its
+title shows the file, line and code. It has two
 one-line fields:
 
 - **if** (condition): the debugger stops only when the expression is true in the target's

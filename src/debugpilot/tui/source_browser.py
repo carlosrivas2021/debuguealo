@@ -24,6 +24,8 @@ from debugpilot.tui.breakpoint_dialog import BreakpointDialog
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
 HINT_STYLE = Style(color="#6b7780", italic=True)
 HINT_GAP = 4
+# Height of the breakpoint edit panel, border included.
+DIALOG_ROWS = 5
 SOURCE_HINT = (
     "Select a file. F9 or click the gutter to toggle a breakpoint; "
     "Shift+F9 adds a condition or log message."
@@ -434,9 +436,17 @@ class SourceBrowser(Vertical):
                 _, options = result
                 self._apply_breakpoint(key, line, True, options)
 
+        info = self.query_one("#breakpoint-info")
+        # Open where the read-only panel is, or where it would appear: below the source.
+        region = info.region if info.display else self.query_one("#source-pane").region
+        rows = editor.scrollable_content_region.height
+        if not info.display and line - 1 - editor.scroll_offset.y > rows - DIALOG_ROWS - 1:
+            # The panel will cover the last rows; keep the edited line above it.
+            editor.scroll_to(y=line - rows + DIALOG_ROWS, animate=False)
         self.app.push_screen(BreakpointDialog(
             f"{self.file_path.name}:{line}", editor.document.get_line(line - 1),
             self._options.get(key, {}).get(line),
+            anchor=(region.x, region.bottom, region.width),
         ), done)
 
     def _apply_breakpoint(self, key, line, present, options):
