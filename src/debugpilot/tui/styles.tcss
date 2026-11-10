@@ -12,9 +12,14 @@ BreakpointDialog { background: transparent; }
 #source-layout { height: 1fr; }
 #source-sidebar { width: 30; min-width: 22; background: #101518; border-right: solid #2b3439; }
 .pane-title { height: 1; padding: 0 1; color: #a9c2cc; text-style: bold; background: #171c20; }
-#code-profiles-pane { height: auto; max-height: 45%; }
+#code-profiles-pane { height: auto; }
+/* A fixed blank row above each sidebar title. */
+#code-title-row, #source-files-title { margin-top: 1; }
+#code-title { width: 1fr; }
+#code-count { width: auto; }
 #code-status { height: auto; max-height: 3; padding: 0 1; color: #9db5bf; }
-#code-projects { height: auto; max-height: 16; min-height: 3; scrollbar-size-horizontal: 0; }
+/* Transparent so the unused rows show the sidebar's background, not a gray block. */
+#code-projects { height: 6; scrollbar-size-horizontal: 0; background: transparent; }
 #source-tree { height: 1fr; background: #101518; color: #c8cdd1; }
 #source-main { width: 1fr; }
 #source-editor-row { height: 2fr; min-height: 6; }
