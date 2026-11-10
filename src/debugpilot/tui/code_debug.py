@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -26,6 +27,21 @@ MAX_WATCH_VALUE = 200
 
 def _attach_language(profile):
     return 'Go' if profile.go_attach is not None else 'Python'
+
+
+def _frame_cells(frame):
+    """Stack row cells; frames without a source file (runtime internals) are dimmed."""
+    path = frame.get('source', {}).get('path')
+    style = '' if path else 'bright_black'
+    cells = (frame.get('name', '?'), path or '?', str(frame.get('line', '?')))
+    return tuple(Text(str(cell), style=style) for cell in cells)
+
+
+def _variable_value(value):
+    """One line per variable: a multi-line value (like a function body) shows its first line."""
+    lines = str(value).splitlines() or ['']
+    text = lines[0].rstrip() + (' …' if len(lines) > 1 else '')
+    return text if len(text) <= MAX_WATCH_VALUE else text[:MAX_WATCH_VALUE - 1] + '…'
 
 
 def _watch_error(error):
@@ -140,15 +156,19 @@ class CodeDebug(Vertical):
             yield Button('Out', id='code-out', disabled=True)
         with Horizontal(id='code-inspection'):
             yield DataTable(id='code-stack', cursor_type='row')
-            yield Input(placeholder='+ Add watch expression', id='code-watch-input')
-            yield DataTable(id='code-watches', cursor_type='row')
+            with Vertical(id='code-watch-pane'):
+                yield Input(placeholder='+ Add watch expression', id='code-watch-input',
+                            compact=True)
+                yield DataTable(id='code-watches', cursor_type='row')
             yield Static('Variables: —', id='code-variables', markup=False)
 
     def on_mount(self):
-        self.query_one('#code-stack', DataTable).add_columns('Frame', 'Source', 'Line')
-        watches = self.query_one('#code-watches', DataTable)
-        watches.add_columns('Expression', 'Value')
-        watches.border_title = 'Watch'
+        stack = self.query_one('#code-stack', DataTable)
+        stack.add_columns('Frame', 'Source', 'Line')
+        stack.border_title = 'Call stack'
+        self.query_one('#code-watches', DataTable).add_columns('Expression', 'Value')
+        self.query_one('#code-watch-pane').border_title = 'Watch'
+        self.query_one('#code-variables', Static).border_title = 'Variables'
         self.display = False
         if self._watch_error:
             self.app.notify(self._watch_error, severity='warning')
@@ -213,8 +233,7 @@ class CodeDebug(Vertical):
         table = self.query_one('#code-stack', DataTable)
         table.clear()
         for index, frame in enumerate(context.frames):
-            table.add_row(frame.get('name', '?'), frame.get('source', {}).get('path', '?'),
-                          str(frame.get('line', '?')), key=str(index))
+            table.add_row(*_frame_cells(frame), key=str(index))
         if context.frame_row < table.row_count:
             table.move_cursor(row=context.frame_row)
         self._render_inspection(context)
@@ -559,7 +578,10 @@ class CodeDebug(Vertical):
                 continue
             variables = await context.session.variables(scope['variablesReference'])
             values.append(scope.get('name', 'Scope') + ':')
-            values.extend(f"{value['name']} = {value.get('value', '')}" for value in variables)
+            values.extend(
+                f"{value['name']} = {_variable_value(value.get('value', ''))}"
+                for value in variables
+            )
         if not self._paused(context, generation, pause):
             return
         context.watch_frame = frame['id']

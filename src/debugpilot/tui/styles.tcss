@@ -30,8 +30,10 @@ BreakpointDialog { background: transparent; }
 #code-debug-controls { height: 1; }
 #code-debug-controls Button { width: auto; min-width: 5; margin-right: 1; }
 #code-inspection { height: 1fr; min-height: 4; layout: vertical; }
-#code-stack { height: 1fr; width: 1fr; min-height: 2; scrollbar-size-horizontal: 0; }
-#code-variables { width: 1fr; height: 1fr; overflow: auto; padding: 0 1; border-top: solid #2b3439; }
+#code-stack { height: 1fr; width: 1fr; min-height: 2; scrollbar-size-horizontal: 0; border-top: solid #2b3439; border-title-color: #a9c2cc; }
+#code-watch-pane { height: auto; border-top: solid #2b3439; border-title-color: #a9c2cc; }
+#code-watches { height: auto; max-height: 8; }
+#code-variables { width: 1fr; height: 1fr; overflow: auto; padding: 0 1; border-top: solid #2b3439; border-title-color: #a9c2cc; }
 #code-bottom { height: 1fr; min-height: 4; }
 #code-debug-output { height: 1fr; min-height: 3; background: #080b0e; border-top: solid #2b3439; border-title-color: #a9c2cc; }
 Button { height: 1; min-height: 1; border: none; padding: 0 1; background: #171c20; color: #c8cdd1; }
