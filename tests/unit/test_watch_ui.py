@@ -118,3 +118,19 @@ async def test_blank_and_duplicate_watches_are_not_added(monkeypatch, tmp_path):
         assert app.query_one('#code-watch-input', Input).value == ''
         await pilot.click('#code-continue')
         await wait_state(pilot, app, 'Exited: 0')
+
+
+async def test_typing_o_in_the_watch_field_types_it(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        await mark(pilot, app, 4)
+        await pilot.press('shift+f5')
+        await wait_state(pilot, app, 'Debug stopped')
+        field = app.query_one('#code-watch-input', Input)
+        field.focus()
+        await pilot.press('f', 'o', 'o')
+        assert field.value == 'foo'
+        assert app.query_one('#code-bottom').display
+        await pilot.click('#code-continue')
+        await wait_state(pilot, app, 'Exited: 0')

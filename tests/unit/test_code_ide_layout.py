@@ -38,7 +38,7 @@ async def test_code_area_places_profiles_left_editor_center_terminal_below_debug
         assert not app.query("#code-capabilities")
 
 
-async def test_ctrl_j_hides_and_shows_the_code_terminal(monkeypatch, tmp_path):
+async def test_o_hides_and_shows_the_code_terminal(monkeypatch, tmp_path):
     app = setup_app(monkeypatch, tmp_path, "print('hi')")
     async with app.run_test(size=(140, 44)) as pilot:
         await pilot.click("#area-code")
@@ -48,13 +48,22 @@ async def test_ctrl_j_hides_and_shows_the_code_terminal(monkeypatch, tmp_path):
         editor_height = app.query_one("#source-text").region.height
         app.query_one("#code-projects").focus()
         bottom = app.query_one("#code-bottom")
+        # Ctrl+J no longer toggles it; O does, like the host terminal in Containers.
         await pilot.press("ctrl+j")
+        await pilot.pause()
+        assert bottom.display
+        await pilot.press("o")
         await pilot.pause()
         assert not bottom.display and pane.region.height == 0
         assert app.query_one("#source-text").region.height > editor_height
-        await pilot.press("ctrl+j")
+        await pilot.press("o")
         await pilot.pause()
         assert bottom.display and pane.display and pane.region.height > 0
+        # It also works with focus in the read-only source.
+        app.query_one("#source-text").focus()
+        await pilot.press("o")
+        await pilot.pause()
+        assert not bottom.display
 
 
 async def test_footer_shows_debug_shortcuts_only_in_the_code_area(monkeypatch, tmp_path):
@@ -63,10 +72,12 @@ async def test_footer_shows_debug_shortcuts_only_in_the_code_area(monkeypatch, t
         await pilot.pause()
         containers = _shown_keys(app)
         assert not {"f9", "f10", "f11", "shift+f11", "ctrl+j"} & containers
+        assert "o" in containers  # The host terminal.
         await pilot.click("#area-code")
         await pilot.pause()
         code = _shown_keys(app)
-        assert {"f5", "shift+f5", "f9", "f10", "f11", "shift+f11", "ctrl+j"} <= code
+        assert {"f5", "shift+f5", "f9", "f10", "f11", "shift+f11", "o"} <= code
+        assert "ctrl+j" not in code
 
 
 async def test_f5_keeps_focus_on_profiles_and_terminal_shows_when_it_takes_keys(
@@ -133,10 +144,10 @@ async def test_debug_output_sits_at_the_bottom_like_the_run_terminal(monkeypatch
         assert output.region.x == app.query_one("#source-pane").region.x
         assert output.region.right >= debug.region.right
         app.query_one("#code-projects").focus()
-        await pilot.press("ctrl+j")
+        await pilot.press("o")
         await pilot.pause()
         assert output.region.height == 0
-        await pilot.press("ctrl+j")
+        await pilot.press("o")
         await pilot.pause()
         assert output.region.height > 0
         debug.display = False
