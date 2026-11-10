@@ -100,14 +100,21 @@ A profile can add variables for **Run** (F5) and **Debug** (Shift+F5) with two o
   start with a digit; values are text, and an empty string is allowed.
 - **`envFile`** reads a file relative to the `workspaceFolder`, without `..`. Each line is
   `NAME=value`; blank lines and lines starting with `#` are ignored, `export ` is allowed,
-  and a value may be wrapped in single or double quotes. Nothing is expanded: `$HOME` stays
-  literal. Prefer it for secrets, so they stay in the project and out of the central
+  and a value may be wrapped in single or double quotes. An unquoted value ends at ` #`, so
+  `PORT=8000 # api` gives `8000`, while `a#b` and quoted text keep their `#`. Nothing is
+  expanded or unescaped: `$HOME` and `\n` stay literal. Prefer it for secrets, so they stay in the project and out of the central
   `launch.json`.
 
 Variables are layered: debugealo's own environment, then `envFile`, then `env`, so `env`
 wins. The file is read each time you run or debug, so edits apply without reloading the
 profiles. A missing or invalid file stops the run with its name and line number; values are
-never shown in errors. A `PATH` set this way also decides which executable runs.
+never shown in errors. A `PATH` set this way also decides which executable runs, for Run and
+for Debug (the Python interpreter, Node, Go and Delve).
+
+For Go, Debug passes the variables to the program but not to the build Delve runs, so
+build settings such as `GOFLAGS` or `CGO_ENABLED` apply to Run (`go run`) only. The
+`envFile` path is checked as written: a symbolic link inside the project can point outside
+it, which is allowed because the profile is your own configuration.
 
 They apply to Python, Go and Node runs and debug sessions. Attach profiles (`goAttach`,
 `pythonAttach`) reject them: the target already runs in its container, which owns its

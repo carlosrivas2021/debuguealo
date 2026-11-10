@@ -86,8 +86,9 @@ def parse_env_settings(entry: dict) -> tuple[tuple[tuple[str, str], ...], str | 
 def parse_env_file(text: str) -> dict[str, str]:
     """KEY=VALUE lines, `#` comments, optional `export` and quotes; no expansion."""
     variables = {}
-    for number, raw in enumerate(text.splitlines(), start=1):
-        line = raw.strip()
+    # Only real line breaks separate entries (not U+2028 or form feeds inside a value).
+    for number, raw in enumerate(text.split("\n"), start=1):
+        line = raw.rstrip("\r").strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
@@ -103,6 +104,13 @@ def parse_env_file(text: str) -> dict[str, str]:
                     f"Invalid envFile line {number}: a quoted value must close its quote."
                 )
             value = value[1:-1]
+        else:
+            # An unquoted value ends at a ` #` comment, as in other .env tools; `a#b` stays.
+            for marker in (" #", "\t#"):
+                if marker in value:
+                    value = value[:value.index(marker)].rstrip()
+        if "\x00" in value:
+            raise ConfigurationError(f"Invalid envFile line {number}: the value has a NUL.")
         if not _env_value(value):
             raise ConfigurationError(f"Invalid envFile line {number}: the value is too long.")
         variables[name] = value
@@ -137,6 +145,8 @@ def _read_env_file(root: Path, env_file: str) -> dict[str, str]:
             data = stream.read(MAX_ENV_FILE_BYTES + 1)
     except FileNotFoundError:
         raise ConfigurationError(f"envFile not found: {env_file}") from None
+    except IsADirectoryError:
+        raise ConfigurationError(f"envFile {env_file} is a directory, not a file.") from None
     except OSError:
         message = f"Cannot read envFile {env_file}; check permissions."
         raise ConfigurationError(message) from None

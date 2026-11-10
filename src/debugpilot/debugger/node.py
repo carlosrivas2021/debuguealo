@@ -97,6 +97,20 @@ def _display(value):
                      json.dumps(value.get('value', None))))
 
 
+def _node_argv(profile, command, environment=None):
+    """Resolve the Node runtime on the profile's PATH, as Run does."""
+    if environment is None:
+        try:
+            environment = profile_environment(profile)
+        except ConfigurationError as error:
+            raise DebugError(str(error)) from None
+    try:
+        return command_argv(tuple(command), environment)
+    except RuntimeError as error:
+        raise DebugError(
+            f'{error}. Select an installed Node runtime. No run-mode fallback.') from error
+
+
 def _source(url):
     parsed = urlsplit(url)
     if parsed.scheme != 'file' or parsed.netloc not in {'', 'localhost'}:
@@ -199,11 +213,7 @@ class NodeDebugSession(PythonDebugSession):
         except ConfigurationError as error:
             raise DebugError(str(error)) from None
         intent, start_options = _intent(profile.root, breakpoints, options)
-        try:
-            argv = command_argv(tuple(command))
-        except RuntimeError as error:
-            raise DebugError(
-                f'{error}. Select an installed Node runtime. No run-mode fallback.') from error
+        argv = _node_argv(profile, command, environment)
         target = (profile.root / command[1]).resolve()
         self.profile = profile
         self.requested_breakpoints = intent
