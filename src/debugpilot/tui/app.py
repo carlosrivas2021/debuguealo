@@ -1189,7 +1189,6 @@ class DebugPilotApp(App):
             await asyncio.gather(*self._ui_tasks, return_exceptions=True)
         await self.engine.close()
 
-    @on(Button.Pressed, "#container-shell-logs")
     def action_container_pane(self, step: int) -> None:
         """Move between the list and the focusable view on the right, wrapping around."""
         panes = [self.query_one("#launch-profiles", DataTable)]
@@ -1211,6 +1210,7 @@ class DebugPilotApp(App):
             return
         panes[(current + step) % len(panes)].focus()
 
+    @on(Button.Pressed, "#container-shell-logs")
     def action_focus_logs(self) -> None:
         if self.query_one("#container-shell").display:
             self.query_one("#container-shell").display = False
