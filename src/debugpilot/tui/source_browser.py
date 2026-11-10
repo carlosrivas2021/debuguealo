@@ -18,14 +18,12 @@ from textual.widgets import Button, Static, TextArea, Tree
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.breakpoints import BreakpointOptions, BreakpointStore
-from debugpilot.tui.breakpoint_dialog import BreakpointDialog
+from debugpilot.tui.breakpoint_dialog import DIALOG_ROWS, BreakpointDialog
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
 HINT_STYLE = Style(color="#6b7780", italic=True)
 HINT_GAP = 4
-# Height of the breakpoint edit panel, border included.
-DIALOG_ROWS = 5
 SOURCE_HINT = (
     "Select a file. F9 or click the gutter to toggle a breakpoint; "
     "Shift+F9 adds a condition or log message."
