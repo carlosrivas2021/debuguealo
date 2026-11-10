@@ -242,3 +242,28 @@ async def test_cursor_on_a_conditional_line_shows_its_options_read_only(monkeypa
         await open_main(pilot, app, 4)
         await pilot.press('f9')  # Removing the breakpoint hides it.
         assert info(app)[0] is False
+
+
+async def test_conditions_show_as_dim_hints_after_the_code(monkeypatch, tmp_path):
+    app, roots, _ = debug_app(monkeypatch, tmp_path)
+    source = roots[0] / 'main.py'
+    source.write_text(source.read_text() + 'long = "' + 'x' * 200 + '"\n')
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        await edit(pilot, app, condition='answer > 40')
+        await open_main(pilot, app, 5)
+        await edit(pilot, app, log='seen {answer}')
+        await open_main(pilot, app, 6)
+        await edit(pilot, app, condition='len(long) > 1')
+        await open_main(pilot, app, 3)
+        await pilot.press('f9')
+        editor = browser.query_one(TextArea)
+        line4, line5, line3 = (editor.render_line(row).text for row in (3, 4, 2))
+        # The hint follows the code on the same line, after a gap.
+        code_end = line4.index('increment(answer)') + len('increment(answer)')
+        assert line4.index('if answer > 40') > code_end + 2
+        assert 'log: seen {answer}' in line5
+        assert 'if ' not in line3 and 'log:' not in line3
+        # A line too long for the view keeps its detail in the panel below instead.
+        assert 'if len(long)' not in editor.render_line(5).text

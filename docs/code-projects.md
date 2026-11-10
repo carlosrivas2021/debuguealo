@@ -118,6 +118,11 @@ a condition or log message it removes the breakpoint together with them.
 | set | set | Never stops; writes the message only when the condition is true. |
 | empty | empty | Plain breakpoint: always stops. |
 
+Each line with a condition or log message also shows them in dim text after its code, for
+example `if user_id == 42` or `log: order {order.id} received`, so all of a file's
+conditions are visible at a glance. The hint is shortened to fit, and left out when the line
+is too long for the view.
+
 With the cursor on a line that has a condition or log message, a read-only panel below the
 source shows them and what they do, for example `if answer > 40   stops only when true`. It
 disappears on other lines, and **Shift+F9** edits them.
