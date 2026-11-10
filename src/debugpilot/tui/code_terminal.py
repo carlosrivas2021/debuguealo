@@ -16,6 +16,7 @@ from debugpilot.tui.terminal_view import (
 )
 
 IDLE_TITLE = "Terminal · click to type · O hide/show"
+RUNNING_TITLE = "Terminal · ● running · s stop · click to type"
 TYPING_TITLE = "Terminal · typing — Esc to leave"
 
 
@@ -73,9 +74,11 @@ class CodeTerminal(TerminalPane):
             rows, columns = self._screen_size()
             self._screen = pyte.Screen(columns=columns, lines=rows)
             self._stream = pyte.Stream(self._screen)
+            self._update_title()
             self.refresh()
             return None
         self._bind_context(context)
+        self._update_title()
         self.refresh()
         return context
 
@@ -97,6 +100,28 @@ class CodeTerminal(TerminalPane):
         context.state = message
         if self.selected_context is context:
             self._on_state(context.profile, message)
+        self._update_title()
+
+    def _update_title(self, focused=None):
+        """Say whether the selected program runs, takes keys, or how it ended."""
+        # Focus events fire before has_focus changes, so they pass the new state.
+        focused = self.has_focus if focused is None else focused
+        context = self.selected_context
+        if context is not None and (context.pending or context.active):
+            self.border_title = TYPING_TITLE if focused else RUNNING_TITLE
+        elif context is not None and context.ended:
+            self.border_title = f"Terminal · {context.ended}"
+        else:
+            self.border_title = IDLE_TITLE
+
+    def _finish(self, context, ended, marker):
+        """Close the transcript with a visible marker and no cursor waiting for input."""
+        context.ended = ended
+        separator = "\r\n" if context.screen.cursor.x else ""
+        context.stream.feed(f"{separator}── {marker} ──\r\n\x1b[?25l")
+        if self.selected_context is context:
+            self.refresh()
+        self._update_title()
 
     async def start_context(self, context):
         if context.start_task is not asyncio.current_task():
@@ -162,6 +187,8 @@ class CodeTerminal(TerminalPane):
         context.active = False
         session = context.session
         message = session.error or f"Exited: {session.exit_code}"
+        ended = f"exited {session.exit_code}" if not session.error else "ended with an error"
+        self._finish(context, ended, message)
         self._report(context, message)
         if self.selected_context is context:
             self._session_closed = True
@@ -198,6 +225,7 @@ class CodeTerminal(TerminalPane):
             session = context.session
             if session is not None:
                 await session.close_session()
+            self._finish(context, "stopped", "Stopped")
             self._report(context, "Stopped")
             if self.selected_context is context:
                 self._bind_context(context)
@@ -220,7 +248,7 @@ class CodeTerminal(TerminalPane):
         await self.close_all()
 
     def on_focus(self) -> None:
-        self.border_title = TYPING_TITLE
+        self._update_title(focused=True)
 
     def on_blur(self) -> None:
-        self.border_title = IDLE_TITLE
+        self._update_title(focused=False)
