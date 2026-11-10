@@ -2,12 +2,18 @@
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.config import config_path
+
+ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+MAX_ENV_ENTRIES = 256
+MAX_ENV_VALUE = 32_768
+MAX_ENV_FILE_BYTES = 256 * 1024
 
 
 @dataclass(frozen=True)
@@ -43,10 +49,114 @@ class CodeProject:
     node_debug: tuple[str, ...] | None = None
     go_attach: RemoteAttach | None = None
     python_attach: RemoteAttach | None = None
+    # Extra variables for Run and Debug: `env` pairs and an `envFile` relative to root.
+    env: tuple[tuple[str, str], ...] = ()
+    env_file: str | None = None
 
     @property
     def attach(self) -> RemoteAttach | None:
         return self.go_attach or self.python_attach
+
+
+def _env_value(value: object) -> bool:
+    return isinstance(value, str) and len(value) <= MAX_ENV_VALUE and "\x00" not in value
+
+
+def parse_env_settings(entry: dict) -> tuple[tuple[tuple[str, str], ...], str | None]:
+    """Validate a profile's optional `env` map and `envFile` path; values are never shown."""
+    env = entry.get("env", {})
+    if (not isinstance(env, dict) or len(env) > MAX_ENV_ENTRIES
+            or any(not isinstance(key, str) or not ENV_NAME.match(key) or not _env_value(value)
+                   for key, value in env.items())):
+        raise ConfigurationError(
+            "Invalid env: use a map of variable names (letters, digits, underscore; not "
+            "starting with a digit) to text values."
+        )
+    env_file = entry.get("envFile")
+    if env_file is not None:
+        relative = PurePosixPath(env_file) if isinstance(env_file, str) else None
+        if (not CodeProjectStore._text(env_file) or relative.is_absolute()
+                or Path(env_file).is_absolute() or ".." in Path(env_file).parts):
+            raise ConfigurationError(
+                "Invalid envFile: use a path relative to the workspaceFolder, without '..'."
+            )
+    return tuple(env.items()), env_file
+
+
+def parse_env_file(text: str) -> dict[str, str]:
+    """KEY=VALUE lines, `#` comments, optional `export` and quotes; no expansion."""
+    variables = {}
+    # Only real line breaks separate entries (not U+2028 or form feeds inside a value).
+    for number, raw in enumerate(text.split("\n"), start=1):
+        line = raw.rstrip("\r").strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        name, separator, value = line.partition("=")
+        name, value = name.strip(), value.strip()
+        if not separator or not ENV_NAME.match(name):
+            # Only the line number: the line may hold a secret.
+            raise ConfigurationError(f"Invalid envFile line {number}: use NAME=value.")
+        if value[:1] in {'"', "'"}:
+            if len(value) < 2 or value[-1] != value[0]:
+                raise ConfigurationError(
+                    f"Invalid envFile line {number}: a quoted value must close its quote."
+                )
+            value = value[1:-1]
+        else:
+            # An unquoted value ends at a ` #` comment, as in other .env tools; `a#b` stays.
+            for marker in (" #", "\t#"):
+                if marker in value:
+                    value = value[:value.index(marker)].rstrip()
+        if "\x00" in value:
+            raise ConfigurationError(f"Invalid envFile line {number}: the value has a NUL.")
+        if not _env_value(value):
+            raise ConfigurationError(f"Invalid envFile line {number}: the value is too long.")
+        variables[name] = value
+    return variables
+
+
+def profile_variables(profile) -> dict[str, str]:
+    """Only the profile's own variables: `envFile`, then `env` on top."""
+    env, env_file = getattr(profile, "env", ()), getattr(profile, "env_file", None)
+    variables = {}
+    if env_file is not None:
+        variables.update(_read_env_file(Path(profile.root), env_file))
+    variables.update(env)
+    return variables
+
+
+def profile_environment(profile) -> dict[str, str] | None:
+    """The full environment for Run/Debug, or None to inherit it unchanged.
+
+    The inherited environment is overridden by `envFile`, which `env` overrides in turn.
+    The file is read on every run, so edits apply without reloading the profiles.
+    """
+    if not getattr(profile, "env", ()) and getattr(profile, "env_file", None) is None:
+        return None
+    return {**os.environ, **profile_variables(profile)}
+
+
+def _read_env_file(root: Path, env_file: str) -> dict[str, str]:
+    path = root / env_file
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(MAX_ENV_FILE_BYTES + 1)
+    except FileNotFoundError:
+        raise ConfigurationError(f"envFile not found: {env_file}") from None
+    except IsADirectoryError:
+        raise ConfigurationError(f"envFile {env_file} is a directory, not a file.") from None
+    except OSError:
+        message = f"Cannot read envFile {env_file}; check permissions."
+        raise ConfigurationError(message) from None
+    if len(data) > MAX_ENV_FILE_BYTES:
+        raise ConfigurationError(f"envFile {env_file} exceeds 256 KiB.")
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeError:
+        raise ConfigurationError(f"envFile {env_file} is not UTF-8 text.") from None
+    return parse_env_file(text)
 
 
 def is_node_command(command):
@@ -141,6 +251,12 @@ class CodeProjectStore:
                     else:
                         python_attach = parsed
                 attach = go_attach or python_attach
+                env, env_file = parse_env_settings(entry)
+                if attach is not None and (env or env_file is not None):
+                    raise ConfigurationError(
+                        "env and envFile apply to profiles that run a command; an attach "
+                        "target keeps the environment of its container."
+                    )
                 if command is None and attach is None:
                     raise ValueError
                 if command is None:
@@ -160,7 +276,8 @@ class CodeProjectStore:
                         )
                     node_debug = tuple(target)
                 profiles.append(CodeProject(name, root.resolve(strict=True), tuple(command),
-                                            node_debug, go_attach, python_attach))
+                                            node_debug, go_attach, python_attach,
+                                            env, env_file))
                 names.add(name)
             return profiles
         except (ValueError, TypeError, UnicodeError, OSError, RuntimeError, RecursionError):
