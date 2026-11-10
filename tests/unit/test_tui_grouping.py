@@ -25,7 +25,9 @@ def item(identity, project=None, service=None, state="running"):
 
 
 async def until(pilot, condition):
-    async with asyncio.timeout(3):
+    # Polls every 20 ms and returns as soon as the condition holds; the deadline only
+    # bounds a real failure, so it can be generous for a loaded machine (full suite).
+    async with asyncio.timeout(15):
         while not condition():
             await pilot.pause(0.02)
 
