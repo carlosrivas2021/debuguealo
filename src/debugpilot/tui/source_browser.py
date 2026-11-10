@@ -120,6 +120,9 @@ class SourceBrowser(Vertical):
     SourceBrowser #source-status { width: 1fr; height: auto; }
     SourceBrowser #source-breakpoint { width: auto; }
     SourceBrowser #source-text { height: 1fr; }
+    SourceBrowser #breakpoint-info {
+        height: auto; border: round $accent; background: $surface; padding: 0 1;
+    }
     """
 
     def __init__(self, *, sidebar_header=None, editor_side=None, bottom=None):
@@ -163,6 +166,9 @@ class SourceBrowser(Vertical):
                             yield Static(SOURCE_HINT, id="source-status", markup=False)
                             yield Button("● Breakpoint", id="source-breakpoint", disabled=True)
                         yield SourceText(id="source-text")
+                        info = Static("", id="breakpoint-info", markup=False)
+                        info.display = False
+                        yield info
                     if self._editor_side is not None:
                         yield self._editor_side
                 if self._bottom is not None:
@@ -427,6 +433,44 @@ class SourceBrowser(Vertical):
             key[0], key[1], tuple(sorted(marks)), self._options.get(key, {})
         ))
 
+    @on(TextArea.SelectionChanged, "#source-text")
+    def _cursor_moved(self, _event):
+        self._refresh_breakpoint_info()
+
+    def _refresh_breakpoint_info(self):
+        """Show the cursor line's condition and log message, read-only, below the source."""
+        if not self.query("#breakpoint-info"):
+            return
+        panel = self.query_one("#breakpoint-info", Static)
+        option = None
+        if self.file_path is not None:
+            line = self.query_one(SourceText).cursor_location[0] + 1
+            key = (self.root_path, self.file_path.resolve())
+            if line in self._marks.get(key, set()):
+                option = self._options.get(key, {}).get(line)
+        if breakpoint_kind(option) == "plain":
+            panel.display = False
+            return
+        muted = "#7f8c93"
+        text = Text()
+        if option.condition:
+            # A logpoint never stops, so its condition only decides whether it prints.
+            meaning = "only when true" if option.log_message else "stops only when true"
+            text.append("if   ", style=muted)
+            text.append(option.condition)
+            text.append(f"   {meaning}", style=muted)
+        if option.log_message:
+            if text:
+                text.append("\n")
+            text.append("log  ", style=muted)
+            text.append(option.log_message)
+            text.append("   prints without stopping", style=muted)
+        text.append("\nShift+F9 edit · F9 remove", style=muted)
+        kind = "logpoint" if option.log_message else "conditional breakpoint"
+        panel.border_title = f"{self.file_path.name}:{line} · {kind}"
+        panel.update(text)
+        panel.display = True
+
     def _refresh_editor_marks(self):
         editor = self.query_one(SourceText)
         if self.file_path is None:
@@ -440,6 +484,7 @@ class SourceBrowser(Vertical):
                 if (kind := breakpoint_kind(option)) != "plain"
             }
         editor.refresh()
+        self._refresh_breakpoint_info()
 
     def _set_status(self, message):
         if self._persistence_error:

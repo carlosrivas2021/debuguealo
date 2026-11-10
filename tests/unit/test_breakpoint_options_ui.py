@@ -198,4 +198,47 @@ async def test_compact_dialog_shows_the_line_and_leaves_it_visible(monkeypatch, 
         assert app.screen.styles.background.a == 0
         hint = str(app.screen.query_one('#breakpoint-status', Static).render())
         assert 'Enter save' in hint and 'Esc cancel' in hint
+        # Each field says what it does: a condition stops, a log message prints.
+        condition = app.screen.query_one('#breakpoint-condition', Input).placeholder
+        log = app.screen.query_one('#breakpoint-log', Input).placeholder
+        assert condition.startswith('stop only when true')
+        assert log.startswith('print without stopping')
         await pilot.press('escape')
+
+
+def info(app):
+    panel = app.query_one('#breakpoint-info', Static)
+    return panel.display, str(panel.render()), str(panel.border_title)
+
+
+async def test_cursor_on_a_conditional_line_shows_its_options_read_only(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        await open_main(pilot, app, 4)
+        await edit(pilot, app, condition='answer > 40')
+        await open_main(pilot, app, 5)
+        await edit(pilot, app, condition='answer > 1', log='seen {answer}')
+        await open_main(pilot, app, 3)
+        await pilot.press('f9')  # A plain breakpoint has nothing to show.
+        assert info(app)[0] is False
+        browser = await open_main(pilot, app, 4)
+        shown, text, title = info(app)
+        assert shown and 'main.py:4' in title
+        assert 'if' in text and 'answer > 40' in text and 'stops only when true' in text
+        assert 'log' not in text
+        assert 'Shift+F9 edit' in text and 'F9 remove' in text
+        await open_main(pilot, app, 5)
+        shown, text, _ = info(app)
+        assert shown and 'seen {answer}' in text and 'prints without stopping' in text
+        # With a log message the line never stops, so the condition only filters the log.
+        assert 'answer > 1' in text and 'stops only' not in text and 'only when true' in text
+        # The panel sits below the editor, so the cursor line stays visible.
+        editor = browser.query_one(TextArea)
+        panel = app.query_one('#breakpoint-info')
+        assert editor.region.y + 4 - editor.scroll_offset.y < panel.region.y
+        await open_main(pilot, app, 1)  # No breakpoint here.
+        assert info(app)[0] is False
+        await open_main(pilot, app, 4)
+        await pilot.press('f9')  # Removing the breakpoint hides it.
+        assert info(app)[0] is False

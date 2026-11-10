@@ -8,7 +8,7 @@ from textual.widgets import Input, Label, Static
 
 from debugpilot.storage.breakpoints import BreakpointOptions, breakpoint_options
 
-HINT = "Enter save · Esc cancel · a log message never stops · F9 removes the breakpoint"
+HINT = "Enter save · Esc cancel · F9 removes the breakpoint"
 MAX_TITLE_CODE = 60
 
 
@@ -49,7 +49,7 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
                 yield Label("if")
                 yield Input(
                     value=(self.options.condition or "") if self.options else "",
-                    placeholder="user_id == 42",
+                    placeholder="stop only when true, e.g. user_id == 42",
                     id="breakpoint-condition",
                     compact=True,
                 )
@@ -57,7 +57,7 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
                 yield Label("log")
                 yield Input(
                     value=(self.options.log_message or "") if self.options else "",
-                    placeholder="order {order.id} received",
+                    placeholder="print without stopping, e.g. order {order.id} received",
                     id="breakpoint-log",
                     compact=True,
                 )
