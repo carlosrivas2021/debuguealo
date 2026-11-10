@@ -101,7 +101,6 @@ class DebugPilotApp(App):
         Binding("f10", "code_step_over", "Step over"),
         Binding("f11", "code_step_in", "Step in"),
         Binding("shift+f11", "code_step_out", "Step out"),
-        Binding("ctrl+j", "toggle_code_terminal", "Terminal"),
         # Containers only; Code has its own pane order. Text fields keep word movement.
         Binding("ctrl+left", "container_pane(-1)", "Pane ←"),
         Binding("ctrl+right", "container_pane(1)", "Pane →"),
