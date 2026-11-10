@@ -152,3 +152,43 @@ async def test_debug_passes_the_profile_environment(tmp_path, language):
         assert 'GOT debug-value' in ''.join(output)
     finally:
         await session.close()
+
+
+def test_env_file_follows_common_dotenv_conventions():
+    text = 'PLAIN=value # a comment\nHASH=a#b\nQUOTED="kept # inside"\nA=x B=y\n'
+    assert parse_env_file(text) == {
+        'PLAIN': 'value', 'HASH': 'a#b', 'QUOTED': 'kept # inside', 'A': 'x B=y'}
+
+
+def test_env_file_errors_give_the_right_reason():
+    with pytest.raises(ConfigurationError, match='NUL'):
+        parse_env_file('A=x\u0000y\n')
+
+
+def test_a_directory_as_env_file_is_reported_as_such(monkeypatch, tmp_path):
+    (tmp_path / 'envdir').mkdir()
+    store = write_profiles(monkeypatch, tmp_path, envFile='envdir')
+    with pytest.raises(ConfigurationError, match='is a directory'):
+        profile_environment(store.profiles()[0])
+
+
+@pytest.mark.parametrize('language', ['python', 'node'])
+def test_debug_finds_the_interpreter_on_the_profile_path(monkeypatch, tmp_path, language):
+    import shutil
+    from dataclasses import replace
+
+    from debugpilot.debugger.node import _node_argv
+    from debugpilot.debugger.python import _target
+
+    tools = tmp_path / 'tools'
+    tools.mkdir()
+    real = sys.executable if language == 'python' else shutil.which('node')
+    name = 'python3' if language == 'python' else 'node'
+    (tools / name).symlink_to(real)
+    profile, _, _ = program(tmp_path, language)
+    profile = replace(profile, env=(('PATH', str(tools)),))
+    if language == 'python':
+        interpreter, _ = _target(profile)
+    else:
+        interpreter = _node_argv(profile, profile.command)[0]
+    assert interpreter == str(tools / name)

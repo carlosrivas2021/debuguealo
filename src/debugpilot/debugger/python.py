@@ -10,7 +10,7 @@ from pathlib import Path
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger.dap import DAPClient, DebugError
 from debugpilot.storage.breakpoints import BreakpointOptions
-from debugpilot.storage.code_projects import CodeProject, profile_variables
+from debugpilot.storage.code_projects import CodeProject, profile_environment, profile_variables
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
 _GRAMMAR = (
@@ -40,7 +40,8 @@ def _target(profile):
         source = Path(tail[0])
         target = {'program': str(profile.root / source), 'args': tail[1:]}
     try:
-        argv = command_argv(command)
+        # The profile's PATH picks the interpreter, as it does for Run.
+        argv = command_argv(command, _environment(profile))
     except RuntimeError as error:
         raise DebugError(str(error)) from error
     return argv[0], target
@@ -53,6 +54,14 @@ def _breakpoints(root, source, lines):
     if any(type(line) is not int or line < 1 for line in intent):
         raise DebugError('Breakpoints require positive 1-based integer lines.')
     return str(path), intent
+
+
+def _environment(profile):
+    """The profile's full environment (None without env/envFile), as a debug error."""
+    try:
+        return profile_environment(profile)
+    except ConfigurationError as error:
+        raise DebugError(str(error)) from None
 
 
 def _profile_variables(profile):

@@ -8,7 +8,12 @@ import tempfile
 from pathlib import Path
 
 from debugpilot.debugger.dap import DAPClient, DebugError
-from debugpilot.debugger.python import PythonDebugSession, _intent, _profile_variables
+from debugpilot.debugger.python import (
+    PythonDebugSession,
+    _environment,
+    _intent,
+    _profile_variables,
+)
 from debugpilot.storage.code_projects import CodeProject
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
@@ -29,7 +34,7 @@ def _target(profile):
     if any(arg.endswith('.go') for arg in args):
         raise DebugError(_GRAMMAR)
     try:
-        argv = command_argv(command)
+        argv = command_argv(command, _environment(profile))
     except RuntimeError as error:
         message = f'{error}. Select an installed Go runtime. No run-mode fallback.'
         raise DebugError(message) from error
@@ -49,7 +54,9 @@ class GoDebugSession(PythonDebugSession):
             raise DebugError('A debug session is already active; Stop before starting again.')
         _, program, args = _target(profile)
         variables = _profile_variables(profile)
-        dlv = shutil.which('dlv')
+        environment = _environment(profile)
+        dlv = (shutil.which('dlv') if environment is None
+               else shutil.which('dlv', path=environment.get('PATH')))
         if not dlv:
             message = ('Delve (dlv) is required for Go debugging; install it and add it to PATH. '
                        'No run-mode fallback.')
