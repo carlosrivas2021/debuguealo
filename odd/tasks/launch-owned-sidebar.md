@@ -39,9 +39,9 @@ Implement and verify the workflow; report failures and unavailable proof honestl
 
 ## Tasks
 
-- T1 | S1–S2 | delegated direct: independent explicit launch-file initialization/editor unit | implemented and independently verified; capability skips documented | commit: pending | storage API, portable editor opening, regression tests and launch docs.
-- T2 | S1/S3–S4 | delegated direct: independent saved-sidebar/action unit | implemented and independently verified; compatibility migration complete | commit: pending | main/lower lists, linking, two confirmed actions, welcome and UI tests/docs.
-- T3 | S1–S5 | inline integration, then independent verification Risk items 1/2/3/4 | functionally verified; delivery/review decision pending | commit: pending | editor-action seam, compatibility checks, isolated suite and delivery evidence.
+- T1 | S1–S2 | delegated direct: independent explicit launch-file initialization/editor unit | implemented and independently verified; capability skips documented | commit: 801d992 | storage API, portable editor opening, regression tests and launch docs.
+- T2 | S1/S3–S4 | delegated direct: independent saved-sidebar/action unit | implemented and independently verified; compatibility migration complete | commit: 801d992 | main/lower lists, linking, two confirmed actions, welcome and UI tests/docs.
+- T3 | S1–S5 | inline integration, then independent verification Risk items 1/2/3/4 | functionally verified; delivery/review decision pending | commit: 801d992 | editor-action seam, compatibility checks, isolated suite and delivery evidence.
 
 ## Log
 
@@ -67,3 +67,7 @@ The parent corrected completion focus returning to the raw table (which silently
 
 ### L6 — Independent verification and one bounded correction
 Independent isolated nonintegration suite:223passed2symlinkcapabilityskips3deselected in121.54s; Ruff check and format56files clean. One independent new-flow blocker reproduced: Escape cancelled a profile preview but focused raw inventory, selecting unrelated catalog logs. Repository regression RED1fail, fixed focus to current selection owner. Updated renamed-action modal/input guards. Layout advisories (wide truncated action labels/heading and compact welcome border) corrected with stacked wide buttons, separate heading/checkbox rows, compact welcome styling, and scrollable sidebar minimum section heights. Own layout/visibility/cancel/welcome10passed10.50s. Scoped independent recheck original probe + regression + visibility:9passed10.46s, blocker CLOSED. Four screenshot captures confirm complete labels and bounded buttons at120x40 and80x24. No new broad sweep, live Docker mutation or actual editor launch. Parent final spot check follows. All tests use fake boundaries; actual WSL editor request remains a platform-dependent manual check. Risk items1/2/3/4 remain disclosed; no native review approval claimed.
+
+### L-final — Status reconciliation (2026-11-10)
+
+T1–T3 shipped in 801d992 (feat(tui): group containers under saved launch profiles). The actual WSL editor launch remains a manual platform check. 2026-11-10 status reconciliation: tests/unit with -m "not integration" on main 783a6b8: 864 passed, 1 deselected, 0 failed (1032s). Integration tests not run (need real Docker). No native review approval is claimed.

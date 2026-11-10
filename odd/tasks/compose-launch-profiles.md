@@ -44,10 +44,10 @@ After fake-boundary tests, inspect the actual local inventory and pin the active
 
 ## Tasks
 
-- T1 | S1–S2 | delegated direct: initial storage/discovery; inline ownership correction | functionally verified: ephemeral detection and create-only explicit save; native review blocked | commit: pending | bounded store/model, user-owned launch, no discovery file, focused tests and docs.
-- T2 | S3 | delegated direct: parallel independent Compose semantics unit | implemented; parent focused 49 passed, 1 skipped across T1/T2 | commit: pending | optional project directory/up settings, revalidation and compatibility tests/docs.
-- T3 | S1–S6 | inline: dependent UI/inventory integration | revised dynamic/saved UI functionally verified; S6 conditional proof unavailable (zero active targets); native review blocked | commit: pending | named detections/saved profiles, explicit Save/Copy, compact form and pinned stop controls; full suite and scoped independent correction recheck passed.
-- T4 | S5 | delegated direct: independent stop backend parallel to parent integration | implemented; focused 9 passed, existing stream/service 36 passed | commit: pending | bounded confirmed stop API and per-target partial/unknown results; parent owns UI integration and S6 actual stop.
+- T1 | S1–S2 | delegated direct: initial storage/discovery; inline ownership correction | functionally verified: ephemeral detection and create-only explicit save; native review blocked | commit: ec5f93b | bounded store/model, user-owned launch, no discovery file, focused tests and docs.
+- T2 | S3 | delegated direct: parallel independent Compose semantics unit | implemented; parent focused 49 passed, 1 skipped across T1/T2 | commit: ec5f93b | optional project directory/up settings, revalidation and compatibility tests/docs.
+- T3 | S1–S6 | inline: dependent UI/inventory integration | revised dynamic/saved UI functionally verified; S6 conditional proof unavailable (zero active targets); native review blocked | commit: ec5f93b | named detections/saved profiles, explicit Save/Copy, compact form and pinned stop controls; full suite and scoped independent correction recheck passed.
+- T4 | S5 | delegated direct: independent stop backend parallel to parent integration | implemented; focused 9 passed, existing stream/service 36 passed | commit: ec5f93b | bounded confirmed stop API and per-target partial/unknown results; parent owns UI integration and S6 actual stop.
 
 ## Log
 
@@ -117,3 +117,7 @@ Needs your decision: local implementation is verified, but the prior native tran
 Haz el push
 
 The user explicitly requests delivery of the corrected and independently verified implementation to origin/main. Native review remains inconclusive and enabled; no approval, acknowledgement, reset, or review bypass is claimed. Its terminal transition governs that lifecycle, not ordinary Git delivery. Publish one integrated Conventional Commit as already requested, with tests and docs, by normal fast-forward push only. Runtime Stop proof remains unavailable (no active targets); the symlink-capability test is skipped and integration tests are excluded. Rollback boundary: revert this complete integrated feature commit to remove workspace launch profiles and Stop controls without changing the preceding current-run log fix. All T1–T4 implementation is included in this delivery commit; its exact identity is recorded in the session delivery evidence after creation.
+
+### L-final — Status reconciliation (2026-11-10)
+
+T1–T4 shipped in ec5f93b (feat(tui): add dynamic launch profiles and confirmed stop controls), as the previous Log entry anticipated. S6 runtime Stop proof remains unavailable as recorded. 2026-11-10 status reconciliation: tests/unit with -m "not integration" on main 783a6b8: 864 passed, 1 deselected, 0 failed (1032s). Integration tests not run (need real Docker). No native review approval is claimed.
