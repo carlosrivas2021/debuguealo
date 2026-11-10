@@ -296,3 +296,20 @@ async def test_edit_panel_opens_where_the_read_only_panel_is(monkeypatch, tmp_pa
         editor = browser.query_one(TextArea)
         assert editor.region.y + 3 - editor.scroll_offset.y < box.y
         await pilot.press('escape')
+
+
+async def test_edit_panel_is_placed_before_its_first_frame(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        pane = browser.query_one('#source-pane').region
+        dialog = BreakpointDialog('main.py:4', 'answer = increment(answer)', None,
+                                  anchor=(pane.x, pane.bottom, pane.width))
+        # Right after mounting, before any refresh, it already sits at its final place:
+        # it never shows up at the top and then moves down.
+        await app.push_screen(dialog)
+        box = dialog.query_one('#breakpoint-box')
+        assert (box.styles.offset.x.value, box.styles.offset.y.value) == (
+            pane.x, pane.bottom - box.styles.height.value)
+        await pilot.press('escape')

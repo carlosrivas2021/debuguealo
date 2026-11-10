@@ -10,6 +10,8 @@ from debugpilot.storage.breakpoints import BreakpointOptions, breakpoint_options
 
 HINT = "Enter save · Esc cancel · F9 removes the breakpoint"
 MAX_TITLE_CODE = 60
+# Border plus three rows; fixed so the panel can be placed before its first frame.
+DIALOG_ROWS = 5
 
 
 class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None]):
@@ -23,7 +25,7 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
     DEFAULT_CSS = """
     BreakpointDialog { align: center bottom; background: transparent; }
     BreakpointDialog #breakpoint-box {
-        width: 100%; max-width: 110; height: auto; border: round $accent;
+        width: 100%; max-width: 110; height: 5; border: round $accent;
         background: $surface; padding: 0 1;
     }
     BreakpointDialog Horizontal { height: 1; }
@@ -44,6 +46,14 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
 
     def compose(self) -> ComposeResult:
         with Vertical(id="breakpoint-box") as box:
+            if self.anchor is not None:
+                # Placed now, not after layout, so it never appears elsewhere first.
+                x, bottom, width = self.anchor
+                self.styles.align = ("left", "top")
+                box.styles.width = width
+                box.styles.max_width = width
+                box.styles.height = DIALOG_ROWS
+                box.styles.offset = (x, max(0, bottom - DIALOG_ROWS))
             code = self.code
             if len(code) > MAX_TITLE_CODE:
                 code = code[:MAX_TITLE_CODE - 1] + "…"
@@ -68,20 +78,6 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
 
     def on_mount(self) -> None:
         self.query_one("#breakpoint-condition", Input).focus()
-        if self.anchor is not None:
-            x, _, width = self.anchor
-            self.styles.align = ("left", "top")
-            box = self.query_one("#breakpoint-box")
-            box.styles.width = width
-            box.styles.max_width = width
-            box.styles.offset = (x, 0)
-            # The height is known only after layout; then rest the panel on the anchor.
-            self.call_after_refresh(self._rest_on_anchor)
-
-    def _rest_on_anchor(self) -> None:
-        x, bottom, _ = self.anchor
-        box = self.query_one("#breakpoint-box")
-        box.styles.offset = (x, max(0, bottom - box.outer_size.height))
 
     @on(Input.Submitted)
     def save_breakpoint(self) -> None:
