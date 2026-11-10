@@ -32,6 +32,8 @@ BreakpointDialog { background: transparent; }
 #code-inspection { height: 1fr; min-height: 4; layout: vertical; }
 #code-stack { height: 1fr; width: 1fr; min-height: 2; scrollbar-size-horizontal: 0; border-top: solid #2b3439; border-title-color: #a9c2cc; }
 #code-watch-pane { height: auto; border-top: solid #2b3439; border-title-color: #a9c2cc; }
+/* A blank row above each debug section title keeps them apart. */
+#code-stack, #code-watch-pane, #code-variables { margin-top: 1; }
 #code-watches { height: auto; max-height: 8; }
 #code-variables { width: 1fr; height: 1fr; overflow: auto; padding: 0 1; border-top: solid #2b3439; border-title-color: #a9c2cc; }
 #code-bottom { height: 1fr; min-height: 4; }

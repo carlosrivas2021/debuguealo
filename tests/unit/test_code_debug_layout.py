@@ -71,3 +71,19 @@ async def test_real_node_variables_show_functions_by_name(tmp_path):
         assert values['helper'] == 'ƒ helper()'
     finally:
         await session.close()
+
+
+async def test_debug_panel_sections_have_a_blank_row_above_their_titles(monkeypatch, tmp_path):
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.click('#area-code')
+        debug = app.query_one('#code-debug')
+        debug.display = True
+        await pilot.pause()
+        controls = app.query_one('#code-debug-controls').region
+        stack = app.query_one('#code-stack').region
+        watch = app.query_one('#code-watch-pane').region
+        variables = app.query_one('#code-variables').region
+        assert stack.y - controls.bottom == 1
+        assert watch.y - stack.bottom == 1
+        assert variables.y - watch.bottom == 1
