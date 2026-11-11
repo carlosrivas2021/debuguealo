@@ -211,15 +211,16 @@ tag requires Docker Compose 2.24.4 or newer.
 
 ## Independent external profiles
 
-For the example project root `/path/to/project`,
-add these three objects independently to the central file's `configurations` array. Keep
-`workspaceFolder` set to that exact root for each profile:
+Several Compose projects can share one root. For a checkout of this repository at
+`/path/to/debugealo`, add these three objects independently to the central file's
+`configurations` array to use the [multi-project example](../examples/multi-project/README.md).
+Keep `workspaceFolder` set to that exact root for each profile:
 
 ```json
 [
-  {"name":"Agente","type":"docker-compose","projectName":"local-agente","workspaceFolder":"/path/to/project","cwd":"${workspaceFolder}","files":["local/agente/docker-compose.yaml"]},
-  {"name":"MCP","type":"docker-compose","projectName":"local-mcp","workspaceFolder":"/path/to/project","cwd":"${workspaceFolder}","files":["local/mcp/docker-compose.yaml"]},
-  {"name":"Conversation","type":"docker-compose","projectName":"local-conversation","workspaceFolder":"/path/to/project","cwd":"${workspaceFolder}","files":["local/conversation/docker-compose.yaml"]}
+  {"name":"Gateway","type":"docker-compose","projectName":"dp-demo-gateway","workspaceFolder":"/path/to/debugealo/examples/multi-project","cwd":"${workspaceFolder}","files":["gateway/compose.yaml"]},
+  {"name":"Orders","type":"docker-compose","projectName":"dp-demo-orders","workspaceFolder":"/path/to/debugealo/examples/multi-project","cwd":"${workspaceFolder}","files":["orders/compose.yaml"]},
+  {"name":"Catalog","type":"docker-compose","projectName":"dp-demo-catalog","workspaceFolder":"/path/to/debugealo/examples/multi-project","cwd":"${workspaceFolder}","files":["catalog/compose.yaml"]}
 ]
 ```
 

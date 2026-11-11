@@ -17,3 +17,8 @@ htmlcov/
 
 # Launch profiles are per-user configuration
 launch.json
+
+# Local agent workflow logs and design-tool state
+odd/
+design/*/comments.json
+design/*/handoffs.json
