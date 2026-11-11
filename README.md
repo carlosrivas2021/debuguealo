@@ -1,176 +1,162 @@
-# debugealo
+<h1 align="center">debugealo</h1>
 
-Local-first Docker debugging in Python.
+<p align="center">
+  <strong>Local-first Docker debugging, right in your terminal.</strong><br>
+  Watch your containers, run Compose safely, and step through Python, Go and Node code<br>
+  from one keyboard-driven dashboard. No cloud, no IDE required.
+</p>
 
-## Install
+<p align="center">
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/docker-required-2496ED?logo=docker&logoColor=white">
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-555">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
+</p>
 
-The repository is private; you need read access and Git. Install
-[uv](https://docs.astral.sh/uv/) once, then install debugealo from the repository:
+---
+
+<p align="center">
+  <img alt="Containers dashboard: launch profiles, live container details, streaming logs and a confirmed recreate" src="docs/assets/containers.gif" width="900">
+</p>
+
+<p align="center">
+  <img alt="Code area: setting a breakpoint, debugging a Python profile, stepping and reading variables" src="docs/assets/code.gif" width="900">
+</p>
+
+## Quick start
 
 ```console
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install git+ssh://git@github.com/carlosrivas2021/debuguealo.git
-debugealo
+curl -LsSf https://astral.sh/uv/install.sh | sh          # 1. install uv (once)
+uv tool install git+ssh://git@github.com/carlosrivas2021/debuguealo.git   # 2. install debugealo
+debugealo doctor                                          # 3. check Docker access
+debugealo                                                 # 4. open the dashboard
 ```
 
-The SSH URL uses your GitHub SSH key. With HTTPS credentials (for example after
-`gh auth login`), use `git+https://github.com/carlosrivas2021/debuguealo.git` instead.
-uv downloads a suitable Python (3.12 or newer) if needed. To update, rerun the install
-command with `--reinstall`.
+> [!NOTE]
+> The repository is private, so you need read access. The SSH URL uses your GitHub SSH key.
+> With HTTPS credentials (for example after `gh auth login`), use
+> `git+https://github.com/carlosrivas2021/debuguealo.git` instead. To update, rerun the
+> install command with `--reinstall`.
 
-Docker is required for containers. Python debugging works out of the box: debugealo bundles
-debugpy, so a profile's interpreter does not need it. To debug Go, install
-[Delve](docs/go-debugging.md) once (it needs Go):
+uv downloads a suitable Python if you don't have one. Docker is the only other requirement.
+Debugging Go also needs [Delve](docs/go-debugging.md):
+`go install github.com/go-delve/delve/cmd/dlv@latest`.
+
+## What you get
+
+| | Feature | In short |
+|---|---|---|
+| 🐳 | **Containers** | Running and stopped containers grouped by Compose project, with live CPU and memory, and historical and live logs that reconnect when containers change. |
+| 🚀 | **Launch profiles** | Save your Compose setups once in a central `launch.json`, then run **Play / Recreate** or **Build + Recreate** with an inline confirmation. |
+| 🐞 | **Debugging** | Breakpoints, conditional breakpoints, logpoints, watch expressions, stepping and stack/variable inspection for **Python**, **Go** and server-side **Node**. |
+| 🔌 | **Attach** | Connect to an existing loopback `debugpy` or Delve target, for example inside a container, without taking over its lifecycle. |
+| 💻 | **Terminals** | A container shell and a host Bash docked inside the dashboard. |
+| 🛡️ | **Safe by default** | Destructive actions ask first, image downloads need consent, and debug ports listen on `127.0.0.1` only. |
+
+## Keyboard cheat sheet
+
+**Everywhere**
+
+| Key | Action |
+|---|---|
+| `Ctrl+T` | Switch between **Containers** and **Code** |
+| `Ctrl+O` / `Ctrl+N` | Open `launch.json` in your terminal editor |
+| `Ctrl+Left` / `Ctrl+Right` | Move focus between panes |
+
+**Containers**
+
+| Key | Action |
+|---|---|
+| `r` | Preview **Play / Recreate** |
+| `Shift+R` | Preview **Build + Recreate** |
+| `s` | Stop the selected container or project, after confirmation |
+| `Ctrl+L` | Open logs (`D` or `Esc` closes them, `Ctrl+R` reconnects) |
+| `C` / `H` | Open the container shell / host Bash |
+| `O` | Show or hide the output console |
+| `Space` | Collapse or expand a group |
+
+**Code**
+
+| Key | Action |
+|---|---|
+| `F5` | Run the profile, or **Continue** while paused |
+| `Shift+F5` | Debug the profile |
+| `F9` / `Shift+F9` | Toggle a breakpoint / add a condition or logpoint |
+| `F10` / `F11` / `Shift+F11` | Step over / in / out |
+| `S` | Stop the selected run |
+
+The full workflow is in the [keyboard guide](docs/tui.md).
+
+## Command line
 
 ```console
-go install github.com/go-delve/delve/cmd/dlv@latest
+debugealo                      # open the dashboard (same as `debugealo tui`)
+debugealo doctor               # check Python, config, Docker access and Delve
+debugealo containers [--json]  # list containers
+debugealo logs <name> --tail 100 [--follow]
+debugealo version
 ```
 
-Run `debugealo doctor` to check Docker access and Delve; a missing Delve is a warning with
-this install command.
+`doctor` exits with `0` when every check passes, `1` when Docker is unavailable or access is
+denied, and `2` for invalid configuration. A missing Delve is only a warning.
 
-## What it does
+## Try it
 
-The foundation provides packaging, a headless lifecycle engine, bounded events, TOML
-configuration, and real local Docker diagnostics. Docker integration adds discovery of
-running/stopped containers, Compose metadata, historical/live logs, bounded buffering,
-and controlled reconnect/cancellation. The terminal dashboard adds keyboard selection,
-live logs, bounded search/filter/pause controls and explicit connection errors.
-The **Code** area registers project folders using a separate central `projects/launch.json`
-and runs the selected profile without debug using **F5**, with an interactive console and
-**Stop** control; profiles can add environment variables with `env` and `envFile`. **Shift+F5** debugs Python and supported Go profiles with the same
-profile: mark read-only source, pause at a breakpoint, inspect stack/variables, step and
-Continue. **Shift+F9** gives a breakpoint a condition or turns it into a logpoint that writes
-to the debug output without stopping, and the **Watch** section re-evaluates expressions on
-every pause. Go attach profiles can connect to an existing loopback Delve target without
-starting or owning that target; disconnect leaves its lifecycle to Containers. Requested
-breakpoints remain separate from adapter verification. Python debug
-requires `debugpy` in the selected interpreter; Go debug requires Delve (`dlv`) on the
-application PATH. Debug mode has no interactive stdin, and missing adapters never fall
-back to run. See [code projects](docs/code-projects.md), including the Go remote attach schema,
-source mapping, controls and reconnect workflow. Python attach profiles do the same for an
-existing loopback `debugpy` target, such as a container; try the
-[FastAPI debug example](examples/fastapi-debug/README.md). Server-side Node debugging
-supports direct scripts and explicit npm debug targets; see [code projects](docs/code-projects.md#debug-server-side-node).
-No connection is simulated in the application.
+| Example | What it shows |
+|---|---|
+| [`examples/fastapi-debug`](examples/fastapi-debug/README.md) | Attach to a Python `debugpy` target running in a container |
+| [`examples/multi-project`](examples/multi-project/README.md) | Three independent Compose projects that share a network |
 
-The dashboard also supports explicit, confirmation-gated local Compose restart,
-recreate and rebuild actions for a service or project, using ordered override files.
-Press Ctrl+O to open launch.json; read [Compose safety and limits](docs/compose.md) before running actions.
+## Documentation
 
-The primary sidebar lists saved configurations from a central `launch.json` beside
-debugealo's user `config.toml`, independent of the working directory. Each central
-profile explicitly names its project root with `workspaceFolder`; the previous
-`.debugpilot/launch.json` local-workspace mode remains supported for explicit callers
-and is not auto-migrated. Running containers are linked by the explicit Compose `projectName`,
-not by the display label. Profiles remain available when no containers are running.
-The lower **View active containers** area shows Docker inventory separately, including
-containers not configured in the launch file; selecting raw inventory does not authorize
-Compose actions.
+| Start here | Go deeper |
+|---|---|
+| [Keyboard workflow](docs/tui.md) | [Architecture](docs/architecture.md) |
+| [Launch profiles](docs/launch-profiles.md) | [Docker integration and limits](docs/docker.md) |
+| [Code projects and debugging](docs/code-projects.md) | [Configuration](docs/configuration.md) |
+| [Compose safety and limits](docs/compose.md) | [Python](docs/python-debugging.md) · [Go](docs/go-debugging.md) debugging |
+| [Container controls](docs/container-controls.md) | [Multi-project setups](docs/multi-project.md) · [Terminal](docs/terminal.md) |
 
-With no saved profiles, a welcome view offers **Open launch.json**. **Ctrl+O** and
-**Ctrl+N** request the same editor action directly, without a Compose picker. If absent,
-the central file is created only on that explicit action as an empty configuration array.
-Existing
-files are never replaced. The TUI yields the same terminal to `nano` (or `vi` if
-`nano` is unavailable), waits for you to exit, then restores the dashboard and reloads
-the profiles. No VS Code window or system file association is opened. Install `nano`
-or `vi` on PATH if neither is available. In nano, save with Ctrl+O, Enter, then exit
-with Ctrl+X; in vi, use `:wq` to save and exit. No second discovery JSON is created.
+## Platform notes
 
-Select a saved profile, then use **Play / Recreate** (`r`) to apply Compose configuration,
-environment and port changes, or **Build + Recreate** (`Shift+R`) when code or image
-dependencies changed. Plain Restart is not exposed in the dashboard. Each action shows
-an inline confirmation with the pinned profile; changing its saved configuration before
-confirmation invalidates the preview. Escape cancels without running Docker. Builds
-and recreation may interrupt services; inspect Docker after partial failures.
+- **Linux:** use Docker Engine and grant your account socket access according to your
+  organization's policy.
+- **macOS:** use Docker Desktop.
+- **Windows:** use PowerShell and Docker Desktop in Linux-container mode. Windows has not been
+  rechecked since the Python attach and F5/F9 changes.
 
-Selecting a container shows detail cards, with live CPU and memory for a running
-container, and selecting a profile shows a project overview; neither streams logs. **Ctrl+L** opens the selection's logs (combined project
-logs are tagged by container origin) and **D** or **Esc** closes them. **Ctrl+R**
-reconnects open logs. Dashboard logs show only each container's current execution. Successful
-recreation refreshes inventory, clears the old view and reconnects after container IDs
-change; Docker's stored history is not deleted. The `logs` CLI retains history behavior.
-See the [keyboard workflow](docs/tui.md) and [workspace launch profiles](docs/launch-profiles.md).
-Press **s** or click **Stop** to confirm stopping a container or its selected project
-group, without removing containers or volumes. See [container controls](docs/container-controls.md).
-The default inventory shows active containers; **Show all** reveals stopped containers
-in a separate section. See [file-based startup](docs/starting-projects.md).
+> [!WARNING]
+> Docker access is privileged. Do not expose its socket, make it world-writable, or run
+> debugealo as administrator to work around configuration errors.
+
+After installation, debugealo works offline. Installing dependencies and building the example
+images may download packages.
+
+## Development
 
 ```console
 uv sync --locked
 uv run debugealo
-uv run debugealo tui
-uv run debugealo version
-uv run debugealo doctor
-uv run debugealo containers
-uv run debugealo containers --json
-uv run debugealo logs payments-api --tail 100
-uv run debugealo logs payments-api --follow
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
+uv run pytest -m "not integration"   # unit tests
+uv run pytest                        # full suite: needs Docker, and Delve as `dlv`
+uv run ruff check . && uv run ruff format --check .
 ```
 
-```powershell
-$uv = 'C:\path\to\uv.exe'
-& $uv sync --locked
-& $uv run debugealo doctor
-```
+The Go debugging tests fail rather than skip when Delve is missing.
 
+<details>
+<summary><strong>Coming from <code>debugpilot</code>?</strong></summary>
 
-Install Python 3.12+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-On Windows, use PowerShell and Docker Desktop in Linux-container mode. On macOS,
-use Docker Desktop; on Linux, use Docker Engine and grant your account socket access
-according to your organization's policy. Docker access is privileged; do not expose its
-socket, make it world-writable, or run debugealo as administrator to mask configuration errors.
-
-`doctor` exits 0 when all checks pass, 1 for an unavailable/denied Docker daemon,
-and 2 for invalid configuration. It reports Python, configuration, platform, local endpoint,
-connectivity, permissions, Docker server version, and Delve on PATH. A missing Delve is a
-warning and does not change the exit code. A successful API read proves access
-to that operation, not authorization for every Docker API operation.
-
-Configuration is optional. See [configuration](docs/configuration.md) and
-[architecture](docs/architecture.md). Usage after installation requires no Internet.
-Dependency installation and example image builds may require downloads.
-
-## Not available yet
-
-`debugealo` and `debugealo tui` open the terminal dashboard; see the
-[keyboard workflow](docs/tui.md). The future `gui` command is not registered.
-Python's current breakpoint workflow is documented
-in [code projects](docs/code-projects.md#debug-python-with-the-same-profile).
-
-The installed distribution, primary Python package and command are named `debugealo`.
-`python -m debugpilot` and `debugpilot.*` imports remain supported aliases; both import
-paths resolve to the same implementation and state. The legacy `debugpilot` command is no
-longer installed; use `debugealo`. Existing `debugpilot` configuration and workspace data
-paths are intentionally unchanged.
-
-### Upgrade an existing checkout
-
-After switching an existing checkout from the `debugpilot` distribution to `debugealo`,
-reinstall the local project while preserving packages outside the lockfile:
+The distribution, package and command are now named `debugealo`. `python -m debugpilot` and
+`debugpilot.*` imports still work, but the `debugpilot` command is no longer installed.
+Configuration, profiles and breakpoints stay where they were, so nothing needs migrating.
+To update an existing checkout:
 
 ```console
 uv sync --inexact --frozen --reinstall-package debugealo
 ```
 
-`--frozen` uses the checkout's existing lockfile and `--inexact` retains unrelated
-installed tools. No configuration, profiles, or breakpoints
-need to be renamed, copied, or migrated.
-
-Read [Docker integration](docs/docker.md) for limits, logging-driver support, and reconnect semantics.
-
-## Known issues
-
-- Windows has not been rechecked since Python attach and the F5 and F9 changes.
-
-## Tests
-
-`uv run pytest` needs Docker and, for the Go debugging tests, Delve available as `dlv`
-(see [Go debugging](docs/go-debugging.md)). Those tests fail rather than skip when Delve is missing.
+</details>
 
 ## License
 
