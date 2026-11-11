@@ -58,6 +58,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `Ctrl+T` | Switch between **Containers** and **Code** |
 | `Ctrl+O` / `Ctrl+N` | Open `launch.json` in your terminal editor |
 | `Ctrl+Left` / `Ctrl+Right` | Move focus between panes |
+| Drag with the mouse | Copy the selected text |
 
 **Containers**
 

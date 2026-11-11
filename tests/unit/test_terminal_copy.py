@@ -55,13 +55,15 @@ async def test_ctrl_c_copies_the_selection_and_keeps_the_process_running(monkeyp
         await until(pilot, lambda: "HELLO COPY WORLD" in pane.render().plain)
 
         await _select_first_word(pilot, pane)
+        # Copy on select already copied it when the mouse was released.
+        assert copied == ["HELLO"]
         await pilot.press("ctrl+c")
         await pilot.pause(0.5)
 
-        assert copied == ["HELLO"]
+        assert copied == ["HELLO", "HELLO"]
         assert pane.active
         assert not app.screen.selections
 
         await pilot.press("ctrl+c")
         await until(pilot, lambda: not pane.active)
-        assert copied == ["HELLO"]
+        assert copied == ["HELLO", "HELLO"]

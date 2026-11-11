@@ -1485,6 +1485,14 @@ class DebugPilotApp(App):
 
         copy_native(text)
 
+    def on_text_selected(self, event: events.TextSelected) -> None:
+        """Copy on select: releasing the mouse after a drag copies what it covered."""
+        text = self.screen.get_selected_text()
+        if text:
+            self.copy_to_clipboard(text)
+            noun = "character" if len(text) == 1 else "characters"
+            self.notify(f"Copied {len(text)} {noun}", timeout=2)
+
     @on(Button.Pressed, "#open-launch-file")
     @on(Button.Pressed, "#welcome-open-launch")
     def action_open_launch_file(self) -> None:
