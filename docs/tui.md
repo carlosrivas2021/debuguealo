@@ -163,7 +163,10 @@ contexts are refused; no arbitrary current-directory fallback is used.
 Both require a focused project tree; invalid workspace/target contexts are refused.
 Startup failures appear in the corresponding terminal area. There is no PowerShell fallback. Once a terminal
 is focused, typed keys and control keys—including `Q`, `D`, `S`, `R`, and `O`—belong to
-the shell; `Ctrl+C` is sent to it and `Esc` returns focus to the left table. The terminal
+the shell; `Ctrl+C` is sent to it and `Esc` returns focus to the left table. To copy output,
+drag over it with the mouse and press `Ctrl+C`: with text selected, `Ctrl+C` copies it and the
+process keeps running; without a selection it interrupts the process as usual. The Code run
+terminal behaves the same way. The terminal
 keeps its opened target when inventory selection changes and is never reopened by refresh.
 For C, **Logs** (or Esc, then Ctrl+L) returns to logs without ending the shell.
 Press C on the same selected target to restore that pinned session; changing selection

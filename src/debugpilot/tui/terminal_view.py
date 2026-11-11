@@ -217,7 +217,14 @@ class TerminalPane(Widget):
                 self._escape_hook()
             return
         if key == "ctrl+c":
-            self._session.write("\x03")
+            # Like desktop terminals: copy a selection, otherwise interrupt the process.
+            selection = self.screen.selections.get(self)
+            extracted = self.get_selection(selection) if selection is not None else None
+            if extracted and extracted[0]:
+                self.app.copy_to_clipboard(extracted[0])
+                self.screen.clear_selection()
+            else:
+                self._session.write("\x03")
         elif key in mapped:
             self._session.write(mapped[key])
         elif key.startswith("ctrl+") and len(key) == 6:
