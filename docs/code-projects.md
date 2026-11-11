@@ -47,6 +47,14 @@ terminal in Containers; typing an "o" in a text field or a terminal still types 
 available in the current area. Selecting a profile shows one bottom view: its live session,
 otherwise the run or debug view you used last for that profile.
 
+When the selected profile's folder is inside a Git repository, the right end of the action
+bar shows its branch, for example **⎇ main**, or **⎇ detached @ 1a2b3c4** for a detached
+HEAD. It is read from the repository's files, so Git does not need to be installed, and it
+is hidden for folders outside a repository. While the profile runs or debugs, the bar keeps
+the branch it was launched from, even if you check out another branch meanwhile; stop and
+launch again to pick up the new one. An idle profile shows the current branch each time you
+select it.
+
 The profile list keeps room for six profiles. Drag the gray line between the profiles and
 the files, or press **Alt+Up** / **Alt+Down**, to give either one more rows; the file tree
 always keeps at least four.

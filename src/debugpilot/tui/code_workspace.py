@@ -10,6 +10,7 @@ from textual.widgets import Button, DataTable, Input, Static
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.code_projects import CodeProjectStore
+from debugpilot.storage.git_head import current_branch
 from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
 from debugpilot.tui.pane_splitter import PaneSplitter
@@ -49,6 +50,8 @@ class CodeWorkspace(Vertical):
         self._profile_rows = DEFAULT_PROFILE_ROWS
         # Last view the user chose per profile ("run" or "debug"), used when neither is live.
         self._last_view: dict[str, str] = {}
+        # Branch each profile was launched from; a live session keeps showing it after a checkout.
+        self._launch_branches: dict[str, str | None] = {}
         self._run_button = Button("▶ Run", id="code-run")
         self._debug_button = Button("Debug", id="code-debug-start")
         self._reconnect_button = Button("Reconnect", id="code-reconnect")
@@ -57,6 +60,8 @@ class CodeWorkspace(Vertical):
         self._run_state = Static(
             "Ready. Select a profile and press F5.", id="code-run-state", markup=False
         )
+        self._branch = Static("", id="code-branch", markup=False)
+        self._branch.display = False
         self._pane = CodeTerminal(
             self._run_context_state, id="code-terminal",
             escape_hook=lambda: self.query_one(DataTable).focus(),
@@ -91,6 +96,7 @@ class CodeWorkspace(Vertical):
             yield self._stop_button
             yield Button("↻ Reload", id="code-reload")
             yield self._run_state
+            yield self._branch
         yield self._browser
 
     def toggle_terminal(self) -> None:
@@ -262,6 +268,26 @@ class CodeWorkspace(Vertical):
             "Disconnect" if debug_selected and debug_context.profile.attach is not None
             else "Stop"
         )
+        if debug_selected:
+            branch = self._launch_branches.get(debug_context.profile.name)
+        elif run_selected:
+            branch = self._launch_branches.get(run_context.profile.name)
+        else:
+            profile = self._highlighted_profile()
+            branch = current_branch(profile.root) if profile is not None else None
+        self._branch.update(f"⎇ {branch}" if branch else "")
+        self._branch.display = bool(branch)
+
+    def _highlighted_profile(self):
+        # Session callbacks can arrive while the area unmounts; there is nothing to show then.
+        tables = self.query(DataTable)
+        if not tables or not tables.first().row_count:
+            return None
+        table = tables.first()
+        return self._profiles.get(table.ordered_rows[table.cursor_row].key.value)
+
+    def _remember_launch_branch(self, profile):
+        self._launch_branches[profile.name] = current_branch(profile.root)
 
     def _run_context_state(self, profile, message):
         if self._pane.selected_context is not None and (
@@ -314,6 +340,7 @@ class CodeWorkspace(Vertical):
         self._pane.display = True
         self._show_bottom()
         if created:
+            self._remember_launch_branch(profile)
             context.start_task = asyncio.create_task(self._start(profile))
             context.start_task.add_done_callback(
                 lambda task, profile=profile: self._run_start_finished(profile, task)
@@ -336,6 +363,7 @@ class CodeWorkspace(Vertical):
             return
         self._reconnect_button.display = False
         self._last_view[profile.name] = "debug"
+        self._remember_launch_branch(profile)
         self._debug.start(profile)
         self._sync_controls()
         self._stop_button.label = "Disconnect"
@@ -372,6 +400,7 @@ class CodeWorkspace(Vertical):
         self._last_view[profile.name] = "debug"
         self._pane.display = False
         self._show_bottom()
+        self._remember_launch_branch(profile)
         self._debug.start(profile)
         self._sync_controls()
 
