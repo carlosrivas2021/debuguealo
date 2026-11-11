@@ -39,6 +39,8 @@ class CodeWorkspace(Vertical):
         Binding("o", "app.toggle_code_terminal", "Output"),
         # Same key as stopping a container in Containers.
         Binding("s", "stop_run", "Stop"),
+        # Same key as Recreate in Containers, which Code disables.
+        Binding("r", "reload_profiles", "Reload"),
         # Move the boundary between profiles and files, like dragging the splitter.
         Binding("alt+up", "resize_profiles(-1)", show=False),
         Binding("alt+down", "resize_profiles(1)", show=False),
@@ -441,7 +443,7 @@ class CodeWorkspace(Vertical):
         self._sync_controls()
 
     def check_action(self, action, parameters):
-        if action in {"stop_run", "resize_profiles"}:
+        if action in {"stop_run", "resize_profiles", "reload_profiles"}:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
             if isinstance(focused, Input) or (
@@ -539,6 +541,9 @@ class CodeWorkspace(Vertical):
             limit = table.size.height + tree.first().size.height - MIN_TREE_ROWS
         self._profile_rows = max(MIN_PROFILE_ROWS, min(rows, limit))
         table.styles.height = self._profile_rows
+
+    def action_reload_profiles(self) -> None:
+        self.reload_profiles()
 
     async def action_stop_run(self) -> None:
         await self.stop()
