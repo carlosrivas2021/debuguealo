@@ -32,7 +32,10 @@ debugealo doctor                                                        # 3. che
 debugealo                                                               # 4. open the dashboard
 ```
 
-To update, rerun the install command with `--reinstall`.
+To update, rerun the install command with `--reinstall`. The dashboard tells you when a newer
+release exists: at most once a day it reads the repository's release tags with
+`git ls-remote`, using your existing git credentials and never prompting for them. Offline or
+without access it stays silent; set `DEBUGEALO_NO_UPDATE_CHECK=1` to turn the check off.
 
 uv downloads a suitable Python if you don't have one. Docker is the only other requirement.
 Debugging Go also needs [Delve](docs/go-debugging.md):
