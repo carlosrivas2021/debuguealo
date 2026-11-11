@@ -26,17 +26,13 @@
 ## Quick start
 
 ```console
-curl -LsSf https://astral.sh/uv/install.sh | sh          # 1. install uv (once)
-uv tool install git+ssh://git@github.com/carlosrivas2021/debuguealo.git   # 2. install debugealo
-debugealo doctor                                          # 3. check Docker access
-debugealo                                                 # 4. open the dashboard
+curl -LsSf https://astral.sh/uv/install.sh | sh                        # 1. install uv (once)
+uv tool install git+https://github.com/carlosrivas2021/debuguealo.git   # 2. install debugealo
+debugealo doctor                                                        # 3. check Docker access
+debugealo                                                               # 4. open the dashboard
 ```
 
-> [!NOTE]
-> The repository is private, so you need read access. The SSH URL uses your GitHub SSH key.
-> With HTTPS credentials (for example after `gh auth login`), use
-> `git+https://github.com/carlosrivas2021/debuguealo.git` instead. To update, rerun the
-> install command with `--reinstall`.
+To update, rerun the install command with `--reinstall`.
 
 uv downloads a suitable Python if you don't have one. Docker is the only other requirement.
 Debugging Go also needs [Delve](docs/go-debugging.md):
