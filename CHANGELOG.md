@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.2.0...v0.3.0) (2026-11-11)
+
+
+### Features
+
+* **tui:** announce newer releases on the dashboard ([e53a78c](https://github.com/carlosrivas2021/debuguealo/commit/e53a78c48a99c2ddcae180ea2d090a6a43a00520))
+* **tui:** announce newer releases on the dashboard ([533262f](https://github.com/carlosrivas2021/debuguealo/commit/533262fe1d701e9f005026df900520da431037bd))
+
 ## [0.2.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.1.0...v0.2.0) (2026-11-11)
 
 
