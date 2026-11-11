@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from textual.widgets import DataTable, Input, Static
 from typer.testing import CliRunner
 
-from debugpilot import cli
+from debugpilot import __version__, cli
 from debugpilot.core.engine import DebugPilotEngine, EngineState
 from debugpilot.core.exceptions import DockerError
 from debugpilot.core.models import ContainerInfo, LogEntry
@@ -150,7 +150,7 @@ def test_cli_default_and_explicit_tui_dispatch_without_changing_existing_command
     assert runner.invoke(cli.app, []).exit_code == 0
     assert runner.invoke(cli.app, ["tui"]).exit_code == 0
     assert launches == [None, None]
-    assert runner.invoke(cli.app, ["version"]).output.strip() == "debugealo 0.1.0"
+    assert runner.invoke(cli.app, ["version"]).output.strip() == f"debugealo {__version__}"
     assert runner.invoke(cli.app, ["--help"]).exit_code == 0
     assert runner.invoke(cli.app, ["logs", "api", "--tail", "-1"]).exit_code == 2
     assert len(launches) == 2

@@ -5,6 +5,8 @@ import sys
 
 from typer.testing import CliRunner
 
+from debugpilot import __version__
+
 
 def test_new_and_legacy_cli_names_share_expected_version_and_help():
     new_app = importlib.import_module("debugealo.cli").app
@@ -13,8 +15,8 @@ def test_new_and_legacy_cli_names_share_expected_version_and_help():
     new_version = runner.invoke(new_app, ["version"])
     old_version = runner.invoke(old_app, ["version"])
     assert new_version.exit_code == old_version.exit_code == 0
-    assert new_version.output.strip() == "debugealo 0.1.0"
-    assert old_version.output.strip() == "debugealo 0.1.0"
+    assert new_version.output.strip() == f"debugealo {__version__}"
+    assert old_version.output.strip() == f"debugealo {__version__}"
     for app in (new_app, old_app):
         help_result = runner.invoke(app, ["--help"])
         assert help_result.exit_code == 0
@@ -44,7 +46,7 @@ from debugealo.core.exceptions import ConfigurationError
 from debugpilot.core.exceptions import ConfigurationError as LegacyError
 assert Settings is LegacySettings
 assert ConfigurationError is LegacyError
-assert debugealo.__version__ == debugpilot.__version__ == '0.1.0'
+assert debugealo.__version__ == debugpilot.__version__
 """
         result = subprocess.run([sys.executable, "-c", script], text=True, capture_output=True)
         assert result.returncode == 0, result.stderr
@@ -61,7 +63,7 @@ def test_python_module_entry_points_preserve_old_alias_and_expose_new_name():
             env=env,
         )
         assert result.returncode == 0, result.stderr
-        assert result.stdout.strip() == "debugealo 0.1.0"
+        assert result.stdout.strip() == f"debugealo {__version__}"
 
 
 def test_config_and_workspace_storage_keep_legacy_paths_without_writing(tmp_path, monkeypatch):

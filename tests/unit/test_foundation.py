@@ -1,4 +1,6 @@
 import asyncio
+import tomllib
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -11,10 +13,13 @@ from debugpilot.storage.config import Settings, load_settings
 
 
 def test_version_and_help():
+    # pyproject.toml is the single source of truth that release-please bumps.
+    pyproject = Path(__file__).parents[2] / "pyproject.toml"
+    expected = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
     runner = CliRunner()
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "0.1.0" in result.output
+    assert result.output.strip() == f"debugealo {expected}"
     assert runner.invoke(app, ["--help"]).exit_code == 0
 
 
