@@ -2,6 +2,7 @@
 
 import asyncio
 
+from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -23,6 +24,10 @@ PANES = ("#code-projects", "#source-tree", "#source-text")
 DEFAULT_PROFILE_ROWS = 6
 MIN_PROFILE_ROWS = 2
 MIN_TREE_ROWS = 4
+# A profile row's icon: running, debugging, or none when stopped.
+STATUS_ICONS = {"run": ("▶", "bold #7fc8a9"), "debug": ("◉", "bold #e5c07b")}
+# Sessions report state only for the selected profile; this also catches the others.
+STATUS_REFRESH_SECONDS = 0.5
 
 
 class CodeWorkspace(Vertical):
@@ -110,8 +115,9 @@ class CodeWorkspace(Vertical):
 
     def on_mount(self) -> None:
         # Wide enough for the cursor highlight to span the sidebar.
-        self.query_one(DataTable).add_column("Profile", width=26)
+        self._profile_column = self.query_one(DataTable).add_column("Profile", width=26)
         self.reload_profiles()
+        self.set_interval(STATUS_REFRESH_SECONDS, self._refresh_status_icons)
 
     @on(Button.Pressed, "#code-reload")
     def reload_profiles(self) -> None:
@@ -136,7 +142,7 @@ class CodeWorkspace(Vertical):
             profiles.extend(live.values())
             self._profiles = {profile.name: profile for profile in profiles}
             for profile in profiles:
-                table.add_row(profile.name, key=profile.name)
+                table.add_row(self._profile_label(profile), key=profile.name)
             keys = [profile.name for profile in profiles]
             if selected in keys:
                 table.move_cursor(row=keys.index(selected))
@@ -158,7 +164,7 @@ class CodeWorkspace(Vertical):
             }
             self._profiles = live
             for profile in live.values():
-                table.add_row(profile.name, key=profile.name)
+                table.add_row(self._profile_label(profile), key=profile.name)
             message = str(error)
         status = self.query_one("#code-status", Static)
         status.update(message)
@@ -277,6 +283,36 @@ class CodeWorkspace(Vertical):
             branch = current_branch(profile.root) if profile is not None else None
         self._branch.update(f"⎇ {branch}" if branch else "")
         self._branch.display = bool(branch)
+        self._refresh_status_icons()
+
+    def _profile_status(self, profile):
+        debug = self._debug.context_for(profile)
+        if debug is not None and (debug.active or debug.stopping):
+            return "debug"
+        run = self._pane.contexts.get(profile.name)
+        if run is not None and (run.pending or run.active or run.stopping):
+            return "run"
+        return None
+
+    def _profile_label(self, profile):
+        status = self._profile_status(profile)
+        if status is None:
+            return profile.name
+        icon, style = STATUS_ICONS[status]
+        return Text.assemble((icon, style), f" {profile.name}")
+
+    def _refresh_status_icons(self):
+        tables = self.query(DataTable)
+        if not tables:
+            return
+        table = tables.first()
+        for row_key in list(table.rows):
+            profile = self._profiles.get(row_key.value)
+            if profile is None:
+                continue
+            label = self._profile_label(profile)
+            if str(table.get_cell(row_key, self._profile_column)) != str(label):
+                table.update_cell(row_key, self._profile_column, label)
 
     def _highlighted_profile(self):
         # Session callbacks can arrive while the area unmounts; there is nothing to show then.
