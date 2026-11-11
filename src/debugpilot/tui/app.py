@@ -143,6 +143,7 @@ class DebugPilotApp(App):
         self._stats_previous: ContainerStats | None = None
         self._stats_wake = asyncio.Event()
         self._stats_task: asyncio.Task | None = None
+        self._update_task: asyncio.Task | None = None
         self._compose_projects: dict[str, ComposeProject] = {}
         self._inline_plan: ComposePlan | None = None
         self._pending_stop: tuple[str, ...] = ()
@@ -309,6 +310,23 @@ class DebugPilotApp(App):
             asyncio.create_task(self._selection_loop()),
         ]
         self._stats_task = asyncio.create_task(self._stats_loop())
+        self._update_task = asyncio.create_task(self._announce_update())
+
+    async def _announce_update(self) -> None:
+        """Tell the user about a newer release; never blocks startup or fails it."""
+        from debugpilot import __version__, update_check
+
+        try:
+            latest = await asyncio.to_thread(update_check.available_update)
+        except Exception:  # an update hint must never break the dashboard
+            return
+        if latest and not self._closing:
+            self.notify(
+                f"debugealo {latest} is available (you have {__version__}). "
+                f"Update with: {update_check.UPDATE_COMMAND}",
+                title="Update available",
+                timeout=15,
+            )
 
     def on_resize(self) -> None:
         self.set_class(self.size.width < 100 or self.size.height < 28, "compact")
@@ -1181,6 +1199,9 @@ class DebugPilotApp(App):
         if self._stats_task is not None:
             self._stats_task.cancel()
             await asyncio.gather(self._stats_task, return_exceptions=True)
+        if self._update_task is not None:
+            self._update_task.cancel()
+            await asyncio.gather(self._update_task, return_exceptions=True)
         # Let the selection owner finish any pending stream cleanup rather than
         # cancelling it a second time in the middle of an async generator finally.
         if self._ui_tasks:
