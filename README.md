@@ -142,6 +142,16 @@ uv run ruff check . && uv run ruff format --check .
 
 The Go debugging tests fail rather than skip when Delve is missing.
 
+### Releasing
+
+Versions are managed by [release-please](https://github.com/googleapis/release-please) from
+Conventional Commits: `fix:` bumps the patch, `feat:` the minor, and a breaking change the
+major (the minor while below 1.0). Every push to `main` keeps a release PR up to date with the next
+version and `CHANGELOG.md`; merging it tags `vX.Y.Z` and publishes a GitHub Release. Never edit
+the version by hand — `pyproject.toml` is the single source and `debugealo version` reads it
+from the installed package. The repository must allow GitHub Actions to create pull requests
+(Settings → Actions → General → Workflow permissions).
+
 <details>
 <summary><strong>Coming from <code>debugpilot</code>?</strong></summary>
 
