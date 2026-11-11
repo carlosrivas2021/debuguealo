@@ -2,7 +2,7 @@
 
 Choose **Code**, then **Open code launch.json** (or Ctrl+O / Ctrl+N while in Code).
 The terminal editor creates the file only when explicitly requested. Add your profiles,
-save and exit; the table reloads. **Reload code profiles** picks up external edits.
+save and exit; the table reloads. **Reload code profiles**, or **R** in the Code area, picks up external edits.
 
 The dedicated file is `projects/launch.json` beside debugealo's central container
 `launch.json` and `config.toml`. It never uses the application working directory or

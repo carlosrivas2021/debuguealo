@@ -42,7 +42,7 @@ shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch fil
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
 the source, in screen order. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
 terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **S** or **Stop** ends only the selected Code
-context. A running profile survives area changes; repeated F5 does not restart it. Distinct
+context. **R** or **↻ Reload** rereads the code `launch.json`. A running profile survives area changes; repeated F5 does not restart it. Distinct
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
 an active profile returns to its context. Same-endpoint attaches are rejected, while distinct
 endpoints may coexist. **Shift+F5** or **Debug** starts Python debugging from that same profile
@@ -163,7 +163,10 @@ contexts are refused; no arbitrary current-directory fallback is used.
 Both require a focused project tree; invalid workspace/target contexts are refused.
 Startup failures appear in the corresponding terminal area. There is no PowerShell fallback. Once a terminal
 is focused, typed keys and control keys—including `Q`, `D`, `S`, `R`, and `O`—belong to
-the shell; `Ctrl+C` is sent to it and `Esc` returns focus to the left table. The terminal
+the shell; `Ctrl+C` is sent to it and `Esc` returns focus to the left table. To copy output,
+drag over it with the mouse and press `Ctrl+C`: with text selected, `Ctrl+C` copies it and the
+process keeps running; without a selection it interrupts the process as usual. The Code run
+terminal behaves the same way. The terminal
 keeps its opened target when inventory selection changes and is never reopened by refresh.
 For C, **Logs** (or Esc, then Ctrl+L) returns to logs without ending the shell.
 Press C on the same selected target to restore that pinned session; changing selection
