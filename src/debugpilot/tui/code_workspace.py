@@ -39,7 +39,9 @@ class CodeWorkspace(Vertical):
         Binding("o", "app.toggle_code_terminal", "Output"),
         # Same key as stopping a container in Containers.
         Binding("s", "stop_run", "Stop"),
-        # Same key as Recreate in Containers, which Code disables.
+        # Same key as Recreate in Containers, which Code disables. A live profile
+        # restarts like VS Code's Restart; otherwise R rereads launch.json.
+        Binding("r", "restart_run", "Restart"),
         Binding("r", "reload_profiles", "Reload"),
         # Move the boundary between profiles and files, like dragging the splitter.
         Binding("alt+up", "resize_profiles(-1)", show=False),
@@ -54,6 +56,7 @@ class CodeWorkspace(Vertical):
         self.store = CodeProjectStore()
         self._profiles = {}
         self._shutting_down = False
+        self._restarting = False
         self._profile_rows = DEFAULT_PROFILE_ROWS
         # Last view the user chose per profile ("run" or "debug"), used when neither is live.
         self._last_view: dict[str, str] = {}
@@ -286,6 +289,8 @@ class CodeWorkspace(Vertical):
         self._branch.update(f"⎇ {branch}" if branch else "")
         self._branch.display = bool(branch)
         self._refresh_status_icons()
+        # R switches between Restart and Reload as the selection goes live or stops.
+        self.refresh_bindings()
 
     def _profile_status(self, profile):
         debug = self._debug.context_for(profile)
@@ -443,12 +448,18 @@ class CodeWorkspace(Vertical):
         self._sync_controls()
 
     def check_action(self, action, parameters):
-        if action in {"stop_run", "resize_profiles", "reload_profiles"}:
+        if action in {"stop_run", "resize_profiles", "reload_profiles", "restart_run"}:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
             if isinstance(focused, Input) or (
                 isinstance(focused, TerminalPane) and focused.active
             ):
+                return False
+        if action in {"restart_run", "reload_profiles"}:
+            # Exactly one of them owns R, so the footer names what it will do.
+            profile = self._highlighted_profile()
+            live = profile is not None and self._profile_status(profile) is not None
+            if (action == "restart_run") != live:
                 return False
         if action == "focus_pane":
             focused = self.app.focused
@@ -544,6 +555,29 @@ class CodeWorkspace(Vertical):
 
     def action_reload_profiles(self) -> None:
         self.reload_profiles()
+
+    async def action_restart_run(self) -> None:
+        """Stop the highlighted live profile and launch it again in the same mode."""
+        profile = self._highlighted_profile()
+        mode = self._profile_status(profile) if profile is not None else None
+        if mode is None or self._restarting or self._shutting_down:
+            return
+        self._restarting = True
+        try:
+            self._state(f"Restarting: {profile.name}")
+            await self.stop()
+            if self._profile_status(profile) is not None:
+                # Stop did not finish; never start a second copy beside the old one.
+                return
+            # Like VS Code, a restart picks up launch.json edits.
+            self.reload_profiles()
+            if mode == "debug":
+                self.debug_selected()
+            else:
+                self.run_selected()
+        finally:
+            self._restarting = False
+            self._sync_controls()
 
     async def action_stop_run(self) -> None:
         await self.stop()

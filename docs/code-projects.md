@@ -2,7 +2,10 @@
 
 Choose **Code**, then **Open code launch.json** (or Ctrl+O / Ctrl+N while in Code).
 The terminal editor creates the file only when explicitly requested. Add your profiles,
-save and exit; the table reloads. **Reload code profiles**, or **R** in the Code area, picks up external edits.
+save and exit; the table reloads. **Reload code profiles**, or **R** in the Code area while the selected profile is stopped, picks up external edits.
+While the selected profile runs or debugs, **R** restarts it like VS Code's Restart: it stops the
+session, rereads `launch.json`, and launches it again in the same mode. If the stop does not
+finish, nothing is relaunched. The footer reads **r Restart** or **r Reload** accordingly.
 
 The dedicated file is `projects/launch.json` beside debugealo's central container
 `launch.json` and `config.toml`. It never uses the application working directory or

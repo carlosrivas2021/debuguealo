@@ -81,7 +81,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `F9` / `Shift+F9` | Toggle a breakpoint / add a condition or logpoint |
 | `F10` / `F11` / `Shift+F11` | Step over / in / out |
 | `S` | Stop the selected run |
-| `R` | Reload the profiles from `launch.json` |
+| `R` | Restart the running profile, or reload `launch.json` when it is stopped |
 
 The full workflow is in the [keyboard guide](docs/tui.md).
 
