@@ -205,6 +205,6 @@ entries when those limits are reached. Copy depends on terminal clipboard suppor
 ## Not implemented yet
 
 Code supports read-only source navigation, persistent root-scoped requested breakpoints,
-Python/Node/Go debugging, and non-owning Go and Python attach. Distinct saved profiles retain separate
+Python/Node/Go debugging, and non-owning Go, Python and Node attach. Distinct saved profiles retain separate
 run/debug/attach contexts; the same endpoint cannot be attached twice. Expression
 evaluation and a desktop editor are not implemented. See [Code setup and limits](code-projects.md).

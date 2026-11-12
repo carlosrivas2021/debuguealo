@@ -145,7 +145,7 @@ build settings such as `GOFLAGS` or `CGO_ENABLED` apply to Run (`go run`) only. 
 it, which is allowed because the profile is your own configuration.
 
 They apply to Python, Go and Node runs and debug sessions. Attach profiles (`goAttach`,
-`pythonAttach`) reject them: the target already runs in its container, which owns its
+`pythonAttach`, `nodeAttach`) reject them: the target already runs in its container, which owns its
 environment.
 
 ## Browse source and mark pending breakpoints
@@ -202,8 +202,8 @@ for a logpoint. The file's tree entry shows the details, for example
 a line with both shows the condition and the message.
 Changes apply to an active debug session immediately.
 
-Conditions and log messages work with Python, Go and Node debugging and with Python and Go
-attach. The debugger evaluates them, not debugealo, so an invalid expression is handled by
+Conditions and log messages work with Python, Go and Node debugging and with Python, Go and
+Node attach. The debugger evaluates them, not debugealo, so an invalid expression is handled by
 each debugger: Python reports the error in the debug output, Go marks the breakpoint
 **unverified** in the file tree, and Node accepts it but never stops there. Node has no
 native logpoints: the message is
@@ -304,7 +304,7 @@ another stack frame, in that frame's scope. Without a paused session its value s
 If an expression fails, its row shows the debugger's error, for example
 `⚠ NameError: name 'count' is not defined`, and the other watches keep working.
 
-Watches work with Python, Go and Node debugging and with Python and Go attach. They are
+Watches work with Python, Go and Node debugging and with Python, Go and Node attach. They are
 saved per project root in `projects/watches.json`, beside the breakpoints file; values are
 never saved.
 
@@ -399,9 +399,41 @@ session's breakpoints and resumes a paused target, which keeps running and can b
 Target output stays in the container's logs. A connection that closes without attaching, such as a
 port probe, can end the `debugpy` listener; recreate the container if attach is then refused.
 
-An endpoint can only be attached once at a time, across both attach kinds. Watch expressions
+An endpoint can only be attached once at a time, across all attach kinds. Watch expressions
 work; debug stdin is not supported. Try the workflow with the
 [FastAPI debug example](../examples/fastapi-debug/README.md).
+
+## Attach to an existing Node Inspector
+
+Use `nodeAttach` to connect Code to a Node process already listening with `--inspect`, for
+example inside a container. It has the same exactly three keys and validation as `goAttach`, and
+the same **Shift+F5**, **Disconnect**, **Reconnect** and F5 behavior. A profile declares only one
+of `goAttach`, `pythonAttach` or `nodeAttach`.
+
+```json
+{
+  "name": "Node remote",
+  "workspaceFolder": "/local/path/to/project",
+  "nodeAttach": {
+    "host": "127.0.0.1",
+    "port": 9229,
+    "remoteRoot": "/app"
+  }
+}
+```
+
+Start the target with `node --inspect=0.0.0.0:9229 server.js` and publish that port on host
+loopback only, such as `127.0.0.1:9229:9229`: anything that reaches the Inspector can run code in
+the target. Code reads the target list from `http://127.0.0.1:<port>/json/list`, requires exactly
+one Node target, and connects to its WebSocket on the same port. Local `src/app.js` maps to
+`/app/src/app.js`, and stack paths map back; frames outside `remoteRoot` show without a source.
+Local and target sources must match, or breakpoints land on the wrong lines. A target started
+with `--inspect-brk` starts on attach and stops at its first line; press **Continue**.
+
+Disconnect removes this session's breakpoints and resumes a paused target, which keeps running
+and can be attached again. If the target exits or the connection drops, Code reports the target
+state as unknown and offers **Reconnect**. Target output, including logpoint messages, stays in
+the container's logs. TypeScript/source maps and worker threads are not supported.
 
 ## Debug server-side Node
 
@@ -429,6 +461,7 @@ Node script grammar above. Other profiles need no schema changes.
 Node output comes from a PTY: stdout and stderr are merged in order into the debug console.
 Interactive debug stdin is not exposed; use F5 when input is required.
 Stop and app exit close the owned process tree, including startup in progress.
-Browser debugging, TypeScript/source maps, attach and debugging child processes are
-not supported. An unsupported target or unavailable runtime reports an error without
+Browser debugging, TypeScript/source maps and debugging child processes are
+not supported; to debug a Node process you did not start, see
+[Attach to an existing Node Inspector](#attach-to-an-existing-node-inspector). An unsupported target or unavailable runtime reports an error without
 silently running without debug.
