@@ -59,3 +59,32 @@ async def test_log_filter_keeps_ctrl_arrows_for_moving_by_word():
         await press(pilot, 'ctrl+left')
         assert focused_id(app) == 'filter-logs'
         assert field.cursor_position == len('error ')
+
+
+async def test_alt_arrows_also_switch_container_panes():
+    """macOS takes Ctrl+arrows for switching spaces, so Option+arrows do the same."""
+    app = start(Fleet())
+    async with app.run_test(size=(160, 40)) as pilot:
+        await until(pilot, lambda: ready(app))
+        select_key(app, 'container:shop-web')
+        await press(pilot, 'ctrl+l')
+        assert focused_id(app) == 'log-entries'
+        await press(pilot, 'alt+left')
+        assert focused_id(app) == 'launch-profiles'
+        await press(pilot, 'alt+right')
+        assert focused_id(app) == 'log-entries'
+
+
+async def test_log_filter_keeps_focus_on_alt_arrows():
+    app = start(Fleet())
+    async with app.run_test(size=(160, 40)) as pilot:
+        await until(pilot, lambda: ready(app))
+        select_key(app, 'container:shop-web')
+        await press(pilot, 'ctrl+l')
+        field = app.query_one('#filter-logs', Input)
+        field.focus()
+        await pilot.pause()
+        await press(pilot, 'alt+left')
+        assert focused_id(app) == 'filter-logs'
+        await press(pilot, 'alt+right')
+        assert focused_id(app) == 'filter-logs'

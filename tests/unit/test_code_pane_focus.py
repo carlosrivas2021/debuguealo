@@ -96,3 +96,33 @@ async def test_live_code_terminal_receives_o_instead_of_hiding_the_output(monkey
         assert sent == ['o']
         assert app.query_one('#code-bottom').display
         await pilot.click('#code-stop')
+
+
+async def test_alt_arrows_also_move_between_code_panes(monkeypatch, tmp_path):
+    """macOS takes Ctrl+arrows for switching spaces, so Option+arrows do the same."""
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.click('#area-code')
+        app.query_one('#code-projects').focus()
+        await pilot.pause()
+        visited = []
+        for key in ('alt+right', 'alt+right', 'alt+right', 'alt+left'):
+            await press(pilot, key)
+            visited.append(pane(app))
+        assert visited == ['source-tree', 'source-text', 'code-projects', 'source-text']
+
+
+async def test_live_code_terminal_keeps_alt_arrows(monkeypatch, tmp_path):
+    from test_code_run_ui import setup_app
+
+    app = setup_app(monkeypatch, tmp_path, "print('READY', flush=True); input()")
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.click('#area-code')
+        await pilot.press('f5')
+        terminal = app.query_one('#code-terminal')
+        await until(pilot, lambda: 'READY' in terminal.render().plain)
+        terminal.focus()
+        await pilot.pause()
+        await press(pilot, 'alt+left')
+        assert app.focused is terminal
+        await pilot.click('#code-stop')

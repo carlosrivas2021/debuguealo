@@ -40,7 +40,7 @@ terminal pane has focus (press `Esc` first). Code lists registered project folde
 shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
-the source, in screen order. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
+the source, in screen order; **Alt+Left** and **Alt+Right** do the same. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
 terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **S** or **Stop** ends only the selected Code
 context. **R** restarts the selected profile while it runs or debugs; when it is stopped, **R** or
 **↻ Reload** rereads the code `launch.json`. A running profile survives area changes; repeated F5 does not restart it. Distinct
@@ -129,6 +129,10 @@ quit; stopped containers and project overviews are never sampled.
 can take it: the open logs or a project's overview table. They wrap around, and do nothing
 while only a container's detail cards are shown. In the log filter and search fields they
 keep moving the cursor by word.
+
+**Alt+Left** and **Alt+Right** (Option+arrows on a Mac) do the same, because macOS uses
+Ctrl+arrows to switch spaces by default. In the log filter and search fields they do nothing,
+so typing never moves focus away.
 
 Logs open only on request: `Ctrl+L` follows the selected container, or the combined
 logs of the project's active containers. `D` or `Esc` closes the logs and returns to the
