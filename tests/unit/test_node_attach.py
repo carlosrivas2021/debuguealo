@@ -120,6 +120,7 @@ async def test_unreachable_endpoint_reports_node_target(tmp_path):
 
 @pytest.mark.parametrize('body', [
     b'not json',
+    pytest.param(b'[' * 30000 + b']' * 30000, id='deeply-nested'),
     b'[]',
     b'[{"type": "node"}]',
     b'[{"type": "node", "webSocketDebuggerUrl": "ws://10.0.0.1:9229/abc"}]',
@@ -297,3 +298,20 @@ async def test_target_exit_closes_session_as_lost_without_cleanup_warning(tmp_pa
         drain.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await drain
+
+
+async def test_non_numeric_content_length_is_reported_as_not_an_inspector(tmp_path):
+    async def respond(reader, writer):
+        await reader.readuntil(b'\r\n\r\n')
+        writer.write(b'HTTP/1.1 200 OK\r\nContent-Length: abc\r\n\r\n[]')
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(respond, '127.0.0.1', 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        with pytest.raises(DebugError, match='did not answer as a Node Inspector$'):
+            await NodeAttachSession(timeout=2).start(attach_profile(tmp_path, port), {})
+    finally:
+        server.close()
+        await server.wait_closed()

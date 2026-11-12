@@ -33,7 +33,10 @@ async def _inspector_path(port):
         fields = {k.strip().lower(): v.strip() for k, v in
                   (line.split(b':', 1) for line in lines[1:] if b':' in line)}
         if b'content-length' in fields:
-            length = int(fields[b'content-length'])
+            try:
+                length = int(fields[b'content-length'])
+            except ValueError:
+                raise ValueError('the port did not answer as a Node Inspector') from None
             if not 0 <= length <= _LIST_LIMIT:
                 raise ValueError('the Inspector target list is too large')
             body = await reader.readexactly(length)
@@ -47,7 +50,7 @@ async def _inspector_path(port):
         writer.close()
     try:
         targets = json.loads(body)
-    except (UnicodeError, json.JSONDecodeError):
+    except (UnicodeError, json.JSONDecodeError, RecursionError):
         raise ValueError('the port did not answer as a Node Inspector') from None
     candidates = [t['webSocketDebuggerUrl'] for t in targets if isinstance(t, dict)
                   and t.get('type') == 'node'
