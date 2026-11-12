@@ -13,7 +13,7 @@ from test_code_debug_ui import debug_app, rendered, until
 from test_go_attach_ui import FakeGoAttach
 
 from debugpilot.core.exceptions import ConfigurationError
-from debugpilot.debugger import DebugError, NodeAttachSession
+from debugpilot.debugger import DebugError, NodeAttachSession, node_attach
 from debugpilot.storage.code_projects import CodeProject, CodeProjectStore, RemoteAttach
 from debugpilot.tui import code_debug
 
@@ -121,6 +121,9 @@ async def test_unreachable_endpoint_reports_node_target(tmp_path):
 @pytest.mark.parametrize('body', [
     b'not json',
     pytest.param(b'[' * 30000 + b']' * 30000, id='deeply-nested'),
+    pytest.param(b'[{"type": "node", "webSocketDebuggerUrl": "ws://127.0.0.1:1/a"},'
+                 b' {"type": "node", "webSocketDebuggerUrl": "ws://127.0.0.1:1/b"}]',
+                 id='two-targets'),
     b'[]',
     b'[{"type": "node"}]',
     b'[{"type": "node", "webSocketDebuggerUrl": "ws://10.0.0.1:9229/abc"}]',
@@ -315,3 +318,142 @@ async def test_non_numeric_content_length_is_reported_as_not_an_inspector(tmp_pa
     finally:
         server.close()
         await server.wait_closed()
+
+
+async def test_close_delimited_target_list_split_across_writes_is_read_whole(tmp_path):
+    body = b'[{"type": "node", "webSocketDebuggerUrl": "ws://127.0.0.1:1/abc"}]'
+
+    async def respond(reader, writer):
+        await reader.readuntil(b'\r\n\r\n')
+        writer.write(b'HTTP/1.0 200 OK\r\n\r\n' + body[:10])
+        await writer.drain()
+        await asyncio.sleep(0.2)
+        writer.write(body[10:])
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(respond, '127.0.0.1', 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        assert await node_attach._inspector_path(port) == '/abc'
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_websocket_handshake_timeout_reports_attach_timeout(tmp_path):
+    """A target list that points at a WebSocket which never answers is a timeout."""
+    async def respond(reader, writer):
+        request = await reader.readuntil(b'\r\n\r\n')
+        if request.startswith(b'GET /json/list '):
+            body = (b'[{"type": "node", "webSocketDebuggerUrl": "ws://127.0.0.1:'
+                    + str(port).encode() + b'/abc"}]')
+            writer.write(b'HTTP/1.0 200 OK\r\n\r\n' + body)
+            await writer.drain()
+            writer.close()
+        else:
+            await asyncio.sleep(10)
+
+    server = await asyncio.start_server(respond, '127.0.0.1', 0)
+    port = server.sockets[0].getsockname()[1]
+    session = NodeAttachSession(timeout=1)
+    try:
+        with pytest.raises(DebugError,
+                           match='^Timed out attaching to the existing Node/Inspector target'):
+            await session.start(attach_profile(tmp_path, port), {})
+    finally:
+        server.close()
+    assert session.state == 'closed'
+
+
+async def attached_with_breakpoint(tmp_path, output):
+    script = tmp_path / 'target.js'
+    script.write_text(TARGET, encoding='utf-8')
+    target, port, drain = await start_inspected_node(script, tmp_path / 'progress')
+    session = NodeAttachSession(on_output=lambda category, text: output.append((category, text)),
+                                timeout=15)
+    await session.start(attach_profile(tmp_path, port, str(tmp_path.resolve())),
+                        {script: [BREAKPOINT_LINE]})
+    return target, drain, session
+
+
+async def stop_target(target, drain):
+    if target.returncode is None:
+        target.kill()
+        await target.wait()
+    drain.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await drain
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(shutil.which('node') is None, reason='needs the node runtime')
+async def test_failed_breakpoint_cleanup_warns_on_disconnect(tmp_path):
+    output = []
+    target, drain, session = await attached_with_breakpoint(tmp_path, output)
+    try:
+        request = session._client.request
+
+        async def refuse_removal(method, params=None):
+            if method == 'Debugger.removeBreakpoint':
+                raise DebugError('refused')
+            return await request(method, params)
+
+        session._client.request = refuse_removal
+        await session.close()
+        assert session.state == 'closed'
+        assert session.disconnect_warning == 'Unable to clear Node session breakpoints: refused'
+        assert ('stderr', 'Warning: Unable to clear Node session breakpoints: refused\n') in output
+    finally:
+        await stop_target(target, drain)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(shutil.which('node') is None, reason='needs the node runtime')
+async def test_transport_lost_during_disconnect_does_not_warn(tmp_path):
+    output = []
+    target, drain, session = await attached_with_breakpoint(tmp_path, output)
+    try:
+        async def target_gone(method, params=None):
+            # The target exits mid-Disconnect: the transport closes before the reply.
+            session._cdp_event({'method': 'transportClosed', 'params': {'message': 'gone'}})
+            raise DebugError('Inspector disconnected.')
+
+        session._client.request = target_gone
+        await session.close()
+        assert session.state == 'closed'
+        assert session.disconnect_warning is None
+        assert not any(category == 'stderr' for category, _ in output)
+    finally:
+        await stop_target(target, drain)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(shutil.which('node') is None, reason='needs the node runtime')
+async def test_inspect_brk_target_stops_at_first_line_and_disconnect_lets_it_finish(tmp_path):
+    script = tmp_path / 'brk.js'
+    script.write_text('let n = 1;\nn += 1;\n', encoding='utf-8')
+    target = await asyncio.create_subprocess_exec(
+        'node', '--inspect-brk=127.0.0.1:0', str(script),
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    )
+    async with asyncio.timeout(15):
+        while True:
+            line = (await target.stderr.readline()).decode()
+            match = re.match(r'Debugger listening on ws://127\.0\.0\.1:(\d+)/', line)
+            if match or not line:
+                break
+    drain = asyncio.create_task(target.stderr.read())
+    session = NodeAttachSession(timeout=15)
+    try:
+        await session.start(
+            attach_profile(tmp_path, int(match[1]), str(tmp_path.resolve())), {})
+        await next_state(session, 'stopped')
+        frame = (await session.stack())[0]
+        assert frame['source']['path'] == str(script.resolve())
+        assert frame['line'] == 1
+        await session.close()
+        async with asyncio.timeout(15):
+            assert await target.wait() == 0
+    finally:
+        await stop_target(target, drain)

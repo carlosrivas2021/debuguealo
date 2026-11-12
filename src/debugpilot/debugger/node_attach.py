@@ -1,6 +1,7 @@
 """Attach to an existing loopback Node Inspector without owning its process."""
 
 import asyncio
+import contextlib
 import json
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
@@ -41,13 +42,18 @@ async def _inspector_path(port):
                 raise ValueError('the Inspector target list is too large')
             body = await reader.readexactly(length)
         else:
-            body = await reader.read(_LIST_LIMIT + 1)
-            if len(body) > _LIST_LIMIT:
-                raise ValueError('the Inspector target list is too large')
+            # Without Content-Length the body ends when the peer closes the connection.
+            body = b''
+            while chunk := await reader.read(_LIST_LIMIT + 1 - len(body)):
+                body += chunk
+                if len(body) > _LIST_LIMIT:
+                    raise ValueError('the Inspector target list is too large')
     except (asyncio.IncompleteReadError, asyncio.LimitOverrunError):
         raise ValueError('the port did not answer as a Node Inspector') from None
     finally:
         writer.close()
+        with contextlib.suppress(OSError):
+            await writer.wait_closed()
     try:
         targets = json.loads(body)
     except (UnicodeError, json.JSONDecodeError, RecursionError):
@@ -256,6 +262,10 @@ class NodeAttachSession(NodeDebugSession):
                         self._target_paused = False
                     except (DebugError, OSError, TimeoutError) as error:
                         failure = f'Unable to resume the Node target on disconnect: {error}'
+            if self._transport_lost:
+                # The connection dropped during Disconnect: the Inspector already discarded
+                # this session's breakpoints and resumed the target, so nothing is left over.
+                failure = None
             # Closing our own connection is not a lost transport.
             self._exiting = True
             if failure is not None:
