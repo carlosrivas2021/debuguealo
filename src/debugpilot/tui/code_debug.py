@@ -15,6 +15,7 @@ from debugpilot.debugger import (
     DebugError,
     GoAttachSession,
     GoDebugSession,
+    NodeAttachSession,
     NodeDebugSession,
     PythonAttachSession,
     PythonDebugSession,
@@ -26,7 +27,9 @@ MAX_WATCH_VALUE = 200
 
 
 def _attach_language(profile):
-    return 'Go' if profile.go_attach is not None else 'Python'
+    if profile.go_attach is not None:
+        return 'Go'
+    return 'Node' if profile.node_attach is not None else 'Python'
 
 
 def _frame_cells(frame):
@@ -439,6 +442,8 @@ class CodeDebug(Vertical):
                 if profile.go_attach is not None
                 else PythonAttachSession
                 if profile.python_attach is not None
+                else NodeAttachSession
+                if profile.node_attach is not None
                 else GoDebugSession
                 if command_name in {"go", "go.exe"}
                 else NodeDebugSession

@@ -52,10 +52,11 @@ class CodeProject:
     # Extra variables for Run and Debug: `env` pairs and an `envFile` relative to root.
     env: tuple[tuple[str, str], ...] = ()
     env_file: str | None = None
+    node_attach: RemoteAttach | None = None
 
     @property
     def attach(self) -> RemoteAttach | None:
-        return self.go_attach or self.python_attach
+        return self.go_attach or self.python_attach or self.node_attach
 
 
 def _env_value(value: object) -> bool:
@@ -235,8 +236,13 @@ class CodeProjectStore:
                     raise ConfigurationError(
                         'Invalid attach profile: use either goAttach or pythonAttach, not both.'
                     )
-                go_attach = python_attach = None
-                for field in ('goAttach', 'pythonAttach'):
+                if 'nodeAttach' in entry and ('goAttach' in entry or 'pythonAttach' in entry):
+                    raise ConfigurationError(
+                        'Invalid attach profile: use only one of goAttach, pythonAttach or '
+                        'nodeAttach.'
+                    )
+                go_attach = python_attach = node_attach = None
+                for field in ('goAttach', 'pythonAttach', 'nodeAttach'):
                     if field not in entry:
                         continue
                     try:
@@ -248,9 +254,11 @@ class CodeProjectStore:
                         ) from None
                     if field == 'goAttach':
                         go_attach = parsed
-                    else:
+                    elif field == 'pythonAttach':
                         python_attach = parsed
-                attach = go_attach or python_attach
+                    else:
+                        node_attach = parsed
+                attach = go_attach or python_attach or node_attach
                 env, env_file = parse_env_settings(entry)
                 if attach is not None and (env or env_file is not None):
                     raise ConfigurationError(
@@ -277,7 +285,7 @@ class CodeProjectStore:
                     node_debug = tuple(target)
                 profiles.append(CodeProject(name, root.resolve(strict=True), tuple(command),
                                             node_debug, go_attach, python_attach,
-                                            env, env_file))
+                                            env, env_file, node_attach))
                 names.add(name)
             return profiles
         except (ValueError, TypeError, UnicodeError, OSError, RuntimeError, RecursionError):
