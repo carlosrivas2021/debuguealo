@@ -104,6 +104,9 @@ class DebugPilotApp(App):
         # Containers only; Code has its own pane order. Text fields keep word movement.
         Binding("ctrl+left", "container_pane(-1)", "Pane ←"),
         Binding("ctrl+right", "container_pane(1)", "Pane →"),
+        # macOS takes Ctrl+arrows for switching spaces; Option+arrows do the same here.
+        Binding("alt+left", "container_pane(-1)", show=False),
+        Binding("alt+right", "container_pane(1)", show=False),
     ]
 
     def __init__(
@@ -2480,6 +2483,10 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "container_pane" and isinstance(self.focused, Input):
+            # Inputs handle Ctrl+arrows themselves but not Option+arrows; typing in a
+            # field must never move focus away from it.
+            return False
         if action == "toggle_host_terminal" and (
             not self.is_mounted
             or self._host_terminal_pane is None

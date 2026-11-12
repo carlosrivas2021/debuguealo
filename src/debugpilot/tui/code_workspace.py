@@ -18,7 +18,7 @@ from debugpilot.tui.pane_splitter import PaneSplitter
 from debugpilot.tui.source_browser import SourceBrowser
 from debugpilot.tui.terminal_view import TerminalPane
 
-# Left to right on screen; Ctrl+Left/Right move between them.
+# Left to right on screen; Ctrl+Left/Right (or Alt+Left/Right) move between them.
 PANES = ("#code-projects", "#source-tree", "#source-text")
 # The profile list keeps room for six profiles until resized; the file tree keeps four rows.
 DEFAULT_PROFILE_ROWS = 6
@@ -49,6 +49,9 @@ class CodeWorkspace(Vertical):
         # Priority: the read-only source would otherwise use them for word jumps.
         Binding("ctrl+left", "focus_pane(-1)", "Pane ←", priority=True),
         Binding("ctrl+right", "focus_pane(1)", "Pane →", priority=True),
+        # macOS takes Ctrl+arrows for switching spaces; Option+arrows do the same here.
+        Binding("alt+left", "focus_pane(-1)", show=False, priority=True),
+        Binding("alt+right", "focus_pane(1)", show=False, priority=True),
     ]
 
     def __init__(self):
@@ -463,7 +466,7 @@ class CodeWorkspace(Vertical):
                 return False
         if action == "focus_pane":
             focused = self.app.focused
-            # Text fields and live terminals keep Ctrl+arrows for moving by word.
+            # Text fields and live terminals keep Ctrl/Alt+arrows for themselves.
             if isinstance(focused, Input) or (
                 isinstance(focused, TerminalPane) and focused.active
             ):

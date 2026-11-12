@@ -67,11 +67,12 @@ The profile list keeps room for six profiles. Drag the gray line between the pro
 the files, or press **Alt+Up** / **Alt+Down**, to give either one more rows; the file tree
 always keeps at least four.
 
-**Ctrl+Left** and **Ctrl+Right** move focus between the panes in screen order: profiles,
+**Ctrl+Left** and **Ctrl+Right** (or **Alt+Left** and **Alt+Right**, which macOS leaves free)
+move focus between the panes in screen order: profiles,
 file tree and source, wrapping around at either end; from a button they go to the
 profiles. They skip the buttons, and in the source they replace the word jump of the
-read-only view. In a text field or while typing into the terminal they keep their usual
-word movement.
+read-only view. In a text field or while typing into the terminal Ctrl+arrows keep their usual
+word movement and Alt+arrows do nothing.
 
 F5 and Shift+F5 never move focus, so the arrow keys keep moving between profiles. Click the
 terminal to type into the program; its border turns yellow and reads
