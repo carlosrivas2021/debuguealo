@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import re
+import threading
 from contextlib import aclosing
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -11,7 +12,8 @@ from textual import events, on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import ModalScreen
+from textual.reactive import var
+from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Checkbox, DataTable, Footer, Input, Static
 
 from debugpilot.core.engine import DebugPilotEngine
@@ -71,6 +73,17 @@ class _ComposeRun:
     @property
     def project(self) -> str:
         return self.plan.project.project_name
+
+
+class SelectionScreen(Screen):
+    """The default screen, without a full repaint on every mouse move while selecting.
+
+    Textual declares the selection end as a repainting Reactive, so dragging repaints
+    the whole screen each move and the terminal falls behind the mouse. Its watcher
+    already refreshes every widget whose selection changed, so a plain var is enough.
+    """
+
+    _select_end = var(None)
 
 
 class DebugPilotApp(App):
@@ -1505,13 +1518,20 @@ class DebugPilotApp(App):
         a mouse selection appear to do nothing.
         """
         super().copy_to_clipboard(text)
-        from debugpilot.tui.clipboard import copy_native
+        from debugpilot.tui import clipboard
 
-        copy_native(text)
+        # pbcopy/xclip/clip.exe can take a moment; never make the UI wait for them.
+        threading.Thread(target=clipboard.copy_native, args=(text,), daemon=True).start()
+
+    def get_default_screen(self) -> Screen:
+        return SelectionScreen(id="_default")
 
     def on_text_selected(self, event: events.TextSelected) -> None:
         """Copy on select: releasing the mouse after a drag copies what it covered."""
-        text = self.screen.get_selected_text()
+        self.copy_selection(self.screen.get_selected_text())
+
+    def copy_selection(self, text: str | None) -> None:
+        """Copy a mouse selection and say so; an empty selection copies nothing."""
         if text:
             self.copy_to_clipboard(text)
             noun = "character" if len(text) == 1 else "characters"
