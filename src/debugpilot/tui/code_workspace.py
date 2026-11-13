@@ -7,11 +7,19 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.message import Message
 from textual.widgets import Button, DataTable, Input, Static
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.code_projects import CodeProjectStore
+from debugpilot.storage.git_branches import (
+    GitError,
+    local_branches,
+    repository_root,
+    switch_branch,
+)
 from debugpilot.storage.git_head import current_branch
+from debugpilot.tui.branch_picker import BranchPicker
 from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
 from debugpilot.tui.pane_splitter import PaneSplitter
@@ -24,6 +32,19 @@ PANES = ("#code-projects", "#source-tree", "#source-text")
 DEFAULT_PROFILE_ROWS = 6
 MIN_PROFILE_ROWS = 2
 MIN_TREE_ROWS = 4
+
+
+class BranchLabel(Static):
+    """The selected profile's branch; clicking it opens the list of local branches."""
+
+    class Clicked(Message):
+        pass
+
+    def on_click(self, event) -> None:
+        event.stop()
+        self.post_message(self.Clicked())
+
+
 # A profile row's icon: running, debugging, or none when stopped.
 STATUS_ICONS = {"run": ("▶", "bold #7fc8a9"), "debug": ("◉", "bold #e5c07b")}
 # Sessions report state only for the selected profile; this also catches the others.
@@ -73,7 +94,8 @@ class CodeWorkspace(Vertical):
         self._run_state = Static(
             "Ready. Select a profile and press F5.", id="code-run-state", markup=False
         )
-        self._branch = Static("", id="code-branch", markup=False)
+        self._branch = BranchLabel("", id="code-branch", markup=False)
+        self._branch.tooltip = "Switch branch"
         self._branch.display = False
         self._pane = CodeTerminal(
             self._run_context_state, id="code-terminal",
@@ -331,6 +353,60 @@ class CodeWorkspace(Vertical):
             return None
         table = tables.first()
         return self._profiles.get(table.ordered_rows[table.cursor_row].key.value)
+
+    @on(BranchLabel.Clicked)
+    def _branch_clicked(self) -> None:
+        profile = self._highlighted_profile()
+        if profile is None or self._shutting_down:
+            return
+        self.run_worker(self._switch_branch(profile), group="branch-switch", exclusive=True)
+
+    async def _live_profile_in_repository(self, repository):
+        """Name a running or debugging profile whose code comes from ``repository``."""
+        for other in self._profiles.values():
+            if self._profile_status(other) is None:
+                continue
+            try:
+                if await asyncio.to_thread(repository_root, other.root) == repository:
+                    return other.name
+            except GitError:
+                continue
+        return None
+
+    async def _refuse_if_live(self, repository) -> bool:
+        live = await self._live_profile_in_repository(repository)
+        if live is not None:
+            # Changing the files under a live process leaves its code and breakpoints out of step.
+            self.app.notify(
+                f"Stop {live} before switching branches; it runs from this repository.",
+                severity="warning",
+            )
+        return live is not None
+
+    async def _switch_branch(self, profile) -> None:
+        try:
+            repository = await asyncio.to_thread(repository_root, profile.root)
+            branches = await asyncio.to_thread(local_branches, profile.root)
+        except GitError as error:
+            self.app.notify(f"Unable to list branches: {error}", severity="warning")
+            return
+        if await self._refuse_if_live(repository):
+            return
+        current = current_branch(profile.root)
+        choice = await self.app.push_screen_wait(BranchPicker(branches, current))
+        if choice is None or choice == current:
+            return
+        # A profile may have started while the list was open.
+        if await self._refuse_if_live(repository):
+            return
+        try:
+            await asyncio.to_thread(switch_branch, profile.root, choice)
+        except GitError as error:
+            self.app.notify(f"Unable to switch to {choice}: {error}", severity="error")
+            return
+        self.query_one(SourceBrowser).reload()
+        self._sync_controls()
+        self.app.notify(f"Switched to {choice}.")
 
     def _remember_launch_branch(self, profile):
         self._launch_branches[profile.name] = current_branch(profile.root)

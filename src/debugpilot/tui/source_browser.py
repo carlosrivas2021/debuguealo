@@ -223,6 +223,16 @@ class SourceBrowser(Vertical):
         if root is not None:
             self._populate(tree.root)
 
+    def reload(self):
+        """Read the tree and the open file again, e.g. after a branch switch changed them."""
+        root, path = self.root_path, self.file_path
+        if root is None:
+            return
+        self.root_path = None
+        self.set_project(root)
+        if path is not None and path.is_file():
+            self.open_source(root, path)
+
     def _clear_source(self):
         self.file_path = None
         self._file_node = None
