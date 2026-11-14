@@ -57,6 +57,53 @@ async def test_real_node_breakpoint_stack_locals_steps_and_exit(tmp_path):
     assert session.verified_breakpoints == {}
 
 
+async def test_real_node_typescript_breakpoint_lines_stack_and_locals(tmp_path):
+    # Node's type stripping keeps positions, so .ts lines are the debugged lines.
+    source = tmp_path / 'main.ts'
+    source.write_text('interface Order {\n  id: number;\n  total: number;\n}\n'
+                      'type Money = number;\n'
+                      'function tax(order: Order, rate: Money): Money {\n'
+                      '  const amount: Money = order.total * rate;\n'
+                      '  return amount;\n}\n'
+                      'const order: Order = { id: 7, total: 100 };\n'
+                      'console.log(`TAX:${tax(order, 0.25)}`);\n')
+    output = []
+    profile = CodeProject('ts', tmp_path, ('node', 'main.ts'))
+    session = NodeDebugSession(on_output=lambda category, text: output.append((category, text)))
+    try:
+        await session.start(profile, {source: [8]})
+        await event(session, 'stopped')
+        frames = await session.stack()
+        assert frames[0]['source']['path'] == str(source)
+        assert (frames[0]['name'], frames[0]['line']) == ('tax', 8)
+        scopes = await session.scopes(frames[0]['id'])
+        values = {v['name']: v['value'] for scope in scopes if not scope['expensive']
+                  for v in await session.variables(scope['variablesReference'])}
+        assert values['amount'] == '25' and values['rate'] == '0.25'
+        assert session.verified_breakpoints[str(source)][0] == {
+            'id': session.verified_breakpoints[str(source)][0]['id'], 'verified': True,
+            'line': 8}
+        await session.continue_execution()
+        assert (await event(session, 'exited'))['exitCode'] == 0
+        assert ''.join(t for c, t in output if c == 'stdout') == 'TAX:25\n'
+    finally:
+        await session.close()
+
+
+@pytest.mark.parametrize('script', ['main.ts', 'main.mts', 'main.cts', 'MAIN.TS', 'server.js'])
+def test_typescript_and_javascript_targets_are_valid(script):
+    from debugpilot.storage.code_projects import valid_node_target
+
+    assert valid_node_target(('node', script, '--port', '3000'))
+
+
+@pytest.mark.parametrize('script', ['main.tsx', 'main.d.ts.map', 'main.py', 'main'])
+def test_other_targets_stay_invalid(script):
+    from debugpilot.storage.code_projects import valid_node_target
+
+    assert not valid_node_target(('node', script))
+
+
 @pytest.mark.parametrize('command', [('node',), ('node', '-e', 'console.log(1)'),
     ('node', '--watch', 'server.js'), ('npm', 'run', 'dev'), ('go', 'run', 'main.go')])
 async def test_rejected_launch_never_runs_or_mutates(tmp_path, command):

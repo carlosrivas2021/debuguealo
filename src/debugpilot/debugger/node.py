@@ -26,7 +26,8 @@ from debugpilot.storage.code_projects import (
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
 _GRAMMAR = (
-    'Supported Node commands: node server.js [args...] (also .cjs/.mjs), without runtime flags. '
+    'Supported Node commands: node server.js [args...] (also .cjs/.mjs, and .ts/.cts/.mts '
+    'on Node 22.18+), without runtime flags. '
     'For npm run dev, add nodeDebug: ["node", "server.js", "args..."] to the same profile. '
     'F5 keeps the original command. No run-mode fallback.'
 )

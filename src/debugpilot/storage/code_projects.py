@@ -168,11 +168,15 @@ def is_npm_command(command):
     return bool(command) and Path(command[0]).name.lower() in {'npm', 'npm.cmd', 'npm.exe'}
 
 
+# TypeScript runs through Node's own type stripping (Node 22.18+), which keeps line numbers.
+NODE_SCRIPT_SUFFIXES = frozenset({'.js', '.cjs', '.mjs', '.ts', '.cts', '.mts'})
+
+
 def valid_node_target(command):
     return (isinstance(command, (list, tuple)) and 2 <= len(command) <= 128
             and all(CodeProjectStore._text(arg) for arg in command)
             and is_node_command(command) and not command[1].startswith('-')
-            and Path(command[1]).suffix.lower() in {'.js', '.cjs', '.mjs'})
+            and Path(command[1]).suffix.lower() in NODE_SCRIPT_SUFFIXES)
 
 
 class CodeProjectStore:
@@ -280,7 +284,8 @@ class CodeProjectStore:
                     if not is_npm_command(command) or not valid_node_target(target):
                         raise ConfigurationError(
                             "Invalid nodeDebug: use a Node script argv array only for npm "
-                            "profiles: [node, server.js, args...], without runtime flags."
+                            "profiles: [node, server.js, args...] (also .ts), without runtime "
+                            "flags."
                         )
                     node_debug = tuple(target)
                 profiles.append(CodeProject(name, root.resolve(strict=True), tuple(command),

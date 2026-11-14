@@ -456,7 +456,7 @@ with `--inspect-brk` starts on attach and stops at its first line; press **Conti
 Disconnect removes this session's breakpoints and resumes a paused target, which keeps running
 and can be attached again. If the target exits or the connection drops, Code reports the target
 state as unknown and offers **Reconnect**. Target output, including logpoint messages, stays in
-the container's logs. TypeScript/source maps and worker threads are not supported.
+the container's logs. Source maps (compiled TypeScript) and worker threads are not supported.
 
 ## Debug server-side Node
 
@@ -464,6 +464,17 @@ Use the same breakpoint, stack, variables, step and Continue controls described 
 Node must already be installed; Inspector is built in, so no adapter installation is needed.
 Direct commands support `["node", "server.js", "arg"]` (also `.cjs` and `.mjs`),
 without Node runtime flags.
+
+### TypeScript
+
+On Node 22.18 or later, a TypeScript script runs directly: `["node", "src/main.ts"]` (also
+`.mts` and `.cts`), for **F5** and **Shift+F5**, and in `nodeDebug`. Node removes the type
+annotations by replacing them with spaces, so every line keeps its number: breakpoints, the
+stack and stepping use the `.ts` lines as written, with no build step and no source maps.
+Node only removes syntax that can be erased; `enum`, `namespace` and constructor parameter
+properties fail with Node's own syntax error, and `.tsx` is not supported. Older Node versions
+cannot run `.ts` files. Compiled output (`tsc` to `dist/*.js` with source maps) is not mapped
+back to the `.ts` sources yet.
 
 For an npm profile, explicitly identify the server script:
 
@@ -484,7 +495,7 @@ Node script grammar above. Other profiles need no schema changes.
 Node output comes from a PTY: stdout and stderr are merged in order into the debug console.
 Interactive debug stdin is not exposed; use F5 when input is required.
 Stop and app exit close the owned process tree, including startup in progress.
-Browser debugging, TypeScript/source maps and debugging child processes are
+Browser debugging, source maps for compiled TypeScript and debugging child processes are
 not supported; to debug a Node process you did not start, see
 [Attach to an existing Node Inspector](#attach-to-an-existing-node-inspector). An unsupported target or unavailable runtime reports an error without
 silently running without debug.
