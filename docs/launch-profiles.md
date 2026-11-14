@@ -109,6 +109,14 @@ none. Files are written atomically with mode 0600 and symlinks are refused. Cred
 values are never printed, logged or written to temporary files outside the target
 directory.
 
+Press **Shift+A** in Containers or Code to edit the AWS CLI's `config` and `credentials` files side by
+side in the built-in editor: `~/.aws/config` and `~/.aws/credentials`, or the files named by
+`AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE`. A missing file opens empty and is created
+on save with mode 0600, in a 0700 folder; an existing file keeps its mode, and a symlinked file
+is written through, keeping the link. **Ctrl+S** saves both, **Esc** closes. A save is refused,
+keeping your edits, if the file changed on disk since it was opened. The text is shown on screen
+and written only to the file itself, never to a log or a temporary file elsewhere.
+
 If the SSO session expired, the AWS CLI fails and debugealo asks you to run
 `aws sso login` (with `--profile` when set); it never opens a browser itself. Containers
 keep their old environment until recreated, so after a successful refresh the dashboard

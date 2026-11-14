@@ -70,6 +70,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `r` | Preview **Play / Recreate** |
 | `Shift+R` | Preview **Build + Recreate** |
 | `s` | Stop the selected container or project, after confirmation |
+| `Shift+A` | Edit the AWS config and credentials files side by side |
 | `Ctrl+L` | Open logs (`D` or `Esc` closes them, `Ctrl+R` reconnects) |
 | `C` / `H` | Open the container shell / host Bash |
 | `O` | Show or hide the output console |
