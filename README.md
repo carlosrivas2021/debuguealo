@@ -86,6 +86,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `F10` / `F11` / `Shift+F11` | Step over / in / out |
 | `S` | Stop the selected run |
 | `R` | Restart the running profile, or reload `launch.json` when it is stopped |
+| `P` | Go to the running program's input (**Esc** returns to the profiles) |
 
 The full workflow is in the [keyboard guide](docs/tui.md).
 

@@ -410,7 +410,10 @@ class CodeDebug(Vertical):
 
     def sync_input(self):
         """Offer program input only beside a shown, live session that Code launched."""
-        self.input.display = bool(self.output.display and self._input_session()[1])
+        shown = bool(self.output.display and self._input_session()[1])
+        if shown != self.input.display:
+            self.input.display = shown
+            self.refresh_bindings()  # The footer offers P only while there is a prompt.
 
     def _send_input(self, text):
         context, session = self._input_session()

@@ -134,7 +134,9 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         assert not field.display  # Nothing to type into before a debug session.
         await pilot.press('shift+f5')
         await until(pilot, lambda: field.display and 'name?' in output())
-        field.focus()
+        assert not field.has_focus  # Starting never takes the keys away from Code.
+        await pilot.press('p')  # P goes to the program's prompt.
+        await until(pilot, lambda: field.has_focus)
         await pilot.press(*'ana', 'enter')
         await until(pilot, lambda: 'HELLO:ana' in output())
         # The program echoes, so the typed line shows in the output like a terminal.

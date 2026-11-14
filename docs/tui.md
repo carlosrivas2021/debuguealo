@@ -54,7 +54,7 @@ expressions on every pause; see [watch expressions](code-projects.md#watch-expre
 yellow-shaded execution line, then use **F5** or **▶ Continue**, **F10** (over), **F11** (in), or
 **Shift+F11** (out). F5 continues only the paused profile under the cursor. Stop cancels startup or ends the
 active Code run/debug tree. While a launched debug session runs, the **Program input** field below
-the debug output sends lines to the program (**Enter**) and ends its input (**Ctrl+D**); **Esc** leaves the field; see
+the debug output sends lines to the program (**Enter**) and ends its input (**Ctrl+D**); **P** goes to the field (or to the terminal of a run) and **Esc** leaves it; see
 [program input](code-projects.md#program-input).
 Missing debugpy or unsupported commands report an error without falling back to run.
 See [code project execution and debugging](code-projects.md) for setup and limits.
