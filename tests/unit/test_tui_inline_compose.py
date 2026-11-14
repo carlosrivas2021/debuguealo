@@ -43,8 +43,7 @@ async def test_inline_confirmation_never_changes_screen(tmp_path, monkeypatch, k
         assert app.screen is screen
         # Changing raw selection invalidates a profile preview.
         select_key(app, "project:catalog")
-        await pilot.pause()
-        assert not app.query_one("#inline-compose").display
+        await until(pilot, lambda: not app.query_one("#inline-compose").display)
         assert not service.runs
         select_key(app, "profile:Orders")
         await pilot.press(key)

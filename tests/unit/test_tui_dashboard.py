@@ -73,7 +73,6 @@ async def test_native_inventory_scales_scrolls_and_shows_only_published_port_lab
         assert "[::1]:9000->8000/tcp" in first_ports
         assert "9001->8000/tcp" in second_ports
         assert "53/udp" not in first_ports
-        assert table.max_scroll_y > 0
+        await until(pilot, lambda: table.max_scroll_y > 0)
         table.scroll_end(animate=False)
-        await pilot.pause()
-        assert table.scroll_y > 0
+        await until(pilot, lambda: table.scroll_y > 0)
