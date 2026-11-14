@@ -201,10 +201,29 @@ the latest operation for the selected profile in memory, and can be hidden/resto
 without clearing it. See [Compose safety and limits](compose.md) and
 [container stop](container-controls.md).
 
+## Filter and search logs
+
+**Filter text** keeps only the lines that contain the text and hides the rest. **Search**
+keeps every line, highlights the matches and jumps to the next one with **Enter** or **N**,
+turning auto-scroll off so the match stays in view. Filter to focus on what matters; search to
+find something without losing the lines around it. Both combine with the level selector.
+
+<p align="center">
+  <img alt="Filter text hides lines without a match; Search keeps all lines and highlights the matches" src="assets/log-filter-vs-search.gif" width="900">
+</p>
+
 ## Log display limits
 
 The in-memory log buffer is limited to 2,000 entries and 2 MiB. Pausing can lose older
 entries when those limits are reached. Copy depends on terminal clipboard support.
+
+To copy logs, drag over rows with the mouse: the rows you cover are highlighted, and
+releasing copies those whole lines, each as `time [stream] message`. A click without moving
+only selects a row, and **Copy** or **Ctrl+Y** copies the selected one. New lines wait until
+you release, so rows never shift under the mouse. Parts of a line cannot be selected.
+
+**Wrap** (or **W** in the table) shows long messages on several lines, using the
+width left after the time, stream and level columns; turn it off to keep one line per entry.
 
 ## Not implemented yet
 

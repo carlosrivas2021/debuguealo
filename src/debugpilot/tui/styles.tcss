@@ -127,6 +127,8 @@ Button:disabled { color: #697279; background: #101417; }
 #launch-profiles { background: #080b0e; }
 /* The cursor row already shows focus; the default focus tint read as a separate gray block. */
 #launch-profiles:focus { background-tint: transparent; }
+/* Focus is shown by the cursor row; a focus tint would turn the whole log gray. */
+#log-entries:focus { background-tint: transparent; }
 #active-container-heading { background: #101518; }
 #log-state { background: #101518; padding: 0 1; }
 LogViewer { background: #080b0e; }
