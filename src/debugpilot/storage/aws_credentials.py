@@ -29,6 +29,14 @@ EXPORT_TIMEOUT_SECONDS = 60
 AWS_CREDENTIAL_FIELDS = {"envFiles", "profile"}
 
 
+def aws_file_paths() -> tuple[Path, Path]:
+    """The AWS CLI's config and credentials files, honoring its environment overrides."""
+    home = Path.home() / ".aws"
+    config = os.environ.get("AWS_CONFIG_FILE") or str(home / "config")
+    credentials = os.environ.get("AWS_SHARED_CREDENTIALS_FILE") or str(home / "credentials")
+    return Path(config).expanduser(), Path(credentials).expanduser()
+
+
 class CredentialError(DebugPilotError):
     """A safe credential failure message; it never contains credential values."""
 

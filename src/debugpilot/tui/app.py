@@ -92,6 +92,7 @@ class DebugPilotApp(App):
         Binding("R,shift+r", "build_selected", "Build + Recreate"),
         Binding("s", "stop_selected", "Stop"),
         Binding("a", "refresh_aws_credentials", "AWS creds"),
+        Binding("A,shift+a", "edit_aws_files", "Edit AWS files"),
         Binding("ctrl+o", "open_launch_file", "Open launch.json"),
         Binding("escape", "cancel_compose", show=False),
         Binding("f5", "run_code", "Run code"),
@@ -1968,6 +1969,24 @@ class DebugPilotApp(App):
         }
         self._compose_tasks[run.project] = asyncio.create_task(self._run_inline_compose(run))
 
+    async def action_edit_aws_files(self) -> None:
+        """Open the AWS config and credentials files side by side in the editor."""
+        from debugpilot.storage.aws_credentials import aws_file_paths
+        from debugpilot.storage.text_files import load_text
+        from debugpilot.tui.file_editor import EditableFile
+
+        config, credentials = aws_file_paths()
+        try:
+            files = [
+                EditableFile("AWS config", await asyncio.to_thread(load_text, config)),
+                EditableFile("AWS credentials", await asyncio.to_thread(load_text, credentials)),
+            ]
+        except ConfigurationError as error:
+            self.notify(f"Cannot open the AWS files: {error}", severity="warning")
+            return
+        if not self._closing:
+            self._open_editor(files, lambda _saved: None)
+
     def action_refresh_aws_credentials(self) -> None:
         if self._credential_busy() or self._compose_running():
             self.notify("An operation is already running.", severity="warning")
@@ -2507,7 +2526,7 @@ class DebugPilotApp(App):
             "toggle_project", "open_container_terminal", "open_host_terminal",
             "recreate_selected", "build_selected", "stop_selected", "cancel_compose",
             "compose", "start_project", "restart_selected", "rebuild_selected",
-            "refresh_aws_credentials", "container_pane",
+            "refresh_aws_credentials", "edit_aws_files", "container_pane",
         }:
             return False
         if action in {
