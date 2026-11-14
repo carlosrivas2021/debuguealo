@@ -15,7 +15,7 @@ dependencies = [
   "docker>=7.1,<8",
   "platformdirs>=4.3,<5",
   "pyte>=0.8.2,<0.9",
-  "pywinpty>=2.0,<3; sys_platform == 'win32'",
+  "pywinpty>=3.1.2,<4; sys_platform == 'win32'",
   "pydantic>=2.10,<3",
   "rich>=13.9,<15",
   "textual>=1,<7",
