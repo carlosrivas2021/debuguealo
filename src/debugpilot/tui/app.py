@@ -105,7 +105,7 @@ class DebugPilotApp(App):
         Binding("R,shift+r", "build_selected", "Build + Recreate"),
         Binding("s", "stop_selected", "Stop"),
         Binding("a", "refresh_aws_credentials", "AWS creds"),
-        Binding("ctrl+o,ctrl+n", "open_launch_file", "Open launch.json"),
+        Binding("ctrl+o", "open_launch_file", "Open launch.json"),
         Binding("escape", "cancel_compose", show=False),
         Binding("f5", "run_code", "Run code"),
         Binding("shift+f5", "debug_code", "Debug"),
@@ -1554,27 +1554,31 @@ class DebugPilotApp(App):
             return
 
         async def open_file() -> None:
-            try:
-                from debugpilot.tui.launch_file import open_launch_file
+            from debugpilot.storage.text_files import load_text
+            from debugpilot.tui.file_editor import EditableFile
+            from debugpilot.tui.launch_file import format_launch_text
 
+            try:
                 path = await asyncio.to_thread(store.ensure_launch_file)
-                self._edit_launch_in_terminal(open_launch_file, path)
+                loaded = await asyncio.to_thread(load_text, path)
+            except (ConfigurationError, OSError) as error:
                 if not self._closing:
+                    self.notify(f"Cannot open launch.json: {error}", severity="warning")
+                return
+            finally:
+                self._launch_open_task = None
+
+            def reload(saved: bool) -> None:
+                if saved and not self._closing:
                     if code:
                         self.query_one(CodeWorkspace).reload_profiles()
                     else:
                         self._update_launch_profiles()
-                    self.notify(f"Returned from editor: {path}")
-            except (ConfigurationError, OSError) as error:
-                if not self._closing:
-                    self.notify(f"Cannot open launch.json: {error}", severity="warning")
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                if not self._closing:
-                    self.notify("Cannot open launch.json in an editor.", severity="warning")
-            finally:
-                self._launch_open_task = None
+
+            if not self._closing:
+                self._open_editor([EditableFile(
+                    "launch.json", loaded, language="json", normalize=format_launch_text,
+                )], reload)
 
         self._launch_open_task = asyncio.create_task(open_file())
         self._ui_tasks.append(self._launch_open_task)
@@ -1582,20 +1586,17 @@ class DebugPilotApp(App):
             lambda task: self._ui_tasks.remove(task) if task in self._ui_tasks else None
         )
 
-    def _edit_launch_in_terminal(self, editor, path: Path) -> None:
-        # Keep terminal ownership on the UI thread. Async refreshes must not
-        # compete with the editor. Textual's suspend() has no try/finally around
-        # its yield, so an exception escaping the block would skip
-        # resume_application_mode() and leave the dashboard frozen; hold it until
-        # the UI is restored, then re-raise so the caller can report it.
-        failure: BaseException | None = None
-        with self.suspend():
-            try:
-                editor(path)
-            except BaseException as error:  # noqa: BLE001 - re-raised after resume
-                failure = error
-        if failure is not None:
-            raise failure
+    def _open_editor(self, files, on_close) -> None:
+        """Show the in-app editor; ``on_close`` gets whether anything was saved."""
+        from debugpilot.tui.file_editor import FileEditorScreen
+
+        if not self._editor_open():
+            self.push_screen(FileEditorScreen(files), on_close)
+
+    def _editor_open(self) -> bool:
+        from debugpilot.tui.file_editor import FileEditorScreen
+
+        return any(isinstance(screen, FileEditorScreen) for screen in self.screen_stack)
 
     def _remember_compose_project(self, project: ComposeProject) -> None:
         self._compose_projects[project.project_name] = project
@@ -2503,6 +2504,9 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if self.is_mounted and action != "quit" and self._editor_open():
+            # The dashboard is hidden behind the editor; its shortcuts must not act on it.
+            return False
         if action == "container_pane" and isinstance(self.focused, Input):
             # Inputs handle Ctrl+arrows themselves but not Option+arrows; typing in a
             # field must never move focus away from it.

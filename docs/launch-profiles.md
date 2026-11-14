@@ -13,7 +13,7 @@ central mode. Discovery does not create or rewrite launch files.
 ## Quick path
 
 1. Start debugealo from any directory; the default application uses the same central launch file.
-2. From the empty welcome, choose **Open launch.json** to edit the central configuration with nano or vi in the same terminal.
+2. From the empty welcome, choose **Open launch.json** to edit the central configuration in the built-in editor.
 3. On first open, debugealo creates the file only if it is missing, with an empty `configurations` array. Add profiles with an explicit `workspaceFolder`. Only explicit local-workspace mode generates a catalog starter when that workspace contains the real example.
 4. Existing files, including malformed ones, are passed through unchanged so they can be repaired in the editor.
 
@@ -147,12 +147,9 @@ Conflicting detection metadata stays pending until a trusted mapping is supplied
 
 The default application uses the central configuration location; each central profile
 selects its own project root. Explicit local-workspace mode remains available to callers.
-debugealo suspends its TUI and runs `nano`, or `vi` if nano is unavailable, in the
-same terminal without a shell. It waits for the editor to exit, restores the dashboard,
-and reloads the profiles. Install nano or vi on PATH, including on Windows; the tool
-does not use graphical editors or system file associations. A nonzero editor exit
-or an unavailable editor is reported in the TUI. See [terminal controls](tui.md)
-for save and exit shortcuts.
+debugealo edits the file in its built-in editor, inside the dashboard: **Ctrl+S** validates,
+formats and saves, and the profiles reload; **Esc** closes. No external or graphical editor is
+used, on any platform. See [terminal controls](tui.md) for what saving checks.
 
 `environmentFiles` may list project-local dotenv files when an existing Compose
 project reports explicit `--env-file` metadata. Their paths, not contents, are stored;

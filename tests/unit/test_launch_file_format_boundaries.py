@@ -1,20 +1,14 @@
-import subprocess
-
 import pytest
 
 from debugpilot.core.exceptions import ConfigurationError
-from debugpilot.tui import launch_file
-from debugpilot.tui.launch_file import open_launch_file as _open_launch_file
+from debugpilot.storage.text_files import load_text, save_text
+from debugpilot.tui.launch_file import format_launch_text
 
 
 def run_editor_success(target, monkeypatch):
-    monkeypatch.setattr(launch_file.shutil, "which", lambda _name: "/tools/nano")
-    monkeypatch.setattr(
-        launch_file.subprocess,
-        "run",
-        lambda args, **kwargs: subprocess.CompletedProcess(args, 0),
-    )
-    _open_launch_file(target)
+    """Save the file's own text the way the in-app editor saves launch.json."""
+    loaded = load_text(target)
+    save_text(loaded, format_launch_text(loaded.text))
 
 
 def test_duplicate_nested_key_is_rejected_without_rewriting_or_temp_file(tmp_path, monkeypatch):

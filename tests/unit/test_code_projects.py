@@ -38,7 +38,8 @@ async def test_area_navigation_keeps_container_context_and_isolates_code_errors(
     docker = Docker()
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path)
     opened = []
-    monkeypatch.setattr(app, "_edit_launch_in_terminal", lambda editor, path: opened.append(path))
+    monkeypatch.setattr(app, "_open_editor",
+                        lambda files, _on_close: opened.extend(f.loaded.path for f in files))
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: app._inventory_loaded)
         table = app.query_one("#launch-profiles", DataTable)
