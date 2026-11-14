@@ -314,7 +314,8 @@ While a program that Code launched for debugging (Python, Go or Node) is running
 program's standard input, as pressing Enter in a terminal would, so `input()`,
 `bufio.Reader.ReadString` or `readline` receive it. **Ctrl+D** sends what is in the field, if
 anything, and then ends the input, so a program reading until end of input (such as
-`sys.stdin.read()` or `io.ReadAll(os.Stdin)`) stops reading. A line typed while the program is
+`sys.stdin.read()` or `io.ReadAll(os.Stdin)`) stops reading; on Windows it types the console's
+end of input, Ctrl+Z then Enter. A line typed while the program is
 paused waits until it reads again. Typing in the field never triggers Code shortcuts.
 
 The typed line also shows in the debug output, as `[profile · input] text`, only while the

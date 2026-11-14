@@ -344,7 +344,7 @@ class PythonDebugSession:
 
     def send_eof(self):
         """End of input (Ctrl+D): a program reading until EOF stops reading."""
-        self._input_terminal().write('\x04')
+        self._input_terminal().end_input()
 
     def input_echo(self):
         """Whether the UI should show typed input: only while the program echoes it.

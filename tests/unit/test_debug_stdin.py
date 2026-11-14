@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,6 +10,7 @@ from debugpilot.debugger import DebugError, GoDebugSession, NodeDebugSession, Py
 from debugpilot.debugger.node_attach import NodeAttachSession
 from debugpilot.debugger.remote_attach import RemoteAttachSession
 from debugpilot.storage.code_projects import CodeProject
+from debugpilot.terminal.session import TerminalSession
 
 PROGRAMS = {
     'python': ('main.py', ('python3', '-u', 'main.py'),
@@ -143,3 +145,15 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         await pilot.press('backspace', *'end', 'ctrl+d')
         await until(pilot, lambda: 'REST:end' in output())
         await until(pilot, lambda: not field.display)  # The program ended.
+
+
+def test_end_of_input_uses_the_windows_console_sequence():
+    # Windows consoles end input with Ctrl+Z then Enter at the start of a line; they
+    # ignore the Unix Ctrl+D character.
+    written = []
+    terminal = TerminalSession(on_output=lambda _text: None)
+    terminal.process = SimpleNamespace(write=written.append)
+    terminal._closed = False
+    terminal._windows = True
+    terminal.end_input()
+    assert written == ['\x1a\r']
