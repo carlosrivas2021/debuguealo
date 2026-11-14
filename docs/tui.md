@@ -19,7 +19,7 @@ On desktop terminals the 48-column sidebar prioritizes project/service names ove
 port and state columns. Narrow terminals retain the stacked layout.
 
 Text filter, search, and severity share one compact toolbar. Search still supports
-Ctrl+F, Enter, and N; filtering and log ingestion are unchanged. Table headers,
+Ctrl+F, Enter, N, and Shift+N; filtering and log ingestion are unchanged. Table headers,
 selection, controls, and footer use the existing dark project palette.
 The lower console starts completely hidden, leaving all rows available to the dashboard.
 Press `O` from the project tree to show it. When shown, the Compose console displays an
@@ -201,8 +201,10 @@ without clearing it. See [Compose safety and limits](compose.md) and
 ## Filter and search logs
 
 **Filter text** keeps only the lines that contain the text and hides the rest. **Search**
-keeps every line, highlights the matches and jumps to the next one with **Enter** or **N**,
-turning auto-scroll off so the match stays in view. Filter to focus on what matters; search to
+keeps every line, highlights the matches and jumps to the next one with **Enter** or **N**
+(**Shift+N** goes back to the previous one; both wrap around), turning auto-scroll off so the
+match stays in view. The status line shows which match is selected, such as `Match 2/5`, or
+how many there are when the selected line is not one of them. Filter to focus on what matters; search to
 find something without losing the lines around it. Both combine with the level selector.
 
 <p align="center">
