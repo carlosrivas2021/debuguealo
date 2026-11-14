@@ -267,6 +267,14 @@ class TerminalSession:
         except (OSError, termios.error):
             return None
 
+    def end_input(self) -> None:
+        """End the program's input, as typing the terminal's end-of-input keys would.
+
+        POSIX terminals take Ctrl+D; Windows consoles ignore it and take Ctrl+Z then
+        Enter at the start of a line.
+        """
+        self.write("\x1a\r" if self._windows else "\x04")
+
     def write(self, text: str) -> None:
         if self._closed or not self.process:
             return

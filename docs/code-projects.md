@@ -314,12 +314,15 @@ While a program that Code launched for debugging (Python, Go or Node) is running
 program's standard input, as pressing Enter in a terminal would, so `input()`,
 `bufio.Reader.ReadString` or `readline` receive it. **Ctrl+D** sends what is in the field, if
 anything, and then ends the input, so a program reading until end of input (such as
-`sys.stdin.read()` or `io.ReadAll(os.Stdin)`) stops reading. A line typed while the program is
+`sys.stdin.read()` or `io.ReadAll(os.Stdin)`) stops reading; on Windows it types the console's
+end of input, Ctrl+Z then Enter. A line typed while the program is
 paused waits until it reads again. Typing in the field never triggers Code shortcuts.
 
 The typed line also shows in the debug output, as `[profile · input] text`, only while the
 program's terminal echoes input, exactly like a terminal: a password prompt that turns echo off
-(Python's `getpass`) keeps what you type hidden. Node echoes through its own terminal, so its
+(Python's `getpass`) keeps what you type hidden. Windows cannot report whether the terminal
+echoes, so there typed lines never show for Python and Go, to keep passwords out of the output.
+Node echoes through its own terminal, so its
 output shows the typed line directly. `getpass` writes its prompt to the terminal rather than to
 standard output, so that prompt does not appear in the debug output; the input still reaches it.
 Attached processes are not owned by Code, so attach sessions have no program input.
