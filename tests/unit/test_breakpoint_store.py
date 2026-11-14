@@ -194,7 +194,9 @@ def test_hit_condition_accepts_counts_and_comparisons(text, expected):
     assert breakpoint_options(None, None, text) == BreakpointOptions(hit_condition=expected)
 
 
-@pytest.mark.parametrize("text", ["x", "!=3", "%0", "0", "=3", ">=", "3.5", "-2", "5 5", "1" * 10])
+@pytest.mark.parametrize("text", [
+    "x", "!=3", "%0", "0", "=3", ">=", "3.5", "-2", "5 5", "1" * 10, "\u0665", ">=\u0663",
+])
 def test_hit_condition_rejects_other_text(text):
     from debugpilot.storage.breakpoints import breakpoint_options
 

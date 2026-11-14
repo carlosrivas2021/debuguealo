@@ -19,7 +19,7 @@ _OPTION_FIELDS = {
     "condition": "condition", "logMessage": "log_message", "hitCondition": "hit_condition",
 }
 # The hit-count forms debugpy, Delve and the Node emulation all read the same way.
-_HIT_CONDITION = re.compile(r"(==|>=|<=|>|<|%)?\s*(\d{1,9})")
+_HIT_CONDITION = re.compile(r"(==|>=|<=|>|<|%)? *([0-9]{1,9})")
 HIT_CONDITION_HELP = "Hit count must be a number or ==, >, >=, <, <=, % followed by one, e.g. >=5."
 
 
