@@ -139,8 +139,8 @@ images may download packages.
 ```console
 uv sync --locked
 uv run debugealo
-uv run pytest -m "not integration"   # unit tests
-uv run pytest                        # full suite: needs Docker, and Delve as `dlv`
+uv run pytest -m "not integration" -n auto   # unit tests, in parallel on every core
+uv run pytest                                # full suite: needs Docker, and Delve as `dlv`
 uv run ruff check . && uv run ruff format --check .
 ```
 
