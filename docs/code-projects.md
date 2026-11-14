@@ -450,13 +450,16 @@ loopback only, such as `127.0.0.1:9229:9229`: anything that reaches the Inspecto
 the target. Code reads the target list from `http://127.0.0.1:<port>/json/list`, requires exactly
 one Node target, and connects to its WebSocket on the same port. Local `src/app.js` maps to
 `/app/src/app.js`, and stack paths map back; frames outside `remoteRoot` show without a source.
+For compiled TypeScript, Code reads the source maps of the local build: a breakpoint in
+`src/app.ts` is set on the target's `/app/dist/app.js` line it maps to, and frames map back to
+`src/app.ts`. The local build must match the one the target runs.
 Local and target sources must match, or breakpoints land on the wrong lines. A target started
 with `--inspect-brk` starts on attach and stops at its first line; press **Continue**.
 
 Disconnect removes this session's breakpoints and resumes a paused target, which keeps running
 and can be attached again. If the target exits or the connection drops, Code reports the target
 state as unknown and offers **Reconnect**. Target output, including logpoint messages, stays in
-the container's logs. Source maps (compiled TypeScript) and worker threads are not supported.
+the container's logs. Worker threads are not supported.
 
 ## Debug server-side Node
 
@@ -473,8 +476,23 @@ annotations by replacing them with spaces, so every line keeps its number: break
 stack and stepping use the `.ts` lines as written, with no build step and no source maps.
 Node only removes syntax that can be erased; `enum`, `namespace` and constructor parameter
 properties fail with Node's own syntax error, and `.tsx` is not supported. Older Node versions
-cannot run `.ts` files. Compiled output (`tsc` to `dist/*.js` with source maps) is not mapped
-back to the `.ts` sources yet.
+cannot run `.ts` files.
+
+### Compiled TypeScript and source maps
+
+For TypeScript compiled with `tsc` and `"sourceMap": true`, debug the compiled entry point,
+for example `["node", "dist/main.js"]`, and set breakpoints in the `.ts` sources. When debugging
+starts, Code reads the workspace's `*.js.map`, `*.mjs.map` and `*.cjs.map` files (skipping
+`node_modules` and `.git`, up to 2000 maps of 8 MiB each). A breakpoint on a `.ts` line is set
+on the matching line and column of the generated file before that file loads, and the stack,
+the paused line and the breakpoint's verified line show the `.ts` file again. A `.ts` line
+without generated code, such as an `interface`, stays **unverified**. Breakpoints in `.js`
+files without a map work as before.
+
+Rebuilding while debugging is not picked up: restart the debug session after a build. A
+`.ts` launch (`node src/main.ts`) runs the sources directly and ignores any build's maps.
+Inline `data:` maps (as `tsx` or `ts-node` produce), bundled output (webpack, esbuild) and
+map sources outside the workspace folder are not supported.
 
 For an npm profile, explicitly identify the server script:
 
@@ -495,7 +513,6 @@ Node script grammar above. Other profiles need no schema changes.
 Node output comes from a PTY: stdout and stderr are merged in order into the debug console.
 Interactive debug stdin is not exposed; use F5 when input is required.
 Stop and app exit close the owned process tree, including startup in progress.
-Browser debugging, source maps for compiled TypeScript and debugging child processes are
-not supported; to debug a Node process you did not start, see
+Browser debugging and debugging child processes are not supported; to debug a Node process you did not start, see
 [Attach to an existing Node Inspector](#attach-to-an-existing-node-inspector). An unsupported target or unavailable runtime reports an error without
 silently running without debug.
