@@ -88,3 +88,16 @@ async def test_log_filter_keeps_focus_on_alt_arrows():
         assert focused_id(app) == 'filter-logs'
         await press(pilot, 'alt+right')
         assert focused_id(app) == 'filter-logs'
+
+
+async def test_focused_log_table_keeps_the_screen_background():
+    app = start(Fleet())
+    async with app.run_test(size=(160, 40)) as pilot:
+        await until(pilot, lambda: ready(app))
+        select_key(app, 'container:shop-web')
+        await press(pilot, 'ctrl+l')
+        table = app.query_one('#log-entries')
+        table.focus()
+        await pilot.pause()
+        assert app.focused is table
+        assert table.background_colors[1] == app.screen.styles.background
