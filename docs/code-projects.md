@@ -483,10 +483,13 @@ cannot run `.ts` files.
 For TypeScript compiled with `tsc` and `"sourceMap": true`, debug the compiled entry point,
 for example `["node", "dist/main.js"]`, and set breakpoints in the `.ts` sources. When debugging
 starts, Code reads the workspace's `*.js.map`, `*.mjs.map` and `*.cjs.map` files (skipping
-`node_modules` and `.git`, up to 2000 maps of 8 MiB each). A breakpoint on a `.ts` line is set
+`node_modules`, `.git`, `.venv`, `venv` and `__pycache__`, up to 2000 maps of 8 MiB each, and
+stopping after 100,000 files and folders). A breakpoint on a `.ts` line is set
 on the matching line and column of the generated file before that file loads, and the stack,
 the paused line and the breakpoint's verified line show the `.ts` file again. A `.ts` line
-without generated code, such as an `interface`, stays **unverified**. Breakpoints in `.js`
+without generated code, such as an `interface`, stays **unverified**. A paused line of
+generated code that maps to nothing, such as the `"use strict";` line `tsc` adds, shows the
+`.js` file. Breakpoints in `.js`
 files without a map work as before.
 
 Rebuilding while debugging is not picked up: restart the debug session after a build. A

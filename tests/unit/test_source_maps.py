@@ -136,3 +136,15 @@ def test_index_stops_at_its_file_limit(tmp_path, monkeypatch):
     found = [n for n in range(5)
              if index.generated_position((root / f'src/m{n}.ts').resolve(), 1)]
     assert len(found) == 3
+
+
+def test_index_walk_is_bounded_and_skips_python_environments(tmp_path, monkeypatch):
+    root = project(tmp_path, {'dist/a.js': (['../src/a.ts'], [[(0, 0, 0, 0)]]),
+                              '.venv/x.js': (['../src/a.ts'], [[(0, 0, 4, 0)]])})
+    index = SourceMapIndex(root)
+    assert index.generated_position(root / 'src/a.ts', 5) is None
+    for n in range(20):
+        (root / f'filler{n:02}.txt').write_text('')
+    monkeypatch.setattr('debugpilot.debugger.source_maps.MAX_WALK_ENTRIES', 10)
+    # The walk stops early in a huge tree instead of slowing every launch.
+    assert not SourceMapIndex(root).maps(root / 'src/a.ts')

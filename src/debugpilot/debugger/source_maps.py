@@ -13,8 +13,10 @@ from pathlib import Path
 
 MAX_MAP_BYTES = 8 * 1024 * 1024
 MAX_MAP_FILES = 2000
+# Files and folders looked at per index, so a huge tree never slows every launch.
+MAX_WALK_ENTRIES = 100_000
 MAP_SUFFIXES = ('.js.map', '.mjs.map', '.cjs.map')
-SKIPPED_DIRECTORIES = frozenset({'node_modules', '.git'})
+SKIPPED_DIRECTORIES = frozenset({'node_modules', '.git', '.venv', 'venv', '__pycache__'})
 
 _BASE64 = {character: value for value, character in enumerate(
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/')}
@@ -107,9 +109,12 @@ class SourceMapIndex:
         self.root = Path(root).resolve()
         self._by_source: dict[Path, list[SourceMap]] = {}
         self._by_generated: dict[Path, SourceMap] = {}
-        count = 0
+        count = walked = 0
         for directory, names, files in os.walk(self.root):
             names[:] = sorted(name for name in names if name not in SKIPPED_DIRECTORIES)
+            walked += len(names) + len(files)
+            if walked > MAX_WALK_ENTRIES:
+                return
             for name in sorted(files):
                 if not name.endswith(MAP_SUFFIXES):
                     continue
