@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.4.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.3.0...v0.4.0) (2026-11-14)
+
+
+### Features
+
+* **code:** attach to an existing Node Inspector ([936f2b2](https://github.com/carlosrivas2021/debuguealo/commit/936f2b2d0bd1828379e30c28fd24ac23665b3b23))
+* **code:** attach to an existing Node Inspector with nodeAttach ([dcd1600](https://github.com/carlosrivas2021/debuguealo/commit/dcd16009e8652eca061d2d12d051e04485270646))
+* **code:** list local Git branches and switch between them ([40b44fb](https://github.com/carlosrivas2021/debuguealo/commit/40b44fbbac5f18f220dd044585c008ede7cb82ea))
+* **code:** list local Git branches and switch between them ([4f6bbbc](https://github.com/carlosrivas2021/debuguealo/commit/4f6bbbc9a76e179d09c04828d77b5e53529953a8))
+* **code:** switch Git branch from the Code bar ([89b6af2](https://github.com/carlosrivas2021/debuguealo/commit/89b6af26fee5e14be19ba125f6d1dda50863a9c5))
+* **code:** switch Git branch from the Code bar ([70d382f](https://github.com/carlosrivas2021/debuguealo/commit/70d382f0874e254f03dc85267f2f5e8e0be6ddd9))
+* **storage:** load and save editor text atomically ([c574588](https://github.com/carlosrivas2021/debuguealo/commit/c57458875307133cc779e2e770a82f6cc87ddbc2))
+* **storage:** load and save editor text atomically ([d72c34e](https://github.com/carlosrivas2021/debuguealo/commit/d72c34e0f6a137c6c4f0b83523c6f08037e77a6b))
+* **tui:** add an in-app editor screen for one or two files ([8aa0c8a](https://github.com/carlosrivas2021/debuguealo/commit/8aa0c8a863e2e5234fef9ee2ca0598075e742714))
+* **tui:** add an in-app editor screen for one or two files ([03227bc](https://github.com/carlosrivas2021/debuguealo/commit/03227bca9c571665ba60448bea11903ab28c5788))
+* **tui:** copy container log rows by dragging and wrap long lines ([20291fa](https://github.com/carlosrivas2021/debuguealo/commit/20291faa8be9e728ca0c165133ebd45b50494af4))
+* **tui:** copy container log rows by dragging and wrap long lines ([563769e](https://github.com/carlosrivas2021/debuguealo/commit/563769e2ea4396db1c3ae2e9194b20ec72bedb89))
+* **tui:** edit launch.json in the built-in editor with Ctrl+O ([e6080f4](https://github.com/carlosrivas2021/debuguealo/commit/e6080f463ab53401a6ac815b9ffacaaf5d42164c))
+* **tui:** edit launch.json in the built-in editor with Ctrl+O ([606a6af](https://github.com/carlosrivas2021/debuguealo/commit/606a6af4de6eeb758daaa3b9bd9ac6ccf4215779))
+* **tui:** edit the AWS config and credentials side by side with Shift+A ([ace2bef](https://github.com/carlosrivas2021/debuguealo/commit/ace2bef9fe0e1731e0f1eeaa9470d23771f05cab))
+* **tui:** edit the AWS config and credentials side by side with Shift+A ([d65bd3c](https://github.com/carlosrivas2021/debuguealo/commit/d65bd3c03b33efcfa5dcfb30d557817c412f6023))
+* **tui:** move between panes with Alt+Left/Right ([e8243cf](https://github.com/carlosrivas2021/debuguealo/commit/e8243cf95ca666d0fe9b2e59a82f45829bf671d8))
+* **tui:** move between panes with Alt+Left/Right ([0058ee1](https://github.com/carlosrivas2021/debuguealo/commit/0058ee1f8b62e22ecfa173410830acfa272092a6))
+* **tui:** open the AWS files with Shift+A from Code too ([4a39e1b](https://github.com/carlosrivas2021/debuguealo/commit/4a39e1b751a77d947263597296d5c5707174362b))
+
+
+### Bug Fixes
+
+* **code:** harden Node attach discovery and disconnect ([4ccffef](https://github.com/carlosrivas2021/debuguealo/commit/4ccffef52d3799acc5b736d0f5be4f3d65156783))
+* **code:** report malformed Node Inspector replies as attach errors ([6b5fc6d](https://github.com/carlosrivas2021/debuguealo/commit/6b5fc6dc184f4cf32b14dcac055cd60eb32c8520))
+* **storage:** detect same-size outside writes before saving ([e30598f](https://github.com/carlosrivas2021/debuguealo/commit/e30598fc9073102b6f90539a8efd2a7c56bb7218))
+* **tui:** keep mouse selection smooth and copy from the source viewer ([2869cad](https://github.com/carlosrivas2021/debuguealo/commit/2869cad23d2deded6cec2e54c8ffb1871e83b1ef))
+* **tui:** keep mouse selection smooth and copy from the source viewer ([882de2f](https://github.com/carlosrivas2021/debuguealo/commit/882de2f50b06feea8dcabfdc1d0c6b165cb7234c))
+* **tui:** keep the previous message for an oversized launch.json ([4d31512](https://github.com/carlosrivas2021/debuguealo/commit/4d315120cc36b02ecbe2b6bbfa4103f6896ff7f8))
+
 ## [0.3.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.2.0...v0.3.0) (2026-11-11)
 
 
