@@ -7,6 +7,7 @@ from pathlib import Path
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Input, RichLog, Static
 
@@ -58,6 +59,31 @@ def _watch_value(value):
     return value if len(value) <= MAX_WATCH_VALUE else value[:MAX_WATCH_VALUE - 1] + '…'
 
 
+class ProgramInput(Input):
+    """One line of input for the debugged program; Ctrl+D ends its input."""
+
+    BINDINGS = [Binding('ctrl+d', 'end_input', 'End input', show=False)]
+
+    def __init__(self, send, end):
+        super().__init__(
+            placeholder='Program input · Enter sends a line · Ctrl+D ends input',
+            id='code-debug-input', compact=True,
+        )
+        self._send = send
+        self._end = end
+        self.display = False
+
+    def _on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input is self:
+            event.stop()
+            self._send(self.value)
+            self.value = ''
+
+    def action_end_input(self) -> None:
+        self._end(self.value)
+        self.value = ''
+
+
 @dataclass
 class DebugContext:
     profile: object
@@ -98,6 +124,7 @@ class CodeDebug(Vertical):
         self.output = RichLog(id='code-debug-output', max_lines=2000, markup=False, wrap=True)
         self.output.border_title = 'Debug output'
         self.output.display = False
+        self.input = ProgramInput(self._send_input, self._end_input)
         self.watch_store = WatchStore()
         try:
             self.watches: dict[Path, list[str]] = {
@@ -204,6 +231,7 @@ class CodeDebug(Vertical):
     def _show_selected(self):
         context = self.selected
         self.display = context is not None
+        self.sync_input()
         if context is None:
             self._clear_view()
             return
@@ -345,6 +373,45 @@ class CodeDebug(Vertical):
         context.state = message
         if self.selected is context:
             self.state_changed(message)
+        self.sync_input()
+
+    def _input_session(self):
+        context = self.selected
+        session = context.session if context is not None else None
+        if (context is None or not context.active or session is None
+                or not getattr(session, 'supports_input', False)
+                or session.state not in {'running', 'stopped'}):
+            return None, None
+        return context, session
+
+    def sync_input(self):
+        """Offer program input only beside a shown, live session that Code launched."""
+        self.input.display = bool(self.output.display and self._input_session()[1])
+
+    def _send_input(self, text):
+        context, session = self._input_session()
+        if session is None:
+            return
+        try:
+            echo = session.input_echo()
+            session.send_input(text)
+        except DebugError as error:
+            self.app.notify(str(error), severity='warning')
+            return
+        if echo:
+            # Only while the program echoes, as a terminal would; getpass stays hidden.
+            self._append_output(context, f'[{context.profile.name} · input] {text}')
+
+    def _end_input(self, text):
+        context, session = self._input_session()
+        if session is None:
+            return
+        if text:
+            self._send_input(text)
+        try:
+            session.send_eof()
+        except DebugError as error:
+            self.app.notify(str(error), severity='warning')
 
     def _deliver_output(self, context, generation, message):
         if self._current(context, generation):

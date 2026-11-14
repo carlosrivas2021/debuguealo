@@ -50,7 +50,9 @@ Versioned Python executable names are accepted. Other interpreter flags, `-c`, s
 commands, stdin programs, packages-as-script directories, npm and Go are rejected with
 a supported-command explanation. Target arguments are literal argv, never shell text.
 The original `CodeProject.command` is not rewritten; F5 still uses it unmodified.
-Debug mode deliberately uses internal-console output (no interactive stdin API).
+Debug mode uses internal-console output; the program reads its standard input from the
+**Program input** field (`send_input` / `send_eof` on the session), and the terminal's echo flag
+(`input_echo`) decides whether the typed line is shown.
 
 debugealo bundles `debugpy` and runs the debug adapter on its own interpreter; debugpy's
 launcher then runs the target with the interpreter selected by the profile. That

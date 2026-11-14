@@ -293,8 +293,7 @@ Code work but disables Code launch/step shortcuts there. Focused interactive ter
 modal dialogs retain their existing shortcut guards.
 
 Debug output is Code-only, attributed to the started profile, and bounded to 2,000
-rendered lines. Debug mode uses `internalConsole`: **interactive stdin is not supported**;
-use F5 for interactive run-without-debug. Frames, variables and the execution arrow
+rendered lines. Frames, variables and the execution arrow
 are invalidated on resume/Stop/exit. Requested breakpoint marks survive.
 Stack source paths use the same containment, no-links/junctions, regular UTF-8 and
 1 MiB preview checks as file-tree navigation; unsafe or unavailable paths show an error.
@@ -306,8 +305,24 @@ rewrites and no source edits. Python script/module grammar and installation guid
 the [Python backend API and limits](python-debugging.md). Go debugging supports only
 `go run main.go [args...]` and `go run . [args...]`; install Delve separately and make
 `dlv` available on the application PATH. See the [Go debugging walkthrough and limits](go-debugging.md).
-Expressions can be evaluated as [watch expressions](#watch-expressions); interactive debug
-stdin remains unsupported.
+Expressions can be evaluated as [watch expressions](#watch-expressions).
+
+### Program input
+
+While a program that Code launched for debugging (Python, Go or Node) is running or paused, a
+**Program input** field appears below the debug output. **Enter** sends the line to the
+program's standard input, as pressing Enter in a terminal would, so `input()`,
+`bufio.Reader.ReadString` or `readline` receive it. **Ctrl+D** sends what is in the field, if
+anything, and then ends the input, so a program reading until end of input (such as
+`sys.stdin.read()` or `io.ReadAll(os.Stdin)`) stops reading. A line typed while the program is
+paused waits until it reads again. Typing in the field never triggers Code shortcuts.
+
+The typed line also shows in the debug output, as `[profile · input] text`, only while the
+program's terminal echoes input, exactly like a terminal: a password prompt that turns echo off
+(Python's `getpass`) keeps what you type hidden. Node echoes through its own terminal, so its
+output shows the typed line directly. `getpass` writes its prompt to the terminal rather than to
+standard output, so that prompt does not appear in the debug output; the input still reaches it.
+Attached processes are not owned by Code, so attach sessions have no program input.
 
 ## Watch expressions
 
@@ -514,7 +529,7 @@ The optional `nodeDebug` field is accepted only for npm profiles and uses the di
 Node script grammar above. Other profiles need no schema changes.
 
 Node output comes from a PTY: stdout and stderr are merged in order into the debug console.
-Interactive debug stdin is not exposed; use F5 when input is required.
+Type program input in the **Program input** field; see [Program input](#program-input).
 Stop and app exit close the owned process tree, including startup in progress.
 Browser debugging and debugging child processes are not supported; to debug a Node process you did not start, see
 [Attach to an existing Node Inspector](#attach-to-an-existing-node-inspector). An unsupported target or unavailable runtime reports an error without

@@ -328,6 +328,35 @@ class PythonDebugSession:
                 self._state('stopped')
             raise
 
+    # The debugged program inherits stdin from the PTY this session opens for its adapter.
+    supports_input = True
+
+    def _input_terminal(self):
+        if not self.supports_input:
+            raise DebugError('Program input is not available for an attached process.')
+        if self._adapter is None or self.state not in {'running', 'stopped'}:
+            raise DebugError('No running program to send input to.')
+        return self._adapter
+
+    def send_input(self, text):
+        """Type one line into the debugged program, as Enter would in a terminal."""
+        self._input_terminal().write(f'{text}\r')
+
+    def send_eof(self):
+        """End of input (Ctrl+D): a program reading until EOF stops reading."""
+        self._input_terminal().write('\x04')
+
+    def input_echo(self):
+        """Whether the UI should show typed input: only while the program echoes it.
+
+        Output arrives over DAP, so the terminal's own echo never reaches it; a program
+        that turns echo off (getpass) keeps its input hidden. Unknown means echo.
+        """
+        if self._adapter is None:
+            return True
+        echo = self._adapter.echo_enabled()
+        return True if echo is None else echo
+
     async def continue_execution(self):
         return await self._resume('continue')
 

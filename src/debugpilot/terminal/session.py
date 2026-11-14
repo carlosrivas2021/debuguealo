@@ -256,6 +256,17 @@ class TerminalSession:
             self._docker_config = None
             config.cleanup()
 
+    def echo_enabled(self) -> bool | None:
+        """Whether the program's terminal echoes typed input; None when unknown (Windows)."""
+        if self._windows or self._fd is None:
+            return None
+        import termios
+
+        try:
+            return bool(termios.tcgetattr(self._fd)[3] & termios.ECHO)
+        except (OSError, termios.error):
+            return None
+
     def write(self, text: str) -> None:
         if self._closed or not self.process:
             return

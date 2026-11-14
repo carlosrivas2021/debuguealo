@@ -193,6 +193,6 @@ than claiming it resumed. Delve must already be running and reachable on the con
 endpoint. The backend does not start or stop Delve, manage the container, or modify the
 target's source tree.
 
-Go launch support does not include tests, binary targets, persistent breakpoints or
-interactive debug stdin. Watch expressions are evaluated by Delve with its own expression
+Go launch support does not include tests or binary targets. The program reads its standard
+input from the **Program input** field; see [program input](code-projects.md#program-input). Watch expressions are evaluated by Delve with its own expression
 syntax.

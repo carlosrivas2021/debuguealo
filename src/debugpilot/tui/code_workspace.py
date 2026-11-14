@@ -117,7 +117,8 @@ class CodeWorkspace(Vertical):
         # The debug panel is built first so it can sit beside the editor inside the browser.
         self._debug = CodeDebug(None, self._state, self._debug_finished)
         self._debug.border_title = "Debug"
-        self._bottom = Vertical(self._pane, self._debug.output, id="code-bottom")
+        self._bottom = Vertical(
+            self._pane, self._debug.output, self._debug.input, id="code-bottom")
         self._browser = SourceBrowser(
             sidebar_header=profiles, editor_side=self._debug, bottom=self._bottom
         )
@@ -272,6 +273,7 @@ class CodeWorkspace(Vertical):
         # The side panel is for live sessions; a finished one keeps only its output below.
         self._debug.display = view == "debug" and debug_live
         self._debug.output.display = view == "debug"
+        self._debug.sync_input()
         self._pane.display = view == "run" and run is not None
         return view
 

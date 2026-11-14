@@ -53,7 +53,9 @@ adds a condition, a log message (logpoint) or a hit count to the line; see
 expressions on every pause; see [watch expressions](code-projects.md#watch-expressions). At a pause, inspect the stack/variables and the
 yellow-shaded execution line, then use **F5** or **▶ Continue**, **F10** (over), **F11** (in), or
 **Shift+F11** (out). F5 continues only the paused profile under the cursor. Stop cancels startup or ends the
-active Code run/debug tree. Debug output is internal-console only (no interactive stdin).
+active Code run/debug tree. While a launched debug session runs, the **Program input** field below
+the debug output sends lines to the program (**Enter**) and ends its input (**Ctrl+D**); see
+[program input](code-projects.md#program-input).
 Missing debugpy or unsupported commands report an error without falling back to run.
 See [code project execution and debugging](code-projects.md) for setup and limits.
 

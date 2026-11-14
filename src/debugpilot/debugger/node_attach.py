@@ -84,6 +84,8 @@ class NodeAttachSession(NodeDebugSession):
     config_name = 'nodeAttach'
     language = 'Node'
 
+    supports_input = False
+
     def __init__(self, on_event=None, on_output=None, *, timeout=15):
         super().__init__(on_event, on_output, timeout=timeout)
         self._remote_root = None
