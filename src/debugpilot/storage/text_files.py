@@ -22,7 +22,7 @@ class LoadedText:
 
     path: Path
     text: str
-    signature: tuple[int, int, int, int] | None
+    signature: tuple[int, int, int, int, int] | None
 
     @property
     def exists(self) -> bool:
@@ -34,14 +34,16 @@ def _target(path: Path) -> Path:
     return Path(path).expanduser().resolve(strict=False)
 
 
-def _signature(path: Path) -> tuple[int, int, int, int] | None:
+def _signature(path: Path) -> tuple[int, int, int, int, int] | None:
     try:
         metadata = path.stat()
     except FileNotFoundError:
         return None
     if not stat.S_ISREG(metadata.st_mode):
         raise ConfigurationError(f"{path} is not a regular file.")
-    return (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns)
+    # ctime catches a write that restored the old size and mtime.
+    return (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns,
+            metadata.st_ctime_ns)
 
 
 def load_text(path: Path) -> LoadedText:
@@ -89,7 +91,9 @@ def save_text(loaded: LoadedText, text: str) -> LoadedText:
             os.fsync(stream.fileno())
         os.chmod(temporary, mode)
         # Checked again right before the replace, so a save from elsewhere is never lost.
-        if _signature(target) != loaded.signature:
+        if _signature(target) != loaded.signature or (
+            loaded.exists and target.read_bytes() != loaded.text.encode("utf-8")
+        ):
             raise conflict
         os.replace(temporary, target)
         temporary = None

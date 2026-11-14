@@ -121,3 +121,17 @@ def test_invalid_launch_text_reports_where_without_content(text, position):
     with pytest.raises(ConfigurationError) as error:
         format_launch_text(text)
     assert str(error.value) == f"Invalid JSON in launch.json at {position}."
+
+
+def test_an_outside_write_with_the_same_size_and_restored_mtime_is_still_detected(tmp_path):
+    target = tmp_path / "credentials"
+    target.write_text("key = AAAA\n", encoding="utf-8")
+    loaded = load_text(target)
+    before = target.stat()
+    target.write_text("key = BBBB\n", encoding="utf-8")
+    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    with pytest.raises(ConfigurationError, match="changed on disk since it was opened"):
+        save_text(loaded, "key = mine\n")
+
+    assert target.read_text(encoding="utf-8") == "key = BBBB\n"
