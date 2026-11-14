@@ -23,6 +23,8 @@ class RemoteAttachSession(PythonDebugSession):
     target_name = ''
     adapter_id = ''
 
+    supports_input = False
+
     def __init__(self, on_event=None, on_output=None, *, timeout=15):
         super().__init__(on_event, on_output, timeout=timeout)
         self._disconnect_sent = False

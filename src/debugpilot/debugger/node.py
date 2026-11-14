@@ -306,6 +306,10 @@ class NodeDebugSession(PythonDebugSession):
         finally:
             self._starting = None
 
+    def input_echo(self):
+        # Node runs in the PTY itself, so the terminal's own echo is already in its output.
+        return False
+
     async def set_breakpoints(self, source, lines, options=None):
         if self.profile is None or self._client is None:
             raise DebugError('No active debug session.')
