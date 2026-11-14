@@ -116,7 +116,7 @@ def format_launch_text(text: str) -> str:
     formatted = _pretty_json_tokens(_json_tokens(text))
     if len(formatted.encode("utf-8")) > MAX_LAUNCH_BYTES:
         raise ConfigurationError(
-            "Formatted launch.json exceeds the 256 KiB limit; the file was left unchanged."
+            "Formatted launch.json exceeds the 256 KiB limit; the original file was left unchanged."
         )
     return formatted
 

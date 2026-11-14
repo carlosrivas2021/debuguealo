@@ -135,3 +135,13 @@ def test_an_outside_write_with_the_same_size_and_restored_mtime_is_still_detecte
         save_text(loaded, "key = mine\n")
 
     assert target.read_text(encoding="utf-8") == "key = BBBB\n"
+
+
+def test_formatted_launch_text_over_the_limit_keeps_the_previous_message():
+    prefix = '{"version":1,"configurations":[],"custom":"'
+    text = prefix + "x" * (262139 - len(prefix) - 2) + '"}'
+    with pytest.raises(ConfigurationError) as error:
+        format_launch_text(text)
+    assert str(error.value) == (
+        "Formatted launch.json exceeds the 256 KiB limit; the original file was left unchanged."
+    )
