@@ -6,7 +6,13 @@ from typing import Any, Self
 
 from debugpilot.core.events import Event, EventBus
 from debugpilot.core.exceptions import LifecycleError
-from debugpilot.core.models import ContainerInfo, ContainerStats, DiagnosticCheck, StopResult
+from debugpilot.core.models import (
+    ContainerInfo,
+    ContainerRuntime,
+    ContainerStats,
+    DiagnosticCheck,
+    StopResult,
+)
 from debugpilot.core.protocols import DiagnosticsProvider, DockerProvider
 from debugpilot.storage.config import Settings
 
@@ -71,6 +77,11 @@ class DebugPilotEngine:
         if self._docker is None or not hasattr(self._docker, "container_stats"):
             raise LifecycleError("The Docker provider does not report container stats.")
         return await self.spawn(lambda: self._docker.container_stats(container))
+
+    async def container_runtime(self, container: str) -> ContainerRuntime:
+        if self._docker is None or not hasattr(self._docker, "container_runtime"):
+            raise LifecycleError("The Docker provider does not report container details.")
+        return await self.spawn(lambda: self._docker.container_runtime(container))
 
     async def stop_containers(
         self,

@@ -48,7 +48,7 @@ def test_inventory_keeps_docker_status_text():
     assert ContainerInfo.from_docker({"Id": "abc"}).status == ""
 
 
-async def test_container_selection_shows_four_cards_with_the_record_values():
+async def test_container_selection_shows_the_cards_with_the_record_values():
     docker = Fleet()
     app = start(docker)
     async with app.run_test(size=(160, 40)) as pilot:
@@ -57,7 +57,7 @@ async def test_container_selection_shows_four_cards_with_the_record_values():
         details = app.query_one(ContainerDetails)
         await until(pilot, lambda: details.display)
         cards = {card.border_title: str(card.render()) for card in details.cards()}
-        assert list(cards) == ["Status", "Image", "Network", "Compose"]
+        assert list(cards) == ["Status", "Image", "Network", "Compose", "Runtime"]
         assert "running" in cards["Status"] and "Up 3 hours" in cards["Status"]
         assert "Created: 2026-01-02" in cards["Status"]
         assert "web:local" in cards["Image"] and "ID: shop-web" in cards["Image"]

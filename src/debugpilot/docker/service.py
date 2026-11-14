@@ -8,7 +8,13 @@ from contextlib import aclosing
 from pathlib import Path
 
 from debugpilot.core.exceptions import DockerError
-from debugpilot.core.models import ContainerInfo, ContainerStats, LogEntry, StopResult
+from debugpilot.core.models import (
+    ContainerInfo,
+    ContainerRuntime,
+    ContainerStats,
+    LogEntry,
+    StopResult,
+)
 from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.docker.logs import ReplayCursor
 from debugpilot.storage.config import Settings
@@ -202,6 +208,16 @@ class DockerService:
         if len(records) != 1 or records[0].get("kind") != "stats":
             raise DockerError("Invalid container stats from Docker worker.")
         return ContainerStats.model_validate(records[0]["value"])
+
+    async def container_runtime(self, container: str) -> ContainerRuntime:
+        """Health, restarts, exit code, mounts and env names from one inspect."""
+        container = container.removeprefix("/")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", container):
+            raise ValueError("Invalid container name or ID.")
+        records = await self._inventory_records({"command": "inspect", "container": container})
+        if len(records) != 1 or records[0].get("kind") != "inspect":
+            raise DockerError("Invalid container details from Docker worker.")
+        return ContainerRuntime.model_validate(records[0]["value"])
 
     async def stop_containers(
         self,

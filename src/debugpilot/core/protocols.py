@@ -3,6 +3,7 @@ from typing import Protocol
 
 from debugpilot.core.models import (
     ContainerInfo,
+    ContainerRuntime,
     ContainerStats,
     DiagnosticCheck,
     LogEntry,
@@ -20,6 +21,8 @@ class DockerProvider(Protocol):
     async def list_containers(self) -> list[ContainerInfo]: ...
 
     async def container_stats(self, container: str) -> ContainerStats: ...
+
+    async def container_runtime(self, container: str) -> ContainerRuntime: ...
 
     async def stop_containers(
         self,

@@ -5,7 +5,7 @@ from textual.app import ComposeResult
 from textual.containers import Grid, Vertical
 from textual.widgets import DataTable, Static
 
-from debugpilot.core.models import ContainerInfo, ContainerStats, PortMapping
+from debugpilot.core.models import ContainerInfo, ContainerRuntime, ContainerStats, PortMapping
 from debugpilot.tui.container_list import group_style, state_glyph
 
 
@@ -48,21 +48,24 @@ def published_ports(container: ContainerInfo) -> str:
 
 
 class ContainerDetails(Vertical):
-    """Four cards populated exclusively from the selected inventory record."""
+    """Inventory cards for the selected record, plus a Runtime card from its inspect."""
 
-    CARDS = ("Status", "Image", "Network", "Compose")
+    CARDS = ("Status", "Image", "Network", "Compose", "Runtime")
+    MAX_ENV_TEXT = 160
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._container: ContainerInfo | None = None
         self._cpu = "—"
         self._memory = "—"
+        self._runtime: ContainerRuntime | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("Container details · Ctrl+L logs", id="container-details-title", markup=False)
         with Grid(id="detail-cards"):
             for title in self.CARDS:
-                card = Static("", classes="detail-card", markup=False)
+                classes = "detail-card wide" if title == "Runtime" else "detail-card"
+                card = Static("", classes=classes, markup=False)
                 card.border_title = title
                 yield card
 
@@ -80,10 +83,17 @@ class ContainerDetails(Vertical):
         if self._container is not None:
             self.show_container(self._container)
 
+    def show_runtime(self, runtime: ContainerRuntime | None) -> None:
+        """Inspect facts for the shown container; None shows dashes."""
+        self._runtime = runtime
+        if self._container is not None:
+            self.show_container(self._container)
+
     def show_container(self, container: ContainerInfo) -> None:
         if self._container is None or self._container.id != container.id:
             # Another container: its predecessor's numbers must not linger.
             self._cpu = self._memory = "—"
+            self._runtime = None
         self._container = container
         glyph, color = state_glyph(container.state)
         title = Text.assemble(
@@ -116,10 +126,46 @@ class ContainerDetails(Vertical):
                 ("Service", container.compose_service or "—"),
                 ("Folder", labels.get("com.docker.compose.project.working_dir") or "—"),
             ),
+            self._runtime_lines(container),
         )
         for card, lines in zip(self.cards(), values, strict=True):
             card.update(_card_text(lines, state_color=color))
             card.set_class(card.border_title == "Status", f"state-{_state_class(container)}")
+
+
+    def _runtime_lines(self, container: ContainerInfo) -> tuple:
+        runtime = self._runtime
+        if runtime is None:
+            return (("Health", "—"), ("Restart", "—"), ("Mounts", "—"), ("Env", "—"))
+        health = runtime.health or "—"
+        if runtime.health and runtime.health_output:
+            health += f" · {runtime.health_output}"
+        restart = runtime.restart_policy or "—"
+        if runtime.restart_count:
+            noun = "restart" if runtime.restart_count == 1 else "restarts"
+            restart += f" · {runtime.restart_count} {noun}"
+        lines = [("Health", health), ("Restart", restart)]
+        if container.state != "running" and runtime.exit_code is not None:
+            code = str(runtime.exit_code)
+            lines.append(("Exit code", f"{code} (OOM killed)" if runtime.oom_killed else code))
+        if runtime.mounts:
+            lines.append(("Mounts", ""))
+            for mount in runtime.mounts:
+                source = f"{mount.source} → " if mount.source else ""
+                access = " (read-only)" if mount.read_only else ""
+                lines.append((None, f"{mount.type} {source}{mount.destination}{access}"))
+        else:
+            lines.append(("Mounts", "None"))
+        if runtime.env_names:
+            count = len(runtime.env_names)
+            names = ", ".join(runtime.env_names)
+            if len(names) > self.MAX_ENV_TEXT:
+                names = names[:self.MAX_ENV_TEXT - 1] + "…"
+            noun = "variable" if count == 1 else "variables"
+            lines.append(("Env", f"{count} {noun}, values hidden · {names}"))
+        else:
+            lines.append(("Env", "None"))
+        return tuple(lines)
 
 
 def _card_text(lines, *, state_color: str) -> Text:
@@ -132,7 +178,7 @@ def _card_text(lines, *, state_color: str) -> Text:
             text.append(f"{key}:", style="#7f8c93")
             if value:
                 text.append(" ")
-        empty = value in {"—", "None published"}
+        empty = value in {"—", "None published", "None"}
         style = state_color if key == "State" else ("bright_black" if empty else "#e3e7ea")
         text.append(value, style=style)
     return text

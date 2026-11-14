@@ -157,6 +157,8 @@ class DebugPilotApp(App):
         self._stream_task: asyncio.Task | None = None
         # Stats are polled only for the selected running container while its card shows.
         self._stats_target: str | None = None
+        # Inspected even when stopped: the exit code explains why it stopped.
+        self._runtime_target: str | None = None
         self._stats_previous: ContainerStats | None = None
         self._stats_wake = asyncio.Event()
         self._stats_task: asyncio.Task | None = None
@@ -471,9 +473,17 @@ class DebugPilotApp(App):
             await asyncio.sleep(self.refresh_interval)
 
     async def _stats_loop(self) -> None:
-        """Sample one container's stats per interval; nothing is requested without a target."""
+        """Sample the selected container's inspect and stats; nothing without a target."""
         while not self._closing:
             self._stats_wake.clear()
+            runtime_target = self._runtime_target
+            if runtime_target is not None:
+                try:
+                    runtime = await self.engine.container_runtime(runtime_target)
+                except (DebugPilotError, ValueError):
+                    runtime = None
+                if runtime_target == self._runtime_target and not self._closing:
+                    self.query_one(ContainerDetails).show_runtime(runtime)
             target = self._stats_target
             if target is not None:
                 try:
@@ -489,6 +499,11 @@ class DebugPilotApp(App):
                     await self._stats_wake.wait()
             except TimeoutError:
                 pass
+
+    def _set_runtime_target(self, target: str | None) -> None:
+        if target != self._runtime_target:
+            self._runtime_target = target
+            self._stats_wake.set()
 
     def _set_stats_target(self, target: str | None) -> None:
         if target != self._stats_target:
@@ -988,6 +1003,7 @@ class DebugPilotApp(App):
         """Show container details by default and the log panel only on request."""
         if self.query_one("#container-shell").display:
             self._set_stats_target(None)
+            self._set_runtime_target(None)
             return
         item = self.selected_container
         details = self.query_one(ContainerDetails)
@@ -1007,6 +1023,7 @@ class DebugPilotApp(App):
         self._set_stats_target(
             item.id if show_details and item.state == "running" else None
         )
+        self._set_runtime_target(item.id if show_details else None)
         if show_details:
             details.show_container(item)
         if show_overview:
