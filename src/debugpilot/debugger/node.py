@@ -34,6 +34,10 @@ _GRAMMAR = (
 )
 _TYPESCRIPT = frozenset({'.ts', '.cts', '.mts'})
 _ANSI = re.compile(r'\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]')
+# An escape sequence cut off at the end of a chunk.
+_PARTIAL_ESCAPE = re.compile(r'\x1b(?:\[[0-?]*[ -/]*|\][^\x07]*)?$')
+# Seconds a line without newline waits for the rest before showing (a prompt).
+PARTIAL_LINE_DELAY = 0.1
 _ENDPOINT = re.compile(r'^Debugger listening on (ws://127\.0\.0\.1:[1-9]\d*/[\da-f-]{36})$')
 
 
@@ -159,11 +163,13 @@ class NodeDebugSession(PythonDebugSession):
         self._scripts = {}
         self._objects = {}
         self._buffer = ''
+        self._partial = None
         self._disconnect_task = None
         self._exiting = False
         self._source_maps = None
 
     def _output(self, text):
+        self._cancel_partial()
         self._buffer += text
         # ConPTY may split escape sequences; clean only complete lines.
         while '\n' in self._buffer:
@@ -172,6 +178,24 @@ class NodeDebugSession(PythonDebugSession):
         if len(self._buffer) > 65536:
             self._line(_ANSI.sub('', self._buffer[:65536]))
             self._buffer = self._buffer[65536:]
+        if self._buffer:
+            # A prompt such as readline's 'name? ' has no newline and waits for input;
+            # show it once no more output follows, as a terminal would.
+            with contextlib.suppress(RuntimeError):
+                self._partial = asyncio.get_running_loop().call_later(
+                    PARTIAL_LINE_DELAY, self._flush_partial)
+
+    def _cancel_partial(self):
+        if self._partial is not None:
+            self._partial.cancel()
+            self._partial = None
+
+    def _flush_partial(self):
+        self._partial = None
+        text = _ANSI.sub('', _PARTIAL_ESCAPE.sub('', self._buffer)).replace('\r', '')
+        self._buffer = ''
+        if text.strip() and self.on_output:
+            self.on_output('stdout', text)
 
     def _line(self, line):
         match = _ENDPOINT.fullmatch(line)
@@ -195,6 +219,7 @@ class NodeDebugSession(PythonDebugSession):
             self.on_output('stdout', line + '\n')
 
     def _process_exit(self):
+        self._cancel_partial()
         if self._buffer:
             text, self._buffer = self._buffer, ''
             if self.on_output:
