@@ -1,15 +1,14 @@
 import json
-import threading
-from contextlib import contextmanager
 
 from test_tui_grouping import Docker, item, request_logs, until
-from textual.widgets import DataTable, Static
+from textual.widgets import DataTable, Static, TextArea
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
 from debugpilot.storage.launch_profiles import LaunchProfileStore
 from debugpilot.tui.app import DebugPilotApp
 from debugpilot.tui.container_details import ContainerDetails
+from debugpilot.tui.file_editor import FileEditorScreen
 
 
 async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
@@ -17,8 +16,6 @@ async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
 ):
     docker = Docker()
     docker.inventory = [item("unconfigured-api", "manual", "api")]
-    opened = []
-    caller_thread = threading.get_ident()
     path = tmp_path / ".debugpilot" / "launch.json"
 
     def ensure(_store):
@@ -26,30 +23,10 @@ async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
         path.write_text(json.dumps({"version": 1, "configurations": []}))
         return path
 
-    terminal_owned = []
-
-    @contextmanager
-    def suspend():
-        terminal_owned.append(True)
-        try:
-            yield
-        finally:
-            terminal_owned.pop()
-
-    def open_file(target):
-        assert terminal_owned == [True]
-        opened.append((target, threading.get_ident()))
-        target.write_text(json.dumps({
-            "version": 1,
-            "configurations": [{"name": "Edited", "type": "docker-compose"}],
-        }))
-
     monkeypatch.setattr(LaunchProfileStore, "ensure_launch_file", ensure)
-    monkeypatch.setattr("debugpilot.tui.launch_file.open_launch_file", open_file)
     app = DebugPilotApp(
         DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
     )
-    monkeypatch.setattr(app, "suspend", suspend)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: app._inventory_loaded)
         assert not app.query_one("#empty-welcome").display
@@ -61,14 +38,20 @@ async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
         assert not app.query_one("#logs-panel").display
         assert not path.exists()
         assert await pilot.click("#open-launch-file")
-        await until(pilot, lambda: bool(opened))
-        assert opened == [(path, opened[0][1])]
-        assert opened[0][1] == caller_thread
-        assert terminal_owned == []
-        assert [
+        await until(pilot, lambda: isinstance(app.screen, FileEditorScreen))
+        assert [file.loaded.path for file in app.screen.files] == [path.resolve()]
+
+        app.screen.query_one(TextArea).text = json.dumps({
+            "version": 1,
+            "configurations": [{"name": "Edited", "type": "docker-compose"}],
+        })
+        await pilot.press("ctrl+s")
+        await pilot.press("escape")
+        await until(pilot, lambda: not isinstance(app.screen, FileEditorScreen))
+        await until(pilot, lambda: [
             row.key.value for row in app.query_one("#launch-profiles", DataTable).ordered_rows
             if row.key.value.startswith("profile:")
-        ] == ["profile:Edited"]
+        ] == ["profile:Edited"])
         assert not app.query_one("#empty-welcome").display
         await request_logs(pilot, app)
         await until(pilot, lambda: "unconfigured-api" in docker.opened)

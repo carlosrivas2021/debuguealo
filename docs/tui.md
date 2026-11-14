@@ -37,7 +37,7 @@ with `H` also reveals the console. `O` does not hide the right-hand container sh
 Use the top **Containers** and **Code** buttons, or `Ctrl+T`, to switch without
 starting or stopping processes. `Ctrl+T` is unavailable while a modal is open or a
 terminal pane has focus (press `Esc` first). Code lists registered project folders and command arguments; container
-shortcuts are inactive there. Ctrl+O / Ctrl+N edits the active area's launch file.
+shortcuts are inactive there. Ctrl+O edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
 the source, in screen order; **Alt+Left** and **Alt+Right** do the same. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
@@ -71,22 +71,18 @@ explicit; startup and Docker inventory refresh never create or rewrite it.
 Choose a profile and use **Play / Recreate** to apply its Compose files, or **Build +
 Recreate** when code changed. Both actions require confirmation. `r` previews Play /
 Recreate; `Shift+R` previews Build + Recreate. There is no plain Restart action in the
-TUI. `Ctrl+O` or `Ctrl+N` opens `launch.json` directly; neither key opens a Compose file
-picker or starts a service. Editing stays in the same terminal: debugealo suspends
-the dashboard, runs `nano` (falling back to `vi` when nano is not installed), and
-restores the TUI after the editor exits. After a successful editor exit, valid JSON is
-formatted with two-space indentation while preserving field order and unknown fields. Invalid
-JSON is left byte-for-byte unchanged and the TUI reports its line and column; fix it in the
-editor and reopen the file. Duplicate object keys and nonstandard numeric constants are
-rejected without rewriting. Formatting is also refused unchanged if it would exceed the
-256 KiB launch-file limit. Formatting uses an atomic replacement and checks for concurrent
-changes immediately before replacement. The launch profiles are reloaded on return.
-There is no editor timeout and no external graphical window. Install `nano` or `vi`
-on PATH; if neither is available, the TUI displays an actionable warning. Launch profiles
+TUI. `Ctrl+O` opens `launch.json` directly in debugealo's built-in editor; it never opens
+a Compose file picker or starts a service, and no external editor is needed. **Ctrl+S**
+saves: valid JSON is formatted with two-space indentation while preserving field order and
+unknown fields. Invalid JSON is not saved; the editor stays open with your text and reports
+the line and column. Duplicate object keys and nonstandard numeric constants are rejected
+the same way, and so is formatted output over the 256 KiB launch-file limit. Saving replaces
+the file atomically and is refused if the file changed on disk since it was opened, so
+another program's save is never lost. **Esc** closes the editor; with unsaved changes it
+warns first, and a second **Esc** discards them. The launch profiles are reloaded after a
+save. While the editor is open, the dashboard's shortcuts do nothing. Launch profiles
 may also declare per-service direct environment and published-port overrides; see
 [launch profile overrides](launch-profiles.md#direct-service-environment-and-port-overrides).
-In nano, use Ctrl+O, Enter to save and Ctrl+X to return. In vi, use `:wq` to save
-and return, or `:q!` to discard your edits.
 
 The profile's display `name` is for people. Containers link by the configured Compose
 `projectName` label, so profiles can have names different from their Docker projects.
@@ -153,7 +149,7 @@ automatically.
 | `D` | Close open logs and show details for the selected container. |
 | `Esc` | In the terminal, return focus to the current left table; otherwise close open logs or cancel a pending confirmation. |
 | `O` | Hide/show the entire docked console; when hidden, restore it from the project tree with `O`. |
-| `Ctrl+O` / `Ctrl+N` | Edit the central (or explicitly selected local) `launch.json` with nano or vi. |
+| `Ctrl+O` | Edit the central (or explicitly selected local) `launch.json` in the built-in editor. |
 | `Ctrl+L` | From outside a focused shell, open and focus logs for the current selection. |
 | `Ctrl+T` | Switch between the Containers and Code areas. |
 | `Ctrl+R` | Retry the selected log stream after EOF or an error. |

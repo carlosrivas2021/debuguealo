@@ -162,7 +162,8 @@ async def test_default_app_startup_is_read_only_and_open_uses_central_path(tmp_p
     )
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()))
     opened = []
-    monkeypatch.setattr(app, "_edit_launch_in_terminal", lambda _editor, path: opened.append(path))
+    monkeypatch.setattr(app, "_open_editor",
+                        lambda files, _on_close: opened.extend(f.loaded.path for f in files))
     central = settings / "launch.json"
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
@@ -173,32 +174,3 @@ async def test_default_app_startup_is_read_only_and_open_uses_central_path(tmp_p
         assert opened == [central]
         assert central.exists()
         assert json.loads(central.read_text()) == {"version": 1, "configurations": []}
-
-
-def test_editor_failure_still_resumes_textual_before_reraising():
-    from contextlib import contextmanager
-    from pathlib import Path
-
-    import pytest
-
-    from debugpilot.core.exceptions import ConfigurationError
-    from debugpilot.tui.app import DebugPilotApp
-
-    events = []
-
-    @contextmanager
-    def textual_like_suspend():
-        # Mirrors Textual 6.x: no try/finally around the yield.
-        events.append("suspend")
-        yield
-        events.append("resume")
-
-    app = object.__new__(DebugPilotApp)
-    app.suspend = textual_like_suspend
-
-    def failing_editor(_path):
-        raise ConfigurationError("Invalid JSON in launch.json at line 28, column 3.")
-
-    with pytest.raises(ConfigurationError, match="Invalid JSON"):
-        app._edit_launch_in_terminal(failing_editor, Path("launch.json"))
-    assert events == ["suspend", "resume"]
