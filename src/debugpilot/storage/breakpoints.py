@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,15 +15,21 @@ MAX_BREAKPOINT_FILES = 4096
 MAX_LINES_PER_FILE = 100_000
 MAX_OPTION_CHARS = 1000
 # Persisted field names follow DAP's SourceBreakpoint.
-_OPTION_FIELDS = {"condition": "condition", "logMessage": "log_message"}
+_OPTION_FIELDS = {
+    "condition": "condition", "logMessage": "log_message", "hitCondition": "hit_condition",
+}
+# The hit-count forms debugpy, Delve and the Node emulation all read the same way.
+_HIT_CONDITION = re.compile(r"(==|>=|<=|>|<|%)? *([0-9]{1,9})")
+HIT_CONDITION_HELP = "Hit count must be a number or ==, >, >=, <, <=, % followed by one, e.g. >=5."
 
 
 @dataclass(frozen=True)
 class BreakpointOptions:
-    """A condition and/or a log message (logpoint) for one breakpoint line."""
+    """A condition or a hit count, and/or a log message (logpoint), for one breakpoint line."""
 
     condition: str | None = None
     log_message: str | None = None
+    hit_condition: str | None = None
 
 
 def _option_text(value) -> str | None:
@@ -36,10 +43,28 @@ def _option_text(value) -> str | None:
     return value or None
 
 
-def breakpoint_options(condition, log_message) -> BreakpointOptions | None:
+def _hit_condition(value) -> str | None:
+    """Canonical hit count such as ">=5"; the count is 1-based, so "0" and "%0" never match."""
+    value = _option_text(value)
+    if value is None:
+        return None
+    match = _HIT_CONDITION.fullmatch(value)
+    if match is None:
+        raise ValueError(HIT_CONDITION_HELP)
+    operator, count = match.group(1) or "", int(match.group(2))
+    if count == 0 and operator in {"", "==", "%"}:
+        raise ValueError(HIT_CONDITION_HELP)
+    return f"{operator}{count}"
+
+
+def breakpoint_options(condition, log_message, hit_condition=None) -> BreakpointOptions | None:
     """Normalize editor input; blank fields mean a plain breakpoint (None)."""
-    options = BreakpointOptions(_option_text(condition), _option_text(log_message))
-    return options if options.condition or options.log_message else None
+    options = BreakpointOptions(
+        _option_text(condition), _option_text(log_message), _hit_condition(hit_condition))
+    if options.condition and options.hit_condition:
+        # debugpy and Delve combine the two differently, so one line takes one or the other.
+        raise ValueError("A breakpoint can have a condition or a hit count, not both.")
+    return options if options.condition or options.log_message or options.hit_condition else None
 
 
 class BreakpointStore:
@@ -123,7 +148,7 @@ class BreakpointStore:
             if any(not isinstance(text, str) or not text.strip() for text in fields.values()):
                 raise ValueError
             parsed[int(key)] = breakpoint_options(
-                fields.get("condition"), fields.get("logMessage"))
+                fields.get("condition"), fields.get("logMessage"), fields.get("hitCondition"))
         return parsed
 
     @staticmethod
@@ -134,7 +159,8 @@ class BreakpointStore:
             if line not in lines or option is None:
                 continue
             # Re-validate through the editor normalization before publishing.
-            option = breakpoint_options(option.condition, option.log_message)
+            option = breakpoint_options(
+                option.condition, option.log_message, option.hit_condition)
             if option is None:
                 continue
             serialized[str(line)] = {

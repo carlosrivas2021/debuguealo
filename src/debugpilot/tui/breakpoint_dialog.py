@@ -1,4 +1,4 @@
-"""Edit one breakpoint's condition and log message (logpoint) without hiding the line."""
+"""Edit one breakpoint's condition, log message (logpoint) and hit count without hiding the line."""
 
 from textual import on
 from textual.app import ComposeResult
@@ -10,8 +10,8 @@ from debugpilot.storage.breakpoints import BreakpointOptions, breakpoint_options
 
 HINT = "Enter save · Esc cancel · F9 removes the breakpoint"
 MAX_TITLE_CODE = 60
-# Border plus three rows; fixed so the panel can be placed before its first frame.
-DIALOG_ROWS = 5
+# Border plus four rows; fixed so the panel can be placed before its first frame.
+DIALOG_ROWS = 6
 
 
 class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None]):
@@ -25,7 +25,7 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
     DEFAULT_CSS = """
     BreakpointDialog { align: center bottom; background: transparent; }
     BreakpointDialog #breakpoint-box {
-        width: 100%; max-width: 110; height: 5; border: round $accent;
+        width: 100%; max-width: 110; height: 6; border: round $accent;
         background: $surface; padding: 0 1;
     }
     BreakpointDialog Horizontal { height: 1; }
@@ -74,6 +74,14 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
                     id="breakpoint-log",
                     compact=True,
                 )
+            with Horizontal():
+                yield Label("hit")
+                yield Input(
+                    value=(self.options.hit_condition or "") if self.options else "",
+                    placeholder="only on matching passes, e.g. 5, >=10 or %3 (not with if)",
+                    id="breakpoint-hits",
+                    compact=True,
+                )
             yield Static(HINT, id="breakpoint-status", markup=False)
 
     def on_mount(self) -> None:
@@ -85,6 +93,7 @@ class BreakpointDialog(ModalScreen[tuple[str, BreakpointOptions | None] | None])
             options = breakpoint_options(
                 self.query_one("#breakpoint-condition", Input).value,
                 self.query_one("#breakpoint-log", Input).value,
+                self.query_one("#breakpoint-hits", Input).value,
             )
         except ValueError as error:
             status = self.query_one("#breakpoint-status", Static)

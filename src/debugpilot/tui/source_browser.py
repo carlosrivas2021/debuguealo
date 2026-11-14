@@ -40,7 +40,7 @@ def breakpoint_kind(options: BreakpointOptions | None) -> str:
     """A log message makes a logpoint even with a condition: it never stops."""
     if options is not None and options.log_message:
         return "log"
-    if options is not None and options.condition:
+    if options is not None and (options.condition or options.hit_condition):
         return "condition"
     return "plain"
 
@@ -51,6 +51,8 @@ def _breakpoint_hint(options: BreakpointOptions | None) -> str:
         parts.append(f"if {' '.join(options.condition.split())}")
     if options is not None and options.log_message:
         parts.append(f"log: {' '.join(options.log_message.split())}")
+    if options is not None and options.hit_condition:
+        parts.append(f"hit {options.hit_condition}")
     return " · ".join(parts)
 
 
@@ -419,6 +421,8 @@ class SourceBrowser(Vertical):
                 detail += f" · if {_shorten(option.condition)}"
             if option is not None and option.log_message:
                 detail += f" · log: {_shorten(option.log_message)}"
+            if option is not None and option.hit_condition:
+                detail += f" · hit {option.hit_condition}"
             node.add_leaf(Text(f"Line {line}{detail} · {state}"), (path, line))
         if marks:
             node.expand()
@@ -525,6 +529,15 @@ class SourceBrowser(Vertical):
             text.append("log  ", style=muted)
             text.append(option.log_message)
             text.append("   prints without stopping", style=muted)
+        if option.hit_condition:
+            # Like a condition, on a logpoint the hit count only decides whether it prints.
+            meaning = "only on matching passes" if option.log_message else (
+                "stops only on matching passes")
+            if text:
+                text.append("\n")
+            text.append("hit  ", style=muted)
+            text.append(option.hit_condition)
+            text.append(f"   {meaning}", style=muted)
         text.append("\nShift+F9 edit · F9 remove", style=muted)
         kind = "logpoint" if option.log_message else "conditional breakpoint"
         panel.border_title = f"{self.file_path.name}:{line} · {kind}"

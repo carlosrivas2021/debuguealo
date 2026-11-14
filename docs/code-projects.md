@@ -174,7 +174,7 @@ file. Red indicates requested intent, **not debugger verification**.
 
 Press **Shift+F9** on a line to open a short breakpoint panel below the source, in the same
 place as the read-only panel described below. The source stays visible above it, and its
-title shows the file, line and code. It has two
+title shows the file, line and code. It has three
 one-line fields:
 
 - **if** (condition): the debugger stops only when the expression is true in the target's
@@ -184,10 +184,18 @@ one-line fields:
   `order {order.id} received`. With a condition too, it logs only when the condition holds.
   An expression may contain braces, such as `{ {id: user.id}.id }`; an empty `{}` or an
   unclosed `{` is kept as text.
+- **hit** (hit count): the debugger stops only on the passes that match, counting from 1
+  each time the line runs. `5` (or `==5`) stops on the fifth pass, `>=10` from the tenth on,
+  `>3`, `<4` and `<=4` compare the same way, and `%3` stops on every third pass. With a log
+  message, it logs only on the matching passes.
 
-**Enter** saves, and leaving both fields empty makes a plain breakpoint. **Escape** keeps
+A line takes a condition **or** a hit count, not both: debugpy and Delve combine the two
+differently, so the panel refuses the pair rather than stopping at different times per
+language. A logpoint can have either one.
+
+**Enter** saves, and leaving every field empty makes a plain breakpoint. **Escape** keeps
 the breakpoint unchanged. To remove a breakpoint use **F9**, as for any other: on a line with
-a condition or log message it removes the breakpoint together with them.
+a condition, log message or hit count it removes the breakpoint together with them.
 
 | Condition | Log message | Result |
 |---|---|---|
@@ -196,8 +204,11 @@ a condition or log message it removes the breakpoint together with them.
 | set | set | Never stops; writes the message only when the condition is true. |
 | empty | empty | Plain breakpoint: always stops. |
 
+A hit count reads like a condition in this table: alone it stops only on the matching
+passes, and with a log message it writes the message only on those passes.
+
 Each line with a condition or log message also shows them in dim text after its code, for
-example `if user_id == 42` or `log: order {order.id} received`, so all of a file's
+example `if user_id == 42`, `log: order {order.id} received` or `hit >=10`, so all of a file's
 conditions are visible at a glance. The hint is shortened to fit, and left out when the line
 is too long for the view.
 
@@ -205,10 +216,10 @@ With the cursor on a line that has a condition or log message, a read-only panel
 source shows them and what they do, for example `if answer > 40   stops only when true`. It
 disappears on other lines, and **Shift+F9** edits them.
 
-The gutter shows **●** for a plain breakpoint, **◆** for a conditional one and a blue **◇**
-for a logpoint. The file's tree entry shows the details, for example
+The gutter shows **●** for a plain breakpoint, **◆** for a conditional one (a hit count
+counts as one) and a blue **◇** for a logpoint. The file's tree entry shows the details, for example
 **Line 4 · if user_id == 42 · pending** or **Line 7 · log: order {order.id} received · pending**;
-a line with both shows the condition and the message.
+a line with both shows the condition and the message, and a hit count shows as **hit >=10**.
 Changes apply to an active debug session immediately.
 
 Conditions and log messages work with Python, Go and Node debugging and with Python, Go and
@@ -216,12 +227,15 @@ Node attach. The debugger evaluates them, not debugealo, so an invalid expressio
 each debugger: Python reports the error in the debug output, Go marks the breakpoint
 **unverified** in the file tree, and Node accepts it but never stops there. Node has no
 native logpoints: the message is
-logged with `console.log` from a condition that never stops, as VS Code does. On Node, a
+logged with `console.log` from a condition that never stops, as VS Code does. Node has no
+native hit counts either: the condition counts passes in a `globalThis.__debugealoHits`
+object inside the program, and counting starts again whenever the breakpoints are set. On Node, a
 conditional breakpoint on the very first line of a program can stop once at startup.
 
 They are saved with the breakpoint in `projects/breakpoints.json`, each up to 1000
-characters. A file without conditions or log messages keeps exactly the previous format.
-Versions of debugealo older than this feature refuse a file that contains them, so
+characters; a hit count is saved as `hitCondition`, in its short form such as `>=10`. A file without conditions or log messages keeps exactly the previous format.
+Versions of debugealo older than these features refuse a file that contains them (versions
+before hit counts also refuse a `hitCondition`), so
 removing them, or going back to plain breakpoints, keeps the file readable by those versions.
 
 Source files and `launch.json` are never edited by this pane. Requested breakpoints use

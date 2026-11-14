@@ -8,7 +8,7 @@ from urllib.parse import unquote, urlsplit
 
 from debugpilot.debugger.dap import DebugError
 from debugpilot.debugger.inspector import InspectorClient
-from debugpilot.debugger.node import NodeDebugSession, cdp_condition
+from debugpilot.debugger.node import NodeDebugSession, cdp_condition, hit_key
 from debugpilot.debugger.python import _breakpoints, _line_options
 from debugpilot.storage.code_projects import CodeProject, parse_remote_attach
 
@@ -201,7 +201,7 @@ class NodeAttachSession(NodeDebugSession):
         entries = []
         for line in intent:
             request = {'url': remote_url, 'lineNumber': line - 1}
-            condition = cdp_condition(line_options.get(line))
+            condition = cdp_condition(line_options.get(line), hit_key(key, line))
             if condition:
                 request['condition'] = condition
             result = await self._client.request('Debugger.setBreakpointByUrl', request)

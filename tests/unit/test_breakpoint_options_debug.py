@@ -110,6 +110,64 @@ async def test_options_change_while_running_through_set_breakpoints(tmp_path, la
         await session.close()
 
 
+@pytest.mark.parametrize('language', ['python', 'go', 'node'])
+async def test_hit_count_stops_on_the_matching_pass_only(tmp_path, language):
+    profile, source, line = program(tmp_path, language)
+    output = []
+    session = SESSIONS[language](on_output=lambda category, text: output.append(text))
+    try:
+        await session.start(profile, {str(source): (line,)}, {
+            str(source): {line: BreakpointOptions(hit_condition='3')}})
+        name, _ = await next_event(session, 'stopped', 'terminated')
+        assert name == 'stopped'
+        # The third pass is i == 2.
+        assert await local_value(session, 'i') == (line, '2')
+        await session.continue_execution()
+        name, _ = await next_event(session, 'stopped', 'terminated')
+        assert name == 'terminated'
+        assert 'TOTAL:10' in ''.join(output)
+    finally:
+        await session.close()
+
+
+@pytest.mark.parametrize('language', ['python', 'go', 'node'])
+async def test_logpoint_with_a_hit_count_logs_only_matching_passes(tmp_path, language):
+    profile, source, line = program(tmp_path, language)
+    output = []
+    session = SESSIONS[language](on_output=lambda category, text: output.append(text))
+    try:
+        await session.start(profile, {str(source): (line,)}, {
+            str(source): {line: BreakpointOptions(log_message='pass {i}', hit_condition='%2')}})
+        name, _ = await next_event(session, 'stopped', 'terminated')
+        assert name == 'terminated'
+        text = ''.join(output)
+        # Passes 2 and 4 are i == 1 and i == 3.
+        assert [value for value in range(5) if f'pass {value}' in text] == [1, 3]
+    finally:
+        await session.close()
+
+
+async def test_node_hit_count_restarts_when_breakpoints_are_set_again(tmp_path):
+    profile, source, line = program(tmp_path, 'node')
+    source.write_text('let total = 0;\nfor (let i = 0; i < 9; i++) {\n  total += i;\n}\n'
+                      'console.log(`TOTAL:${total}`);\n')
+    session = NodeDebugSession()
+    try:
+        await session.start(profile, {str(source): (line,)}, {
+            str(source): {line: BreakpointOptions(hit_condition='2')}})
+        name, _ = await next_event(session, 'stopped', 'terminated')
+        assert await local_value(session, 'i') == (line, '1')
+        await session.set_breakpoints(
+            str(source), (line,), {line: BreakpointOptions(hit_condition='2')})
+        await session.continue_execution()
+        name, _ = await next_event(session, 'stopped', 'terminated')
+        # Counting starts again: pass 2 after re-setting is i == 3, not never.
+        assert name == 'stopped'
+        assert await local_value(session, 'i') == (line, '3')
+    finally:
+        await session.close()
+
+
 class RecordingClient:
     def __init__(self):
         self.requests = []
@@ -124,15 +182,17 @@ async def test_dap_payload_without_options_is_unchanged(tmp_path):
     session.profile = CodeProject('payload', tmp_path, ('python3', 'main.py'))
     session._client = RecordingClient()
     await session.set_breakpoints(str(tmp_path / 'main.py'), (4, 2))
-    await session.set_breakpoints(str(tmp_path / 'main.py'), (2, 4), {
+    await session.set_breakpoints(str(tmp_path / 'main.py'), (2, 4, 6), {
         2: BreakpointOptions(condition='x > 1'), 4: BreakpointOptions(log_message='x={x}'),
+        6: BreakpointOptions(hit_condition='>=3'),
         9: BreakpointOptions(condition='not requested')})
     path = str(tmp_path / 'main.py')
     assert session._client.requests == [
         ('setBreakpoints', {'source': {'path': path},
                             'breakpoints': [{'line': 2}, {'line': 4}], 'sourceModified': False}),
         ('setBreakpoints', {'source': {'path': path}, 'breakpoints': [
-            {'line': 2, 'condition': 'x > 1'}, {'line': 4, 'logMessage': 'x={x}'}],
+            {'line': 2, 'condition': 'x > 1'}, {'line': 4, 'logMessage': 'x={x}'},
+            {'line': 6, 'hitCondition': '>=3'}],
             'sourceModified': False}),
     ]
 
@@ -160,6 +220,24 @@ def test_node_condition_expresses_conditions_and_logpoints(options, expected):
     from debugpilot.debugger.node import cdp_condition
 
     assert cdp_condition(options) == expected
+
+
+_HITS = '((globalThis.__debugealoHits ??= {})["k"] = (globalThis.__debugealoHits["k"] || 0) + 1)'
+
+
+@pytest.mark.parametrize(('options', 'expected'), [
+    (BreakpointOptions(hit_condition='5'), f'{_HITS} === 5'),
+    (BreakpointOptions(hit_condition='==5'), f'{_HITS} === 5'),
+    (BreakpointOptions(hit_condition='>=5'), f'{_HITS} >= 5'),
+    (BreakpointOptions(hit_condition='<2'), f'{_HITS} < 2'),
+    (BreakpointOptions(hit_condition='%3'), f'{_HITS} % 3 === 0'),
+    (BreakpointOptions(log_message='v={v}', hit_condition='%2'),
+     f'({_HITS} % 2 === 0) && (console.log(`v=${{(v)}}`), false)'),
+], ids=['count', 'equal', 'at-least', 'below', 'every', 'logpoint'])
+def test_node_condition_counts_hits_per_breakpoint(options, expected):
+    from debugpilot.debugger.node import cdp_condition
+
+    assert cdp_condition(options, 'k') == expected
 
 
 @pytest.mark.parametrize('session_type', ['GoAttachSession', 'PythonAttachSession'])
