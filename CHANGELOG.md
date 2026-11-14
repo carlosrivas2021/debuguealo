@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.1](https://github.com/carlosrivas2021/debuguealo/compare/v0.5.0...v0.5.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **code:** end program input on Windows with Ctrl+Z and Enter ([76c4f29](https://github.com/carlosrivas2021/debuguealo/commit/76c4f29f763d14ed4cc10eede6872e5023f20842))
+* **code:** hide typed program input when the echo mode is unknown ([b97b2fe](https://github.com/carlosrivas2021/debuguealo/commit/b97b2feb016f6a7328ef25f3439fdab5f43cd326))
+* **code:** Windows program input ends with Ctrl+D and keeps passwords hidden ([05ab109](https://github.com/carlosrivas2021/debuguealo/commit/05ab1096c6d789e8b74c1503c2395d0494529d51))
+* **deps:** allow pywinpty 3 so Windows installs on Python 3.14 ([b8884a0](https://github.com/carlosrivas2021/debuguealo/commit/b8884a0567b324e75999721be5bd49b399f17576))
+* **deps:** allow pywinpty 3 so Windows installs on Python 3.14 ([38cc114](https://github.com/carlosrivas2021/debuguealo/commit/38cc114e45735bc1b58f3d5a3976e2c8ac4221c6))
+
 ## [0.5.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.4.0...v0.5.0) (2026-11-14)
 
 
