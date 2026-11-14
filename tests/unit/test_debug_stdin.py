@@ -157,3 +157,11 @@ def test_end_of_input_uses_the_windows_console_sequence():
     terminal._windows = True
     terminal.end_input()
     assert written == ['\x1a\r']
+
+
+def test_unknown_echo_hides_typed_input():
+    # Windows cannot report the terminal's echo mode, and a getpass prompt there must
+    # not end up in the debug output, so unknown hides typed lines.
+    session = PythonDebugSession()
+    session._adapter = SimpleNamespace(echo_enabled=lambda: None)
+    assert session.input_echo() is False

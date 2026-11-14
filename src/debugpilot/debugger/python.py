@@ -350,12 +350,12 @@ class PythonDebugSession:
         """Whether the UI should show typed input: only while the program echoes it.
 
         Output arrives over DAP, so the terminal's own echo never reaches it; a program
-        that turns echo off (getpass) keeps its input hidden. Unknown means echo.
+        that turns echo off (getpass) keeps its input hidden. Unknown (Windows) hides it
+        too, so a password typed there never shows.
         """
         if self._adapter is None:
             return True
-        echo = self._adapter.echo_enabled()
-        return True if echo is None else echo
+        return self._adapter.echo_enabled() is True
 
     async def continue_execution(self):
         return await self._resume('continue')

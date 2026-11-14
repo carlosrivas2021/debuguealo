@@ -320,7 +320,9 @@ paused waits until it reads again. Typing in the field never triggers Code short
 
 The typed line also shows in the debug output, as `[profile · input] text`, only while the
 program's terminal echoes input, exactly like a terminal: a password prompt that turns echo off
-(Python's `getpass`) keeps what you type hidden. Node echoes through its own terminal, so its
+(Python's `getpass`) keeps what you type hidden. Windows cannot report whether the terminal
+echoes, so there typed lines never show for Python and Go, to keep passwords out of the output.
+Node echoes through its own terminal, so its
 output shows the typed line directly. `getpass` writes its prompt to the terminal rather than to
 standard output, so that prompt does not appear in the debug output; the input still reaches it.
 Attached processes are not owned by Code, so attach sessions have no program input.
