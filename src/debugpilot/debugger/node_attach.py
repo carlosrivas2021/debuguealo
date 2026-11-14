@@ -8,8 +8,9 @@ from urllib.parse import unquote, urlsplit
 
 from debugpilot.debugger.dap import DebugError
 from debugpilot.debugger.inspector import InspectorClient
-from debugpilot.debugger.node import NodeDebugSession, cdp_condition, hit_key
+from debugpilot.debugger.node import NodeDebugSession
 from debugpilot.debugger.python import _breakpoints, _line_options
+from debugpilot.debugger.source_maps import SourceMapIndex
 from debugpilot.storage.code_projects import CodeProject, parse_remote_attach
 
 _TARGET = 'Node/Inspector'
@@ -130,6 +131,8 @@ class NodeAttachSession(NodeDebugSession):
             intent[str(local)] = validated
             start_options[str(local)] = (options or {}).get(source)
         self._local_root = await asyncio.to_thread(Path(profile.root).resolve)
+        # The local build stands in for the target's: its maps translate .ts lines.
+        self._source_maps = await asyncio.to_thread(SourceMapIndex, self._local_root)
         self.profile = CodeProject(profile.name, self._local_root, tuple(profile.command),
                                    getattr(profile, 'node_debug', None), node_attach=attach)
         self._remote_root = PurePosixPath(attach.remote_root)
@@ -190,29 +193,26 @@ class NodeAttachSession(NodeDebugSession):
     async def set_breakpoints(self, source, lines, options=None):
         if self.profile is None or self._client is None:
             raise DebugError('No active debug session.')
-        local, relative, intent = await asyncio.to_thread(
+        local, _, intent = await asyncio.to_thread(
             self._local_source_for, self._local_root, source, lines)
         key = str(local)
         line_options = _line_options(intent, options)
-        for entry in self.verified_breakpoints.get(key, []):
-            await self._client.request('Debugger.removeBreakpoint', {'breakpointId': entry['id']})
-        self.verified_breakpoints[key] = []
-        remote_url = (self._remote_root / PurePosixPath(relative.as_posix())).as_uri()
-        entries = []
-        for line in intent:
-            request = {'url': remote_url, 'lineNumber': line - 1}
-            condition = cdp_condition(line_options.get(line), hit_key(key, line))
-            if condition:
-                request['condition'] = condition
-            result = await self._client.request('Debugger.setBreakpointByUrl', request)
-            locations = result.get('locations', [])
-            entries.append({'id': result['breakpointId'], 'verified': bool(locations),
-                            'line': locations[0]['lineNumber'] + 1 if locations else line})
-            self.verified_breakpoints[key] = entries
+        entries = await self._bind_breakpoints(key, local, intent, line_options)
         self.requested_breakpoints[key] = intent
         self.breakpoint_options[key] = line_options
         self._emit({'event': 'breakpoints', 'body': {'path': key}})
         return entries
+
+    def _script_url(self, path):
+        """The target's URL of a local workspace file, through remoteRoot."""
+        try:
+            relative = Path(path).resolve().relative_to(self._local_root)
+        except ValueError:
+            return None
+        return (self._remote_root / PurePosixPath(relative.as_posix())).as_uri()
+
+    def _local_script(self, url):
+        return self._mapped_local_source(url)
 
     def _mapped_local_source(self, url):
         parsed = urlsplit(url)
@@ -229,18 +229,6 @@ class NodeAttachSession(NodeDebugSession):
             return None
         return local
 
-    async def stack(self):
-        self._stopped()
-        result = []
-        for frame in self._frames:
-            location = frame['location']
-            url = frame.get('url') or self._scripts.get(location['scriptId'], '')
-            local = await asyncio.to_thread(self._mapped_local_source, url)
-            result.append({'id': frame['callFrameId'], 'name': frame['functionName'] or '(main)',
-                           'line': location['lineNumber'] + 1,
-                           'source': {'path': str(local)} if local else {}})
-        return result
-
     async def _cleanup(self):
         async with self._attach_cleanup_lock:
             if self.state == 'closed':
@@ -252,6 +240,8 @@ class NodeAttachSession(NodeDebugSession):
                 try:
                     for entries in tuple(self.verified_breakpoints.values()):
                         for entry in entries:
+                            if entry['id'] is None:
+                                continue  # A mapped line with no code was never set.
                             await client.request('Debugger.removeBreakpoint',
                                                  {'breakpointId': entry['id']})
                 except (DebugError, OSError, TimeoutError) as error:

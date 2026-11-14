@@ -18,6 +18,7 @@ from debugpilot.debugger.python import (
     _intent,
     _line_options,
 )
+from debugpilot.debugger.source_maps import SourceMapIndex
 from debugpilot.storage.code_projects import (
     is_npm_command,
     profile_environment,
@@ -31,6 +32,7 @@ _GRAMMAR = (
     'For npm run dev, add nodeDebug: ["node", "server.js", "args..."] to the same profile. '
     'F5 keeps the original command. No run-mode fallback.'
 )
+_TYPESCRIPT = frozenset({'.ts', '.cts', '.mts'})
 _ANSI = re.compile(r'\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]')
 _ENDPOINT = re.compile(r'^Debugger listening on (ws://127\.0\.0\.1:[1-9]\d*/[\da-f-]{36})$')
 
@@ -159,6 +161,7 @@ class NodeDebugSession(PythonDebugSession):
         self._buffer = ''
         self._disconnect_task = None
         self._exiting = False
+        self._source_maps = None
 
     def _output(self, text):
         self._buffer += text
@@ -219,8 +222,9 @@ class NodeDebugSession(PythonDebugSession):
         elif method == 'Debugger.breakpointResolved':
             for entries in self.verified_breakpoints.values():
                 for entry in entries:
-                    if entry['id'] == params['breakpointId']:
-                        entry.update(verified=True, line=params['location']['lineNumber'] + 1)
+                    if entry['id'] is not None and entry['id'] == params['breakpointId']:
+                        entry.update(verified=True,
+                                     line=self._original_location(params['location'])[1])
             self._emit({'event': 'breakpoints', 'body': {}})
         elif method == 'transportClosed' and not self._exiting:
             self._event({'event': 'transportClosed', 'body': params})
@@ -260,6 +264,10 @@ class NodeDebugSession(PythonDebugSession):
         self._state('starting')
         try:
             async with asyncio.timeout(self.timeout):
+                # Read before the first breakpoint: compiled files bind before they load.
+                # A .ts launch runs its sources directly, so a build's maps never apply.
+                self._source_maps = None if target.suffix.lower() in _TYPESCRIPT else (
+                    await asyncio.to_thread(SourceMapIndex, profile.root))
                 self._adapter = CodeSession(self._output, self._process_exit)
                 await self._adapter.open_command(
                     (argv[0], '--inspect-brk=127.0.0.1:0', str(target), *argv[2:]), profile.root,
@@ -290,8 +298,8 @@ class NodeDebugSession(PythonDebugSession):
                 # Hide the startup pause unless the user actually requested that location.
                 frame = self._frames[0] if self._frames else {}
                 location = frame.get('location', {})
-                path = _source(self._scripts.get(location.get('scriptId'), ''))
-                if location.get('lineNumber', -1) + 1 in intent.get(path, ()):
+                path, line = self._original_location(location) if location else (None, 0)
+                if line in intent.get(path, ()):
                     self._event({'event': 'stopped', 'body': {'threadId': 1}})
                 else:
                     self._state('running')
@@ -312,24 +320,74 @@ class NodeDebugSession(PythonDebugSession):
             raise DebugError('No active debug session.')
         path, intent = _breakpoints(self.profile.root, source, lines)
         line_options = _line_options(intent, options)
-        previous = self.verified_breakpoints.get(path, [])
-        for entry in previous:
-            await self._client.request('Debugger.removeBreakpoint', {'breakpointId': entry['id']})
-        entries = []
-        source_url = (await asyncio.to_thread(Path(path).resolve)).as_uri()
+        entries = await self._bind_breakpoints(path, Path(path), intent, line_options)
+        self.requested_breakpoints[path] = intent
+        self.breakpoint_options[path] = line_options
+        self._emit({'event': 'breakpoints', 'body': {'path': path}})
+        return entries
+
+    def _script_url(self, path):
+        """The Inspector URL of a local script."""
+        return Path(path).resolve().as_uri()
+
+    def _local_script(self, url):
+        """The local file of an Inspector script URL, or None."""
+        path = _source(url)
+        return Path(path) if path else None
+
+    def _generated_target(self, path, line):
+        """(url, 0-based line, column or None) to set for a local line; None when unmapped.
+
+        A source that compiled files map back to is set on the generated line instead.
+        """
+        maps = self._source_maps
+        if maps is not None and maps.maps(path):
+            position = maps.generated_position(path, line)
+            if position is None:
+                return None
+            generated, generated_line, column = position
+            url = self._script_url(generated)
+            return (url, generated_line - 1, column) if url else None
+        url = self._script_url(path)
+        return (url, line - 1, None) if url else None
+
+    def _original_location(self, location, url=None):
+        """(local path or None, 1-based line) of an Inspector location, through source maps."""
+        url = url or self._scripts.get(location.get('scriptId'), '')
+        line = location.get('lineNumber', -1) + 1
+        local = self._local_script(url)
+        if local is not None and self._source_maps is not None:
+            mapped = self._source_maps.original_position(
+                local, line, location.get('columnNumber', 0))
+            if mapped is not None:
+                return str(mapped[0]), mapped[1]
+        return (str(local) if local else None), line
+
+    async def _bind_breakpoints(self, key, path, intent, line_options):
+        for entry in self.verified_breakpoints.get(key, []):
+            if entry['id'] is not None:
+                await self._client.request(
+                    'Debugger.removeBreakpoint', {'breakpointId': entry['id']})
+        self.verified_breakpoints[key] = entries = []
         for line in intent:
-            request = {'url': source_url, 'lineNumber': line - 1}
-            condition = cdp_condition(line_options.get(line), hit_key(path, line))
+            target = await asyncio.to_thread(self._generated_target, path, line)
+            if target is None:
+                # A mapped source line with no generated code never binds.
+                entries.append({'id': None, 'verified': False, 'line': line})
+                continue
+            url, generated_line, column = target
+            request = {'url': url, 'lineNumber': generated_line}
+            if column is not None:
+                request['columnNumber'] = column
+            condition = cdp_condition(line_options.get(line), hit_key(key, line))
             if condition:
                 request['condition'] = condition
             result = await self._client.request('Debugger.setBreakpointByUrl', request)
             locations = result.get('locations', [])
+            resolved = (await asyncio.to_thread(self._original_location, locations[0], url))[1] \
+                if locations else line
             entries.append({'id': result['breakpointId'], 'verified': bool(locations),
-                            'line': locations[0]['lineNumber'] + 1 if locations else line})
-        self.requested_breakpoints[path] = intent
-        self.breakpoint_options[path] = line_options
-        self.verified_breakpoints[path] = entries
-        self._emit({'event': 'breakpoints', 'body': {'path': path}})
+                            'line': resolved})
         return entries
 
     async def stack(self):
@@ -337,10 +395,10 @@ class NodeDebugSession(PythonDebugSession):
         result = []
         for frame in self._frames:
             location = frame['location']
-            path = _source(frame.get('url') or self._scripts.get(location['scriptId'], ''))
+            path, line = await asyncio.to_thread(
+                self._original_location, location, frame.get('url'))
             result.append({'id': frame['callFrameId'], 'name': frame['functionName'] or '(main)',
-                           'line': location['lineNumber'] + 1,
-                           'source': {'path': path} if path else {}})
+                           'line': line, 'source': {'path': path} if path else {}})
         return result
 
     def _reference(self, object_id):
