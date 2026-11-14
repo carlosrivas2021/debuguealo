@@ -316,7 +316,7 @@ program's standard input, as pressing Enter in a terminal would, so `input()`,
 anything, and then ends the input, so a program reading until end of input (such as
 `sys.stdin.read()` or `io.ReadAll(os.Stdin)`) stops reading; on Windows it types the console's
 end of input, Ctrl+Z then Enter. A line typed while the program is
-paused waits until it reads again. Typing in the field never triggers Code shortcuts.
+paused waits until it reads again. Typing in the field never triggers Code shortcuts; **Esc** leaves it for the profile list.
 
 The typed line also shows in the debug output, as `[profile · input] text`, only while the
 program's terminal echoes input, exactly like a terminal: a password prompt that turns echo off

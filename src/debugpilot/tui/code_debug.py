@@ -77,9 +77,12 @@ class OutputLines:
 
 
 class ProgramInput(Input):
-    """One line of input for the debugged program; Ctrl+D ends its input."""
+    """One line of input for the debugged program; Ctrl+D ends its input, Esc leaves."""
 
-    BINDINGS = [Binding('ctrl+d', 'end_input', 'End input', show=False)]
+    BINDINGS = [
+        Binding('ctrl+d', 'end_input', 'End input', show=False),
+        Binding('escape', 'leave', 'Leave', show=False),
+    ]
 
     def __init__(self, send, end):
         super().__init__(
@@ -98,6 +101,10 @@ class ProgramInput(Input):
 
     def action_end_input(self) -> None:
         self._end(self.value)
+
+    def action_leave(self) -> None:
+        # Like the Code terminal's Esc: back to the profiles, where pane keys work again.
+        self.screen.query_one('#code-projects').focus()
         self.value = ''
 
 

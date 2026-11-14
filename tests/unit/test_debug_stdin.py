@@ -142,6 +142,9 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         assert field.value == ''
         await pilot.press('s')  # Typing in the field never triggers Code shortcuts.
         assert field.value == 's'
+        await pilot.press('escape')  # Esc leaves the field, like the Code terminal.
+        await until(pilot, lambda: app.query_one('#code-projects').has_focus)
+        field.focus()
         await pilot.press('backspace', *'end', 'ctrl+d')
         await until(pilot, lambda: 'REST:end' in output())
         await until(pilot, lambda: not field.display)  # The program ended.
