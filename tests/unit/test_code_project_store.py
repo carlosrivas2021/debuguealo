@@ -7,7 +7,9 @@ from debugpilot.storage.code_projects import CodeProjectStore
 from debugpilot.storage.launch_profiles import LaunchProfileStore
 
 
-@pytest.mark.parametrize('target', [None, ['node', 'server.js', '--literal']])
+@pytest.mark.parametrize('target', [
+    None, ['node', 'server.js', '--literal'], ['node', 'src/main.ts'],
+])
 def test_optional_npm_node_target_retains_original_argv(tmp_path, monkeypatch, target):
     store = configure(monkeypatch, tmp_path)
     entry = {'name': 'npm', 'workspaceFolder': str(tmp_path), 'command': ['npm', 'run', 'dev']}
@@ -27,6 +29,7 @@ def test_optional_npm_node_target_retains_original_argv(tmp_path, monkeypatch, t
     (['npm', 'run', 'dev'], ['node', '-e', 'bad']),
     (['npm', 'run', 'dev'], ['other', 'server.js']),
     (['npm', 'run', 'dev'], ['node', 'server.js', '']),
+    (['npm', 'run', 'dev'], ['node', 'src/App.tsx']),
 ])
 def test_invalid_node_metadata_is_rejected_unchanged(tmp_path, monkeypatch, command, target):
     store = configure(monkeypatch, tmp_path)
