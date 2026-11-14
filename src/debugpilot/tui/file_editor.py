@@ -68,7 +68,9 @@ class FileEditorScreen(Screen[bool]):
 
     def on_mount(self) -> None:
         self._refresh_titles()
-        self.query(TextArea).first().focus()
+        areas = self.query(TextArea)
+        if areas:
+            areas.first().focus()
 
     def _areas(self) -> list[TextArea]:
         return list(self.query(TextArea))
@@ -79,9 +81,12 @@ class FileEditorScreen(Screen[bool]):
                 if area.text != file.loaded.text]
 
     def _refresh_titles(self) -> None:
+        titles = list(self.query(".editor-title"))
+        if len(titles) != len(self.files) or len(self._areas()) != len(self.files):
+            # Not every pane is mounted: the screen is still building or already closing.
+            return
         modified = set(self._modified())
-        for index, (file, title) in enumerate(zip(self.files, self.query(".editor-title"),
-                                                  strict=True)):
+        for index, (file, title) in enumerate(zip(self.files, titles, strict=True)):
             state = "● " if index in modified else ""
             note = "" if file.loaded.exists else " (new file)"
             title.update(f"{state}{file.label} · {file.loaded.path}{note}")

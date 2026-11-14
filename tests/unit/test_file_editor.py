@@ -171,3 +171,17 @@ async def test_editing_after_the_warning_warns_again_instead_of_discarding(tmp_p
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, FileEditorScreen)
+
+
+async def test_a_late_mount_while_the_panes_are_gone_does_not_raise(tmp_path):
+    # Closing the app while the editor mounts can run on_mount after its panes are removed.
+    files, _, _ = _aws_files(tmp_path)
+    app = EditorApp(files)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        screen = app.screen
+        await screen.query_one("#editor-panes").remove()
+        screen.on_mount()
+        screen.post_message(TextArea.Changed(TextArea()))
+        await pilot.pause()
+        assert app.results == []
