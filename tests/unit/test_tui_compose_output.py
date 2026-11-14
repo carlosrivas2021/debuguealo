@@ -96,7 +96,7 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
             pilot,
             lambda: "Download" in str(app.query_one("#inline-compose-message").render()),
         )
-        assert app.query_one("#inline-compose-cancel").has_focus
+        await until(pilot, lambda: app.query_one("#inline-compose-cancel").has_focus)
         assert any(MISSING in entry.text for entry in output.entries())
         assert any("exited 1" in entry.text for entry in output.entries())
         if decision == "enter-cancel":
@@ -120,7 +120,7 @@ async def test_inline_compose_output_streams_and_uses_safe_inline_consent(
         assert not app.query_one("#inline-compose-confirm").disabled
         assert app.query_one("#inline-compose-cancel").label == "Cancel"
         assert not app.query_one("#inline-compose-cancel").disabled
-        assert app.query_one("#launch-profiles", DataTable).has_focus
+        await until(pilot, lambda: app.query_one("#launch-profiles", DataTable).has_focus)
 
 
 async def test_latest_compose_output_survives_same_profile_refresh_not_other_project(

@@ -37,8 +37,10 @@ async def test_open_failure_is_reported_and_a_retry_opens_the_editor(tmp_path, m
         assert notices[-1] == f"Cannot open launch.json: {launch} is not UTF-8 text."
         assert not isinstance(app.screen, FileEditorScreen)
         # The dashboard is untouched: the selected container shows its details by default.
-        assert app.selected_container is not None
-        assert app.query_one(ContainerDetails).display
+        await until(
+            pilot,
+            lambda: app.selected_container is not None and app.query_one(ContainerDetails).display,
+        )
 
         app.query_one("#open-launch-file", Button).press()
         await until(pilot, lambda: isinstance(app.screen, FileEditorScreen))
