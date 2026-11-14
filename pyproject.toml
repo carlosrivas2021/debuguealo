@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "debugealo"
-version = "0.5.0"
+version = "0.5.1"
 description = "Local-first Docker debugging, with a UI-independent Python engine."
 readme = "README.md"
 license = "MIT"
