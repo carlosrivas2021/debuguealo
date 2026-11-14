@@ -144,7 +144,7 @@ automatically.
 | `Shift+R` | Preview Build + Recreate for the selected saved launch profile. |
 | `s` | Confirm stopping the selected visible container or project group. |
 | `a` | Refresh AWS credentials for every profile with `awsCredentials`, then offer Recreate for the running ones. |
-| `Shift+A` | Edit the AWS config and credentials files side by side in the built-in editor. |
+| `Shift+A` | Edit the AWS config and credentials files side by side in the built-in editor (also from Code). |
 | `C` | From the project tree, show `/bin/sh` for the selected running container in the logs area. |
 | `H` | With the project tree focused, open host Bash in the explicit local workspace or the selected central profile's validated working directory. |
 | `D` | Close open logs and show details for the selected container. |

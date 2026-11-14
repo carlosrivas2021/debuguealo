@@ -1970,7 +1970,7 @@ class DebugPilotApp(App):
         self._compose_tasks[run.project] = asyncio.create_task(self._run_inline_compose(run))
 
     async def action_edit_aws_files(self) -> None:
-        """Open the AWS config and credentials files side by side in the editor."""
+        """Open the AWS config and credentials files side by side, from either area."""
         from debugpilot.storage.aws_credentials import aws_file_paths
         from debugpilot.storage.text_files import load_text
         from debugpilot.tui.file_editor import EditableFile
@@ -2526,7 +2526,7 @@ class DebugPilotApp(App):
             "toggle_project", "open_container_terminal", "open_host_terminal",
             "recreate_selected", "build_selected", "stop_selected", "cancel_compose",
             "compose", "start_project", "restart_selected", "rebuild_selected",
-            "refresh_aws_credentials", "edit_aws_files", "container_pane",
+            "refresh_aws_credentials", "container_pane",
         }:
             return False
         if action in {

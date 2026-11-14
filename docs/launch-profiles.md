@@ -109,7 +109,7 @@ none. Files are written atomically with mode 0600 and symlinks are refused. Cred
 values are never printed, logged or written to temporary files outside the target
 directory.
 
-Press **Shift+A** in Containers to edit the AWS CLI's `config` and `credentials` files side by
+Press **Shift+A** in Containers or Code to edit the AWS CLI's `config` and `credentials` files side by
 side in the built-in editor: `~/.aws/config` and `~/.aws/credentials`, or the files named by
 `AWS_CONFIG_FILE` and `AWS_SHARED_CREDENTIALS_FILE`. A missing file opens empty and is created
 on save with mode 0600, in a 0700 folder; an existing file keeps its mode, and a symlinked file
