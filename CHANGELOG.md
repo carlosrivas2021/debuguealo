@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.4.0...v0.5.0) (2026-11-14)
+
+
+### Features
+
+* **code:** debug TypeScript with Node's native type stripping ([e9b7cc1](https://github.com/carlosrivas2021/debuguealo/commit/e9b7cc1639c9c0829f82b20ec55caa00f9d9d579))
+* **code:** debug TypeScript with Node's native type stripping ([a85dbe9](https://github.com/carlosrivas2021/debuguealo/commit/a85dbe9aee2ab0f86f1f86f2bef0938fd168b3a3))
+* **code:** map compiled TypeScript through source maps in Node debugging ([fd93797](https://github.com/carlosrivas2021/debuguealo/commit/fd93797ed8cfdfdd941f8de035643c623c833434))
+* **code:** map compiled TypeScript through source maps in Node debugging ([ce5ecb5](https://github.com/carlosrivas2021/debuguealo/commit/ce5ecb5fac29f3ec83e3dadbdc0934a717e5c24b))
+* **code:** send program input while debugging ([0ec8212](https://github.com/carlosrivas2021/debuguealo/commit/0ec821253c6e2210f4f2a3fd0b7166ee84c0dede))
+* **code:** send program input while debugging ([8a4b0b3](https://github.com/carlosrivas2021/debuguealo/commit/8a4b0b352b03efb003a459e2d7aae395f86f7ebc))
+* **code:** stop breakpoints on a hit count ([9ea3d85](https://github.com/carlosrivas2021/debuguealo/commit/9ea3d856efe72971fc7d1116e491ec26fddbc96c))
+* **code:** stop breakpoints on a hit count ([cb30df3](https://github.com/carlosrivas2021/debuguealo/commit/cb30df30c7c7c0b70183b2f91a514cb61682248c))
+* **tui:** show container health, restarts, exit code, mounts and env names ([625edc2](https://github.com/carlosrivas2021/debuguealo/commit/625edc29e33b0d42df2fc7c395d5c019cb18d23a))
+* **tui:** show container health, restarts, exit code, mounts and env names ([482b8a7](https://github.com/carlosrivas2021/debuguealo/commit/482b8a7d7dae11a0c3ee52eceb1cc13161e049f3))
+* **tui:** show the log search match count and jump back with Shift+N ([9941dc4](https://github.com/carlosrivas2021/debuguealo/commit/9941dc41e899b5122367dcee20e4e168dc0a30f5))
+* **tui:** show the log search match count and jump back with Shift+N ([8b772a5](https://github.com/carlosrivas2021/debuguealo/commit/8b772a53dfb7b85cda14f0d33a03ae75a95eaeb5))
+
+
+### Bug Fixes
+
+* **code:** bound the source map index walk and skip Python environments ([06b3bdd](https://github.com/carlosrivas2021/debuguealo/commit/06b3bddfe70ed2a9c99c07826d03fa23fb6f563b))
+* **storage:** accept only ASCII digits in breakpoint hit counts ([bb1f7b4](https://github.com/carlosrivas2021/debuguealo/commit/bb1f7b457c05e7c8c2c10ac5ff48cfbfe657f9b0))
+* **tui:** skip editor title refresh while its panes are not all mounted ([b60bb71](https://github.com/carlosrivas2021/debuguealo/commit/b60bb7180fd959fe46bf42cad3560548ede2887f))
+
 ## [0.4.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.3.0...v0.4.0) (2026-11-14)
 
 
