@@ -164,3 +164,59 @@ def test_save_ignores_options_of_files_without_marks_even_with_unusable_paths(tm
         ("relative", "path.py"): {1: BreakpointOptions(condition="no marks")},
     })
     assert store.load_options() == {(root, source): {2: BreakpointOptions(condition="kept")}}
+
+
+def test_store_round_trips_hit_conditions(tmp_path):
+    import json
+
+    from debugpilot.storage.breakpoints import BreakpointOptions
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    options = {(root, source): {
+        3: BreakpointOptions(hit_condition=">=5"),
+        7: BreakpointOptions(log_message="n={n}", hit_condition="%2"),
+    }}
+    store.save({(root, source): {3, 7}}, options)
+    assert store.load_options() == options
+    saved = json.loads(store.path.read_text())["breakpoints"][0]["options"]
+    assert saved == {"3": {"hitCondition": ">=5"},
+                     "7": {"logMessage": "n={n}", "hitCondition": "%2"}}
+
+
+@pytest.mark.parametrize(("text", "expected"), [
+    ("5", "5"), (" 12 ", "12"), ("==3", "==3"), ("> 1", ">1"), (">= 10", ">=10"),
+    ("<4", "<4"), ("<=4", "<=4"), ("% 3", "%3"), (">0", ">0"),
+])
+def test_hit_condition_accepts_counts_and_comparisons(text, expected):
+    from debugpilot.storage.breakpoints import BreakpointOptions, breakpoint_options
+
+    assert breakpoint_options(None, None, text) == BreakpointOptions(hit_condition=expected)
+
+
+@pytest.mark.parametrize("text", ["x", "!=3", "%0", "0", "=3", ">=", "3.5", "-2", "5 5", "1" * 10])
+def test_hit_condition_rejects_other_text(text):
+    from debugpilot.storage.breakpoints import breakpoint_options
+
+    with pytest.raises(ValueError, match="Hit count"):
+        breakpoint_options(None, None, text)
+
+
+def test_condition_and_hit_count_cannot_be_combined():
+    from debugpilot.storage.breakpoints import breakpoint_options
+
+    with pytest.raises(ValueError, match="condition or a hit count, not both"):
+        breakpoint_options("x > 1", None, "3")
+    assert breakpoint_options(None, None, "  ") is None
+
+
+def test_store_rejects_a_stored_condition_with_a_hit_count(tmp_path):
+    import json
+
+    root, source = _project(tmp_path)
+    path = tmp_path / "breakpoints.json"
+    path.write_text(json.dumps({"version": 1, "breakpoints": [
+        {"root": str(root), "file": str(source), "lines": [5],
+         "options": {"5": {"condition": "x", "hitCondition": "2"}}}]}))
+    with pytest.raises(ConfigurationError, match="Invalid Code breakpoints"):
+        BreakpointStore(path).load_options()

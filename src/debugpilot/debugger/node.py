@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import itertools
 import json
 import re
 from pathlib import Path
@@ -72,14 +73,38 @@ def _js_literal(text):
     return text.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
 
 
-def cdp_condition(options):
+# One counter key per breakpoint registration, so setting breakpoints again restarts counting.
+_HIT_KEYS = itertools.count(1)
+
+
+def _hit_test(hit_condition, key):
+    """CDP has no hit counts: count in a page global keyed per breakpoint, like VS Code."""
+    match = re.fullmatch(r'(==|>=|<=|>|<|%)?(\d+)', hit_condition)
+    operator, count = match.group(1) or '==', match.group(2)
+    name = json.dumps(key)
+    hits = (f'((globalThis.__debugealoHits ??= {{}})[{name}] = '
+            f'(globalThis.__debugealoHits[{name}] || 0) + 1)')
+    if operator == '%':
+        return f'{hits} % {count} === 0'
+    return f'{hits} {"===" if operator == "==" else operator} {count}'
+
+
+def cdp_condition(options, key=''):
     """CDP has no logpoints: log through the condition and return false, like VS Code."""
     if options is None:
         return ''
+    test = options.condition
+    if options.hit_condition:
+        test = _hit_test(options.hit_condition, key)
     if not options.log_message:
-        return options.condition or ''
+        return test or ''
     log = f'console.log({_js_template(options.log_message)}), false'
-    return f'({options.condition}) && ({log})' if options.condition else log
+    return f'({test}) && ({log})' if test else log
+
+
+def hit_key(path, line):
+    """A fresh counter key for one breakpoint line."""
+    return f'{path}:{line}:{next(_HIT_KEYS)}'
 
 
 _FUNCTION_NAME = re.compile(r'(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)?')
@@ -293,7 +318,7 @@ class NodeDebugSession(PythonDebugSession):
         source_url = (await asyncio.to_thread(Path(path).resolve)).as_uri()
         for line in intent:
             request = {'url': source_url, 'lineNumber': line - 1}
-            condition = cdp_condition(line_options.get(line))
+            condition = cdp_condition(line_options.get(line), hit_key(path, line))
             if condition:
                 request['condition'] = condition
             result = await self._client.request('Debugger.setBreakpointByUrl', request)

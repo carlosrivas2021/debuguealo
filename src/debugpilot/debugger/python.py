@@ -94,6 +94,8 @@ def _source_breakpoints(lines, options):
             entry['condition'] = option.condition
         if option is not None and option.log_message:
             entry['logMessage'] = option.log_message
+        if option is not None and option.hit_condition:
+            entry['hitCondition'] = option.hit_condition
         entries.append(entry)
     return entries
 

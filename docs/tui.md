@@ -48,7 +48,7 @@ profiles may run/debug/attach concurrently, with one live session per saved prof
 an active profile returns to its context. Same-endpoint attaches are rejected, while distinct
 endpoints may coexist. **Shift+F5** or **Debug** starts Python debugging from that same profile
 and its requested source breakpoints, which **F9** toggles at the source cursor. **Shift+F9**
-adds a condition or a log message (logpoint) to the line; see
+adds a condition, a log message (logpoint) or a hit count to the line; see
 [conditional breakpoints and logpoints](code-projects.md#conditional-breakpoints-and-logpoints). The debug panel's **Watch** section re-evaluates
 expressions on every pause; see [watch expressions](code-projects.md#watch-expressions). At a pause, inspect the stack/variables and the
 yellow-shaded execution line, then use **F5** or **▶ Continue**, **F10** (over), **F11** (in), or

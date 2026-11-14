@@ -34,11 +34,12 @@ async def open_main(pilot, app, line):
     return browser
 
 
-async def edit(pilot, app, condition='', log=''):
+async def edit(pilot, app, condition='', log='', hits=''):
     await pilot.press('shift+f9')
     await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
     app.screen.query_one('#breakpoint-condition', Input).value = condition
     app.screen.query_one('#breakpoint-log', Input).value = log
+    app.screen.query_one('#breakpoint-hits', Input).value = hits
     await pilot.press('enter')
     await until(pilot, lambda: not isinstance(app.screen, BreakpointDialog))
 
@@ -313,3 +314,59 @@ async def test_edit_panel_is_placed_before_its_first_frame(monkeypatch, tmp_path
         assert (box.styles.offset.x.value, box.styles.offset.y.value) == (
             pane.x, pane.bottom - box.styles.height.value)
         await pilot.press('escape')
+
+
+async def test_hit_count_marks_labels_panel_and_persistence(monkeypatch, tmp_path):
+    app, roots, _ = debug_app(monkeypatch, tmp_path)
+    key = (roots[0].resolve(), (roots[0] / 'main.py').resolve())
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        await edit(pilot, app, hits='>= 3')
+        await open_main(pilot, app, 5)
+        await edit(pilot, app, log='seen {answer}', hits='%2')
+        assert labels(browser) == [
+            'Line 4 · hit >=3 · pending', 'Line 5 · log: seen {answer} · hit %2 · pending']
+        assert '◆' in glyph(browser, 4)
+        assert '◇' in glyph(browser, 5)
+        assert store(tmp_path).load_options() == {key: {
+            4: BreakpointOptions(hit_condition='>=3'),
+            5: BreakpointOptions(log_message='seen {answer}', hit_condition='%2')}}
+        await open_main(pilot, app, 4)
+        shown, text, title = info(app)
+        assert shown and 'conditional breakpoint' in title
+        assert 'hit' in text and '>=3' in text and 'stops only on matching passes' in text
+        await open_main(pilot, app, 5)
+        shown, text, _ = info(app)
+        assert '%2' in text and 'only on matching passes' in text and 'stops only' not in text
+        await pilot.press('shift+f9')
+        await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
+        assert app.screen.query_one('#breakpoint-hits', Input).value == '%2'
+        await pilot.press('escape')
+        await until(pilot, lambda: not isinstance(app.screen, BreakpointDialog))
+
+
+async def test_dialog_rejects_a_condition_with_a_hit_count_and_bad_counts(monkeypatch, tmp_path):
+    app, roots, _ = debug_app(monkeypatch, tmp_path)
+    key = (roots[0].resolve(), (roots[0] / 'main.py').resolve())
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        browser = await open_main(pilot, app, 4)
+        await pilot.press('shift+f9')
+        await until(pilot, lambda: isinstance(app.screen, BreakpointDialog))
+        status = app.screen.query_one('#breakpoint-status', Static)
+        app.screen.query_one('#breakpoint-condition', Input).value = 'answer > 1'
+        app.screen.query_one('#breakpoint-hits', Input).value = '3'
+        await pilot.press('enter')
+        await pilot.pause()
+        assert isinstance(app.screen, BreakpointDialog)
+        assert 'condition or a hit count, not both' in str(status.render())
+        app.screen.query_one('#breakpoint-condition', Input).value = ''
+        app.screen.query_one('#breakpoint-hits', Input).value = 'often'
+        await pilot.press('enter')
+        await pilot.pause()
+        assert isinstance(app.screen, BreakpointDialog)
+        assert 'Hit count must be a number' in str(status.render())
+        await pilot.press('escape')
+        await until(pilot, lambda: not isinstance(app.screen, BreakpointDialog))
+        assert browser.breakpoints(*key) == ()
