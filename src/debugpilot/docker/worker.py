@@ -11,7 +11,7 @@ from docker.errors import APIError, DockerException
 from requests.exceptions import RequestException
 
 from debugpilot.core.exceptions import DockerError
-from debugpilot.core.models import ContainerInfo, ContainerStats
+from debugpilot.core.models import ContainerInfo, ContainerRuntime, ContainerStats
 from debugpilot.docker.logs import LogDecoder, read_frames
 from debugpilot.docker.probe import PipeError
 from debugpilot.storage.config import Settings
@@ -110,6 +110,14 @@ def run(settings: Settings, request: dict) -> None:
                 raise DockerError("Docker returned invalid container stats.")
             emit("ready")
             emit("stats", value=ContainerStats.from_docker(raw).model_dump(mode="json"))
+        elif request["command"] == "inspect":
+            container = container_name(request["container"])
+            raw = bounded_json(api, f"/containers/{container}/json")
+            if not isinstance(raw, dict):
+                raise DockerError("Docker returned invalid container details.")
+            emit("ready")
+            # Parsed here so environment values never leave this process.
+            emit("inspect", value=ContainerRuntime.from_docker(raw).model_dump(mode="json"))
         elif request["command"] == "logs":
             container = container_name(request["container"])
             info = bounded_json(api, f"/containers/{container}/json")
@@ -200,8 +208,11 @@ def run(settings: Settings, request: dict) -> None:
             client.close()
 
 
+_SERVED_COMMANDS = {"containers", "stats", "inspect"}
+
+
 def serve(settings: Settings, requests=sys.stdin) -> None:
-    """Answer inventory and stats requests, one JSON line each, until stdin closes.
+    """Answer inventory, stats and inspect requests, one JSON line each, until stdin closes.
 
     Every request ends with a ``done`` record so the parent can reuse this
     process instead of paying the Python and Docker SDK import per refresh.
@@ -211,7 +222,7 @@ def serve(settings: Settings, requests=sys.stdin) -> None:
             request = json.loads(line)
         except ValueError:
             request = None
-        if isinstance(request, dict) and request.get("command") in {"containers", "stats"}:
+        if isinstance(request, dict) and request.get("command") in _SERVED_COMMANDS:
             run(settings, request)
         else:
             emit("error", message="Unsupported Docker operation.", retryable=False)

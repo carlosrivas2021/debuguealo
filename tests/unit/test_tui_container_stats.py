@@ -107,3 +107,67 @@ async def test_missing_stats_support_and_docker_errors_show_dashes(docker_type):
         await settle(pilot)
         assert "CPU: —" in status(app) and "Memory: —" in status(app)
         assert "running" in status(app)
+
+
+class RuntimeFleet(StatsFleet):
+    def __init__(self):
+        super().__init__()
+        self.inspected = []
+
+    async def container_runtime(self, container):
+        from debugpilot.core.models import ContainerRuntime, MountInfo
+
+        self.inspected.append(container)
+        if container == "shop-db":
+            return ContainerRuntime(exit_code=137, oom_killed=True, restart_policy="no")
+        return ContainerRuntime(
+            health="unhealthy", health_output="curl: (7) Failed to connect",
+            restart_policy="unless-stopped", restart_count=2,
+            mounts=(MountInfo(type="bind", source="/home/me/app", destination="/app"),
+                    MountInfo(type="volume", source="pgdata", destination="/data",
+                              read_only=True)),
+            env_names=("PATH", "DATABASE_PASSWORD"),
+        )
+
+
+def runtime_card(app):
+    details = app.query_one(ContainerDetails)
+    return next(str(card.render()) for card in details.cards() if card.border_title == "Runtime")
+
+
+async def test_runtime_card_shows_health_restarts_mounts_and_env_names():
+    docker = RuntimeFleet()
+    app = start(docker)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await until(pilot, lambda: ready(app))
+        select_key(app, "container:shop-web")
+        await until(pilot, lambda: "unhealthy" in runtime_card(app))
+        card = runtime_card(app)
+        assert "Health: unhealthy · curl: (7) Failed to connect" in card
+        assert "Restart: unless-stopped · 2 restarts" in card
+        assert "bind /home/me/app → /app" in card
+        assert "volume pgdata → /data (read-only)" in card
+        assert "Env: 2 variables, values hidden · PATH, DATABASE_PASSWORD" in card
+        assert "Exit code" not in card
+        app.query_one("#show-all", Checkbox).value = True
+        table = app.query_one("#launch-profiles", DataTable)
+        await until(pilot, lambda: any(row.key.value == "stopped:container:shop-db"
+                                       for row in table.ordered_rows))
+        select_key(app, "stopped:container:shop-db")
+        # A stopped container is inspected too: its exit code explains why it stopped.
+        await until(pilot, lambda: "Exit code: 137 (OOM killed)" in runtime_card(app))
+        card = runtime_card(app)
+        assert "Health: —" in card and "Restart: no" in card
+        assert "Mounts: None" in card and "Env: None" in card
+        assert "shop-db" in docker.inspected and "shop-db" not in docker.samples
+
+
+async def test_runtime_card_shows_dashes_without_inspect_support():
+    docker = Fleet()
+    app = start(docker)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await until(pilot, lambda: ready(app))
+        select_key(app, "container:shop-web")
+        await settle(pilot)
+        card = runtime_card(app)
+        assert "Health: —" in card and "Restart: —" in card

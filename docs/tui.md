@@ -108,7 +108,8 @@ silently included.
 
 Selecting a container shows four detail cards built from the inventory: **Status**
 (state, Docker uptime, creation date, CPU, memory), **Image** (name, image, short ID),
-**Network** (published ports) and **Compose** (project, service, project folder). Selecting a
+**Network** (published ports) and **Compose** (project, service, project folder), plus a
+wide **Runtime** card described below. Selecting a
 project or saved profile shows an overview table of every project container, stopped
 ones included, with state, uptime, ports and image. Neither view opens a log stream.
 
@@ -120,6 +121,21 @@ it is computed between two samples; 100% means one full CPU, as in `docker stats
 Memory excludes reclaimable page cache, also like `docker stats`, and shows the limit
 when Docker reports one. Sampling stops when you select another row, open the logs or
 quit; stopped containers and project overviews are never sampled.
+
+The **Runtime** card comes from one `docker inspect` of the selected container per refresh
+interval, through the same worker, stopped containers included:
+
+- **Health**: the health check status and the first line of its latest output, for example
+  `unhealthy · curl: (7) Failed to connect`, or `—` without a health check.
+- **Restart**: the restart policy, such as `unless-stopped` or `on-failure:5`, and how many
+  times Docker restarted the container.
+- **Exit code**: only for a container that is not running, with `(OOM killed)` when the
+  kernel stopped it for using too much memory.
+- **Mounts**: one line per mount, such as `bind /home/me/app → /app` or
+  `volume pgdata → /data (read-only)`, up to 64.
+- **Env**: how many variables the container has and their **names only**, up to 256. Values
+  are dropped inside the Docker worker process, before anything reaches the dashboard, so a
+  secret in an environment variable is never shown.
 
 **Ctrl+Left** and **Ctrl+Right** move focus between the list and the view on the right that
 can take it: the open logs or a project's overview table. They wrap around, and do nothing

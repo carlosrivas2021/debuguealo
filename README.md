@@ -45,7 +45,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 
 | | Feature | In short |
 |---|---|---|
-| 🐳 | **Containers** | Running and stopped containers grouped by Compose project, with live CPU and memory, and historical and live logs that reconnect when containers change. |
+| 🐳 | **Containers** | Running and stopped containers grouped by Compose project, with live CPU and memory, health, restart policy, mounts and exit codes, and historical and live logs that reconnect when containers change. |
 | 🚀 | **Launch profiles** | Save your Compose setups once in a central `launch.json`, then run **Play / Recreate** or **Build + Recreate** with an inline confirmation. |
 | 🐞 | **Debugging** | Breakpoints, conditional breakpoints, hit counts, logpoints, watch expressions, stepping and stack/variable inspection for **Python**, **Go** and server-side **Node**. |
 | 🔌 | **Attach** | Connect to an existing loopback `debugpy`, Delve or Node Inspector target, for example inside a container, without taking over its lifecycle. |

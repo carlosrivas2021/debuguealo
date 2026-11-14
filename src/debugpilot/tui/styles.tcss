@@ -74,6 +74,7 @@ Button:disabled { color: #697279; background: #101417; }
 .detail-card.state-running { border: round #3f7d4f; }
 .detail-card.state-exited { border: round #8a4b4b; }
 .detail-card.state-paused { border: round #8a7a3f; }
+.detail-card.wide { column-span: 2; }
 #project-overview { display: none; height: 1fr; padding: 0 1; }
 #project-overview-title { height: 1; color: #a9c2cc; margin-bottom: 1; }
 #project-overview-table { height: 1fr; }
