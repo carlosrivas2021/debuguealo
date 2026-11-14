@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2](https://github.com/carlosrivas2021/debuguealo/compare/v0.5.1...v0.5.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **code:** clean debug output on Windows (empty lines, hidden prompts) ([9fb7203](https://github.com/carlosrivas2021/debuguealo/commit/9fb7203f14d6f45a896a3015bb0ed7d92b35f21c))
+* **code:** show Node prompts that wait without a newline ([ddd8e3f](https://github.com/carlosrivas2021/debuguealo/commit/ddd8e3f6748da0f5b7b83a3da44d520caeb423e7))
+* **code:** stop empty debug output lines after each print ([815d6d2](https://github.com/carlosrivas2021/debuguealo/commit/815d6d2a1c1e7aa490f9d1613d89de55fa739f5a))
+
 ## [0.5.1](https://github.com/carlosrivas2021/debuguealo/compare/v0.5.0...v0.5.1) (2026-11-14)
 
 
