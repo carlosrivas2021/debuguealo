@@ -59,6 +59,23 @@ def _watch_value(value):
     return value if len(value) <= MAX_WATCH_VALUE else value[:MAX_WATCH_VALUE - 1] + '…'
 
 
+class OutputLines:
+    """Turns a debugged program's output chunks into debug output lines.
+
+    print('text') can arrive as 'text' and then a lone newline (debugpy on Windows); that
+    newline ends the open line rather than adding an empty one.
+    """
+
+    def __init__(self):
+        self._open = {}
+
+    def accept(self, category, text):
+        """Whether this chunk becomes a line of its own."""
+        joined = self._open.get(category, False) and text in {'\n', '\r\n'}
+        self._open[category] = not text.endswith('\n')
+        return not joined
+
+
 class ProgramInput(Input):
     """One line of input for the debugged program; Ctrl+D ends its input."""
 
@@ -496,8 +513,10 @@ class CodeDebug(Vertical):
                 if self._current(context, generation):
                     self.call_later(self._event, context, generation, message)
 
+            lines = OutputLines()
+
             def output(category, text):
-                if self._current(context, generation):
+                if lines.accept(category, text) and self._current(context, generation):
                     self.call_later(
                         self._deliver_output, context, generation,
                         f'[{profile.name} · {category}] {text.rstrip()}',
