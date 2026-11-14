@@ -129,6 +129,39 @@ def _pretty_json_tokens(tokens: list[str]) -> str:
     return "".join(output) + "\n"
 
 
+def format_launch_text(text: str) -> str:
+    """Validate launch.json text and return it formatted, keeping key order and spelling.
+
+    Errors name only the line and column, never the content.
+    """
+    try:
+        json.loads(
+            text,
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_nonstandard_number,
+        )
+    except _DuplicateObjectKey:
+        raise ConfigurationError(
+            "Invalid JSON in launch.json at line 1, column 1 (duplicate object key)."
+        ) from None
+    except _NonstandardNumber as error:
+        for token, position in _iter_json_tokens(text):
+            if token.startswith(error.token):
+                line = text.count("\n", 0, position) + 1
+                column = position - text.rfind("\n", 0, position)
+                break
+        else:
+            line, column = 1, 1
+        raise ConfigurationError(
+            f"Invalid JSON in launch.json at line {line}, column {column}."
+        ) from None
+    except json.JSONDecodeError as error:
+        raise ConfigurationError(
+            f"Invalid JSON in launch.json at line {error.lineno}, column {error.colno}."
+        ) from None
+    return _pretty_json_tokens(_json_tokens(text))
+
+
 def _format_launch_json(target: Path) -> None:
     """Format valid editor output after checking for concurrent newer saves."""
     try:
@@ -149,33 +182,7 @@ def _format_launch_json(target: Path) -> None:
                 f"Invalid JSON in launch.json at line {line}, column {column}."
             ) from None
 
-        try:
-            json.loads(
-                text,
-                object_pairs_hook=_unique_object,
-                parse_constant=_reject_nonstandard_number,
-            )
-        except _DuplicateObjectKey:
-            raise ConfigurationError(
-                "Invalid JSON in launch.json at line 1, column 1 (duplicate object key)."
-            ) from None
-        except _NonstandardNumber as error:
-            for token, position in _iter_json_tokens(text):
-                if token.startswith(error.token):
-                    line = text.count("\n", 0, position) + 1
-                    column = position - text.rfind("\n", 0, position)
-                    break
-            else:
-                line, column = 1, 1
-            raise ConfigurationError(
-                f"Invalid JSON in launch.json at line {line}, column {column}."
-            ) from None
-        except json.JSONDecodeError as error:
-            raise ConfigurationError(
-                f"Invalid JSON in launch.json at line {error.lineno}, column {error.colno}."
-            ) from None
-
-        formatted = _pretty_json_tokens(_json_tokens(text)).encode("utf-8")
+        formatted = format_launch_text(text).encode("utf-8")
         if len(formatted) > MAX_LAUNCH_BYTES:
             raise ConfigurationError(
                 "Formatted launch.json exceeds the 256 KiB limit; "
