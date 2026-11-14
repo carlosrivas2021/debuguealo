@@ -17,6 +17,8 @@ from debugpilot.terminal import TerminalSession
 SCREEN_ROWS = 200
 SCREEN_COLUMNS = 500
 MAX_FEED_CHARS = 64 * 1024
+# Distinct cell styles kept between renders; a screen rarely uses more than a few dozen.
+MAX_CACHED_STYLES = 1024
 
 
 def resize_screen(screen: pyte.Screen, lines: int, columns: int) -> None:
@@ -66,6 +68,7 @@ class TerminalPane(Widget):
         # Textual owns MessagePump._closed; session state must not stop its event loop.
         self._session_closed = True
         self._generation = 0
+        self._styles: dict[tuple, Style] = {}
 
     @property
     def active(self) -> bool:
@@ -158,25 +161,45 @@ class TerminalPane(Widget):
         }
         return names.get(value, value if value.isdigit() else None)
 
+    def _style(self, key: tuple) -> Style:
+        style = self._styles.get(key)
+        if style is None:
+            fg, bg, bold, italic, underline, strike, reverse = key
+            style = Style(
+                color=self._terminal_color(fg), bgcolor=self._terminal_color(bg),
+                bold=bold, italic=italic, underline=underline, strike=strike, reverse=reverse,
+            )
+            if len(self._styles) >= MAX_CACHED_STYLES:
+                self._styles.clear()
+            self._styles[key] = style
+        return style
+
     def render(self) -> Text:
+        # Selecting text re-renders on every mouse move, so this must stay cheap: append
+        # each run of equally styled cells once, with a cached Style, not one per cell.
         rows, columns = self._screen_size()
         output = Text(no_wrap=True, overflow="crop")
         cursor = self._screen.cursor
+        cursor_y = None if cursor.hidden else cursor.y
         for y in range(rows):
             if y:
                 output.append("\n")
+            line = self._screen.buffer[y]
+            run: list[str] = []
+            run_key = None
             for x in range(columns):
-                cell = self._screen.buffer[y][x]
-                style = Style(
-                    color=self._terminal_color(cell.fg),
-                    bgcolor=self._terminal_color(cell.bg),
-                    bold=cell.bold,
-                    italic=cell.italics,
-                    underline=cell.underscore,
-                    strike=cell.strikethrough,
-                    reverse=cell.reverse or (not cursor.hidden and cursor.x == x and cursor.y == y),
+                cell = line[x]
+                key = (
+                    cell.fg, cell.bg, cell.bold, cell.italics, cell.underscore,
+                    cell.strikethrough, cell.reverse or (y == cursor_y and x == cursor.x),
                 )
-                output.append(cell.data, style=style)
+                if key != run_key:
+                    if run:
+                        output.append("".join(run), style=self._style(run_key))
+                    run, run_key = [], key
+                run.append(cell.data)
+            if run:
+                output.append("".join(run), style=self._style(run_key))
         return output
 
     def on_resize(self) -> None:

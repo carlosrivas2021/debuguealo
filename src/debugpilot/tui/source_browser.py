@@ -11,7 +11,7 @@ from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.events import Click
+from textual.events import Click, MouseUp
 from textual.message import Message
 from textual.strip import Strip
 from textual.widgets import Button, Static, TextArea, Tree
@@ -121,6 +121,13 @@ class SourceText(TextArea):
             Strip([Segment(mark, style)], 1),
             strip.crop(column + 1),
         ])
+
+    def on_mouse_up(self, event: MouseUp) -> None:
+        # TextArea keeps its own selection, which the screen's copy-on-select never sees.
+        if event.button == 1 and self.selected_text:
+            copy_selection = getattr(self.app, "copy_selection", None)
+            if copy_selection is not None:
+                copy_selection(self.selected_text)
 
     def on_click(self, event: Click):
         offset = event.get_content_offset(self)
