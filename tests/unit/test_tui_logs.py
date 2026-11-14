@@ -210,3 +210,55 @@ async def test_typing_w_in_the_filter_and_search_fields_types_it():
             assert field.value == "w"
             field.value = ""
         assert not viewer.wrap
+
+
+def _status(viewer):
+    return str(viewer.query_one(".log-status").render())
+
+
+async def test_search_shows_which_match_is_selected_out_of_how_many():
+    app = WideLogApp()
+    async with app.run_test(size=(120, 30)) as pilot:
+        viewer, table = await _filled(pilot, app, ["boom a", "fine", "BOOM b", "boom c"])
+        viewer.query_one("#search-logs", Input).value = "boom"
+        await pilot.pause()
+        assert table.cursor_row == 0
+        assert "Match 1/3" in _status(viewer)
+        table.focus()
+        await pilot.press("n")
+        assert table.cursor_row == 2 and "Match 2/3" in _status(viewer)
+        await pilot.press("up")
+        assert table.cursor_row == 1 and "3 matches" in _status(viewer)
+        viewer.query_one("#search-logs", Input).value = "nothing"
+        await pilot.pause()
+        assert "No matches" in _status(viewer)
+        viewer.query_one("#search-logs", Input).value = ""
+        await pilot.pause()
+        assert "atch" not in _status(viewer)
+        assert "4 shown / 4 retained" in _status(viewer)
+
+
+async def test_shift_n_jumps_to_the_previous_match_and_wraps():
+    app = WideLogApp()
+    async with app.run_test(size=(120, 30)) as pilot:
+        viewer, table = await _filled(pilot, app, ["boom a", "fine", "boom b", "boom c"])
+        viewer.query_one("#search-logs", Input).value = "boom"
+        await pilot.pause()
+        table.focus()
+        await pilot.press("N")
+        assert table.cursor_row == 3 and "Match 3/3" in _status(viewer)
+        await pilot.press("N")
+        assert table.cursor_row == 2 and "Match 2/3" in _status(viewer)
+        await pilot.press("n")
+        assert table.cursor_row == 3
+        assert not viewer.auto_scroll
+
+
+async def test_typing_capital_n_in_the_search_field_types_it():
+    app = WideLogApp()
+    async with app.run_test(size=(100, 30)) as pilot:
+        viewer, table = await _filled(pilot, app, ["Nope", "Nope"])
+        field = viewer.query_one("#search-logs", Input)
+        field.focus()
+        await pilot.press("N")
+        assert field.value == "N" and table.cursor_row == 0

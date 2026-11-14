@@ -114,6 +114,7 @@ class LogViewer(Vertical):
         Binding("w", "toggle_wrap", "Wrap lines"),
         Binding("ctrl+f", "search", "Search"),
         Binding("n", "next_match", "Next match", show=False),
+        Binding("N", "previous_match", "Previous match", show=False),
     ]
 
     def __init__(self, *, max_entries: int = 2000, max_bytes: int = 2 * 1024 * 1024):
@@ -206,11 +207,39 @@ class LogViewer(Vertical):
             )
             if not self.auto_scroll:
                 table.scroll_to(y=scroll_y, animate=False)
-        self.query_one(".log-status", Static).update(
-            f"{len(self.visible_entries)} shown / {len(self.buffer.entries())} retained"
-            " · Copy uses terminal clipboard support"
-        )
         self._dirty = False
+        self._update_status()
+
+    def _search_query(self) -> str:
+        return self.query_one("#search-logs", Input).value.casefold()
+
+    def _match_rows(self) -> list[int]:
+        query = self._search_query()
+        if not query:
+            return []
+        return [
+            row for row, entry in enumerate(self.visible_entries) if query in entry.text.casefold()
+        ]
+
+    def _update_status(self) -> None:
+        status = f"{len(self.visible_entries)} shown / {len(self.buffer.entries())} retained"
+        if self._search_query():
+            matches = self._match_rows()
+            row = self.query_one(DataTable).cursor_row
+            if not matches:
+                status += " · No matches"
+            elif row in matches:
+                status += f" · Match {matches.index(row) + 1}/{len(matches)}"
+            else:
+                status += f" · {len(matches)} match{'' if len(matches) == 1 else 'es'}"
+        self.query_one(".log-status", Static).update(
+            f"{status} · Copy uses terminal clipboard support"
+        )
+
+    @on(DataTable.RowHighlighted, "#log-entries")
+    def row_highlighted(self) -> None:
+        if not self.paused:
+            self._update_status()
 
     @on(Input.Changed, "#filter-logs")
     @on(Select.Changed, "#severity-logs")
@@ -232,18 +261,25 @@ class LogViewer(Vertical):
         self.query_one("#search-logs", Input).focus()
 
     def action_next_match(self, start: int | None = None) -> None:
-        query = self.query_one("#search-logs", Input).value.casefold()
-        if not query or not self.visible_entries:
+        matches = self._match_rows()
+        if not matches:
             return
-        table = self.query_one(DataTable)
-        start = table.cursor_row + 1 if start is None else start
-        for offset in range(len(self.visible_entries)):
-            row = (start + offset) % len(self.visible_entries)
-            if query in self.visible_entries[row].text.casefold():
-                self.auto_scroll = False
-                self.query_one("#follow-logs", Button).label = "Auto: off"
-                table.move_cursor(row=row)
-                break
+        current = self.query_one(DataTable).cursor_row
+        start = current + 1 if start is None else start
+        self._jump_to(next((row for row in matches if row >= start), matches[0]))
+
+    def action_previous_match(self) -> None:
+        matches = self._match_rows()
+        if not matches:
+            return
+        current = self.query_one(DataTable).cursor_row
+        self._jump_to(next((row for row in reversed(matches) if row < current), matches[-1]))
+
+    def _jump_to(self, row: int) -> None:
+        self.auto_scroll = False
+        self.query_one("#follow-logs", Button).label = "Auto: off"
+        self.query_one(DataTable).move_cursor(row=row)
+        self._update_status()
 
     @on(Button.Pressed, "#pause-logs")
     def action_toggle_pause(self) -> None:
