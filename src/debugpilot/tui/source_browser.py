@@ -1,5 +1,6 @@
 """Read-only project source, requested breakpoints and separate adapter feedback."""
 
+import os
 from itertools import islice
 from pathlib import Path
 from stat import S_ISREG
@@ -192,6 +193,10 @@ class SourceBrowser(Vertical):
             self._options = {}
             self._persistence_error = str(error)
         self._loaded = set()
+        # Folders shown in the tree, and the root as stored keys spell it, so moving
+        # between profiles never asks the disk about each file.
+        self._directories: set[Path] = set()
+        self._resolved_root: Path | None = None
         self._file_node = None
         self._verification = {}
 
@@ -223,6 +228,11 @@ class SourceBrowser(Vertical):
             return
         self.root_path = root
         self._loaded.clear()
+        self._directories = {root} if root is not None else set()
+        try:
+            self._resolved_root = root.resolve() if root is not None else None
+        except (OSError, RuntimeError):
+            self._resolved_root = root
         self._clear_source()
         tree = self.query_one(Tree)
         tree.clear()
@@ -262,17 +272,27 @@ class SourceBrowser(Vertical):
         try:
             # Do not follow symbolic links outside the selected project (or into loops).
             self._safe_path(path)
-            entries = list(islice(path.iterdir(), 2001))
+            # scandir reports each entry's type with the listing (no extra call per entry
+            # on Windows), and the entries are never followed through links.
+            with os.scandir(path) as listing:
+                entries = list(islice(listing, 2001))
             if len(entries) > 2000:
                 self.query_one("#source-status", Static).update(
                     "Directory preview limited to 2000 entries."
                 )
-            entries = sorted(entries[:2000], key=lambda p: (not p.is_dir(), p.name.casefold()))
-            for entry in entries:
+            kinds = []
+            for entry in entries[:2000]:
                 if entry.is_symlink() or entry.is_junction():
                     continue
-                child = node.add(Text(entry.name), (entry, None), allow_expand=entry.is_dir())
-                if entry.is_file():
+                kinds.append((entry, entry.is_dir(follow_symlinks=False)))
+            kinds.sort(key=lambda kind: (not kind[1], kind[0].name.casefold()))
+            marked = self._root_has_marks()
+            for entry, is_dir in kinds:
+                child_path = path / entry.name
+                child = node.add(Text(entry.name), (child_path, None), allow_expand=is_dir)
+                if is_dir:
+                    self._directories.add(child_path)
+                elif marked and entry.is_file(follow_symlinks=False):
                     self._show_marks(child)
         except (OSError, ValueError, RuntimeError) as error:
             self._set_status(f"Unable to list {path}: {error}")
@@ -393,10 +413,13 @@ class SourceBrowser(Vertical):
                     state += f" → Line {actual}"
                 self._verification[(root, Path(path).resolve(), line)] = state
         if self.root_path == root and self.query(Tree):
+            marked = self._root_has_marks()
+
             def refresh_node(node):
                 path, line = node.data
-                if line is None and path is not None and not path.is_dir():
-                    self._show_marks(node)
+                if line is None and path is not None and path not in self._directories:
+                    if marked or node.children:
+                        self._show_marks(node)
                 else:
                     for child in list(node.children):
                         refresh_node(child)
@@ -405,16 +428,36 @@ class SourceBrowser(Vertical):
     def breakpoints(self, root: Path, path: Path) -> tuple[int, ...]:
         return tuple(sorted(self._marks.get((root.resolve(), path.resolve()), set())))
 
+    def _root_has_marks(self) -> bool:
+        """Whether any file of the shown project has a breakpoint (usually none)."""
+        return any(lines and owner == self._resolved_root
+                   for (owner, _), lines in self._marks.items())
+
+    def _tree_key(self, path: Path) -> tuple[Path, Path]:
+        """The stored (root, file) key of a tree path, without asking the disk.
+
+        Tree paths have no links (the listing skips them and the root is checked), so
+        the resolved root plus the relative path is what resolving the file would give.
+        """
+        try:
+            return self._resolved_root, self._resolved_root / path.relative_to(self.root_path)
+        except (TypeError, ValueError):
+            return self.root_path.resolve(), path.resolve()
+
     def _show_marks(self, node):
         if node is None:
             return
         path, _ = node.data
+        root, key = self._tree_key(path)
+        marks = tuple(sorted(self._marks.get((root, key), ())))
+        if not marks and not node.children:
+            node.allow_expand = False  # Most files: nothing to show or remove.
+            return
         node.remove_children()
-        marks = self.breakpoints(self.root_path, path)
-        options = self.breakpoint_options(self.root_path, path)
+        options = self._options.get((root, key), {})
         node.allow_expand = bool(marks)
         for line in marks:
-            state = self._verification.get((self.root_path, path.resolve(), line), "pending")
+            state = self._verification.get((self.root_path, key, line), "pending")
             option = options.get(line)
             detail = ""
             if option is not None and option.condition:
