@@ -22,6 +22,7 @@ from debugpilot.storage.git_head import current_branch
 from debugpilot.tui.branch_picker import BranchPicker
 from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
+from debugpilot.tui.list_filter import ListFilter, matches
 from debugpilot.tui.pane_splitter import PaneSplitter
 from debugpilot.tui.source_browser import SourceBrowser
 from debugpilot.tui.terminal_view import TerminalPane
@@ -66,6 +67,7 @@ class CodeWorkspace(Vertical):
         Binding("r", "reload_profiles", "Reload"),
         # Go to the live program's input: Program input while debugging, else its terminal.
         Binding("p", "focus_prompt", "Prompt"),
+        Binding("slash", "filter_profiles", "Filter"),
         # Move the boundary between profiles and files, like dragging the splitter.
         Binding("alt+up", "resize_profiles(-1)", show=False),
         Binding("alt+down", "resize_profiles(1)", show=False),
@@ -111,6 +113,7 @@ class CodeWorkspace(Vertical):
                 id="code-title-row", classes="pane-title",
             ),
             Static("", id="code-status", markup=False),
+            ListFilter("#code-projects", id="code-filter"),
             DataTable(id="code-projects", cursor_type="row", zebra_stripes=True,
                       show_header=False),
             PaneSplitter(id="code-profiles-splitter"),
@@ -160,6 +163,7 @@ class CodeWorkspace(Vertical):
             selected = table.ordered_rows[table.cursor_row].key.value
         table.clear()
         self._profiles = {}
+        query = self.query_one("#code-filter", ListFilter).value
         try:
             profiles = self.store.profiles()
             live = {
@@ -174,9 +178,10 @@ class CodeWorkspace(Vertical):
             profiles = [live.pop(profile.name, profile) for profile in profiles]
             profiles.extend(live.values())
             self._profiles = {profile.name: profile for profile in profiles}
-            for profile in profiles:
+            shown = [profile for profile in profiles if matches(query, profile.name)]
+            for profile in shown:
                 table.add_row(self._profile_label(profile), key=profile.name)
-            keys = [profile.name for profile in profiles]
+            keys = [profile.name for profile in shown]
             if selected in keys:
                 table.move_cursor(row=keys.index(selected))
             # The count lives in the title; the status line only explains problems.
@@ -197,13 +202,16 @@ class CodeWorkspace(Vertical):
             }
             self._profiles = live
             for profile in live.values():
-                table.add_row(self._profile_label(profile), key=profile.name)
+                if matches(query, profile.name):
+                    table.add_row(self._profile_label(profile), key=profile.name)
             message = str(error)
         status = self.query_one("#code-status", Static)
         status.update(message)
         status.display = bool(message)
+        total = len(self._profiles)
+        # While filtering, the title shows how many of all the profiles match.
         self.query_one("#code-count", Static).update(
-            str(len(self._profiles)) if self._profiles else ""
+            f"{table.row_count}/{total}" if query and total else str(total) if total else ""
         )
         self.select_source_project()
 
@@ -533,6 +541,7 @@ class CodeWorkspace(Vertical):
     def check_action(self, action, parameters):
         if action in {
             "stop_run", "resize_profiles", "reload_profiles", "restart_run", "focus_prompt",
+            "filter_profiles",
         }:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
@@ -556,6 +565,13 @@ class CodeWorkspace(Vertical):
             ):
                 return False
         return True
+
+    def action_filter_profiles(self) -> None:
+        self.query_one("#code-filter", ListFilter).open()
+
+    @on(Input.Changed, "#code-filter")
+    def _filter_changed(self) -> None:
+        self.reload_profiles()
 
     def _prompt_target(self):
         """Where the live program reads its input, or None."""
