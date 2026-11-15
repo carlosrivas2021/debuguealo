@@ -26,3 +26,13 @@ async def test_a_line_split_across_chunks_is_still_one_line():
     await asyncio.sleep(0.3)
     assert session._url == 'ws://127.0.0.1:9229/0f0e0d0c-0b0a-4908-8706-050403020100'
     assert output == []
+
+
+async def test_a_line_of_only_cursor_moves_adds_nothing():
+    # ConPTY ends a program with cursor moves such as '\x1b[6;1H\r\n'; an empty line the
+    # program prints still shows.
+    session, output = recording()
+    session._output('hello Ana\r\n\x1b[6;1H\r\n')
+    session._output('\r\n')
+    await asyncio.sleep(0.3)
+    assert output == [('stdout', 'hello Ana\n'), ('stdout', '\n')]

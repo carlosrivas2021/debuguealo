@@ -64,6 +64,8 @@ class CodeWorkspace(Vertical):
         # restarts like VS Code's Restart; otherwise R rereads launch.json.
         Binding("r", "restart_run", "Restart"),
         Binding("r", "reload_profiles", "Reload"),
+        # Go to the live program's input: Program input while debugging, else its terminal.
+        Binding("p", "focus_prompt", "Prompt"),
         # Move the boundary between profiles and files, like dragging the splitter.
         Binding("alt+up", "resize_profiles(-1)", show=False),
         Binding("alt+down", "resize_profiles(1)", show=False),
@@ -529,7 +531,9 @@ class CodeWorkspace(Vertical):
         self._sync_controls()
 
     def check_action(self, action, parameters):
-        if action in {"stop_run", "resize_profiles", "reload_profiles", "restart_run"}:
+        if action in {
+            "stop_run", "resize_profiles", "reload_profiles", "restart_run", "focus_prompt",
+        }:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
             if isinstance(focused, Input) or (
@@ -542,6 +546,8 @@ class CodeWorkspace(Vertical):
             live = profile is not None and self._profile_status(profile) is not None
             if (action == "restart_run") != live:
                 return False
+        if action == "focus_prompt" and self._prompt_target() is None:
+            return False
         if action == "focus_pane":
             focused = self.app.focused
             # Text fields and live terminals keep Ctrl/Alt+arrows for themselves.
@@ -550,6 +556,19 @@ class CodeWorkspace(Vertical):
             ):
                 return False
         return True
+
+    def _prompt_target(self):
+        """Where the live program reads its input, or None."""
+        if self._debug.display and self._debug.input.display:
+            return self._debug.input
+        if self._pane.display and self._pane.active:
+            return self._pane
+        return None
+
+    def action_focus_prompt(self) -> None:
+        target = self._prompt_target()
+        if target is not None:
+            target.focus()
 
     def action_focus_pane(self, step: int) -> None:
         panes = [pane for selector in PANES for pane in self.query(selector)

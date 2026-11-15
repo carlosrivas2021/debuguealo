@@ -134,7 +134,9 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         assert not field.display  # Nothing to type into before a debug session.
         await pilot.press('shift+f5')
         await until(pilot, lambda: field.display and 'name?' in output())
-        field.focus()
+        assert not field.has_focus  # Starting never takes the keys away from Code.
+        await pilot.press('p')  # P goes to the program's prompt.
+        await until(pilot, lambda: field.has_focus)
         await pilot.press(*'ana', 'enter')
         await until(pilot, lambda: 'HELLO:ana' in output())
         # The program echoes, so the typed line shows in the output like a terminal.
@@ -142,6 +144,9 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         assert field.value == ''
         await pilot.press('s')  # Typing in the field never triggers Code shortcuts.
         assert field.value == 's'
+        await pilot.press('escape')  # Esc leaves the field, like the Code terminal.
+        await until(pilot, lambda: app.query_one('#code-projects').has_focus)
+        field.focus()
         await pilot.press('backspace', *'end', 'ctrl+d')
         await until(pilot, lambda: 'REST:end' in output())
         await until(pilot, lambda: not field.display)  # The program ended.

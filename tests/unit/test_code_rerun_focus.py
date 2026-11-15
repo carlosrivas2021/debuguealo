@@ -36,3 +36,18 @@ async def test_a_running_focused_pane_still_owns_the_keys(monkeypatch, tmp_path)
         await pilot.pause()
         assert app.check_action("run_code", ()) is False
         await pilot.click("#code-stop")
+
+
+async def test_p_goes_to_the_running_program_terminal(monkeypatch, tmp_path):
+    app = setup_app(monkeypatch, tmp_path, "import time; time.sleep(30)")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.click("#area-code")
+        await pilot.press("f5")
+        pane = app.query_one("#code-terminal")
+        await until(pilot, lambda: pane.active)
+        assert app.focused is not pane  # F5 keeps the focus on the profiles.
+        await pilot.press("p")
+        await until(pilot, lambda: app.focused is pane)
+        await pilot.press("escape")  # Esc gives the keys back to the profiles.
+        await until(pilot, lambda: app.query_one("#code-projects").has_focus)
+        await pilot.click("#code-stop")

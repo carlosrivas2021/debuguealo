@@ -77,9 +77,12 @@ class OutputLines:
 
 
 class ProgramInput(Input):
-    """One line of input for the debugged program; Ctrl+D ends its input."""
+    """One line of input for the debugged program; Ctrl+D ends its input, Esc leaves."""
 
-    BINDINGS = [Binding('ctrl+d', 'end_input', 'End input', show=False)]
+    BINDINGS = [
+        Binding('ctrl+d', 'end_input', 'End input', show=False),
+        Binding('escape', 'leave', 'Leave', show=False),
+    ]
 
     def __init__(self, send, end):
         super().__init__(
@@ -98,6 +101,10 @@ class ProgramInput(Input):
 
     def action_end_input(self) -> None:
         self._end(self.value)
+
+    def action_leave(self) -> None:
+        # Like the Code terminal's Esc: back to the profiles, where pane keys work again.
+        self.screen.query_one('#code-projects').focus()
         self.value = ''
 
 
@@ -403,7 +410,10 @@ class CodeDebug(Vertical):
 
     def sync_input(self):
         """Offer program input only beside a shown, live session that Code launched."""
-        self.input.display = bool(self.output.display and self._input_session()[1])
+        shown = bool(self.output.display and self._input_session()[1])
+        if shown != self.input.display:
+            self.input.display = shown
+            self.refresh_bindings()  # The footer offers P only while there is a prompt.
 
     def _send_input(self, text):
         context, session = self._input_session()

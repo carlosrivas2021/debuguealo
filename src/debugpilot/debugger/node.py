@@ -174,7 +174,10 @@ class NodeDebugSession(PythonDebugSession):
         # ConPTY may split escape sequences; clean only complete lines.
         while '\n' in self._buffer:
             line, self._buffer = self._buffer.split('\n', 1)
-            self._line(_ANSI.sub('', line).replace('\r', ''))
+            text = _ANSI.sub('', line).replace('\r', '')
+            if text or '\x1b' not in line:
+                # A line of only cursor moves (ConPTY's '\x1b[6;1H') is no output.
+                self._line(text)
         if len(self._buffer) > 65536:
             self._line(_ANSI.sub('', self._buffer[:65536]))
             self._buffer = self._buffer[65536:]
