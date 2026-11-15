@@ -110,6 +110,8 @@ class DebugPilotApp(App):
         Binding("a", "refresh_aws_credentials", "AWS creds"),
         Binding("A,shift+a", "edit_aws_files", "Edit AWS files"),
         Binding("ctrl+o", "open_launch_file", "Open launch.json"),
+        # Esc in the list clears a kept filter; otherwise it cancels a Compose preview.
+        Binding("escape", "clear_containers_filter", show=False),
         Binding("escape", "cancel_compose", show=False),
         Binding("f5", "run_code", "Run code"),
         Binding("shift+f5", "debug_code", "Debug"),
@@ -536,6 +538,9 @@ class DebugPilotApp(App):
     def action_filter_containers(self) -> None:
         self.query_one("#containers-filter", ListFilter).open()
 
+    def action_clear_containers_filter(self) -> None:
+        self.query_one("#containers-filter", ListFilter).action_clear_filter()
+
     @on(Input.Changed, "#containers-filter")
     def _containers_filter_changed(self) -> None:
         # Rebuild from the whole inventory: the shown rows are already filtered.
@@ -600,6 +605,13 @@ class DebugPilotApp(App):
                 rows.append(row)
         unfiltered = rows
         rows = filter_rows(rows, query)
+        if query:
+            # Like self._rows, the lookups hold only shown rows, so a hidden selection is
+            # never moved to or selected.
+            shown = {row.key for row in rows}
+            self._launch_rows = {k: v for k, v in self._launch_rows.items() if k in shown}
+            self._launch_child_rows = {
+                k: v for k, v in self._launch_child_rows.items() if k in shown}
         redrawn = self._render_inventory(table, rows)
         selected_row_key = self._selection_key or self._selected_profile_key
         if redrawn and selected_row_key in table.rows:
@@ -882,7 +894,7 @@ class DebugPilotApp(App):
             selected = self._rows.get(f"project:{previous_project}")
         if selected is None and not self._initial_inventory_selection_complete:
             # Auto-select once only; a vanished selection must not jump to unrelated logs.
-            selected = next((row for row in rows if row.container is not None), None)
+            selected = next((row for row in all_rows if row.container is not None), None)
         if selected is None and not self._initial_inventory_selection_complete:
             selected = next(iter(all_rows), None)
         if selected:
@@ -2562,6 +2574,14 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "clear_containers_filter":
+            focused = self.focused
+            return bool(
+                self.is_mounted
+                and self.query_one("#containers-filter", ListFilter).value
+                and focused is not None and focused.id == "launch-profiles"
+                and not self.query_one("#inline-compose").display
+            )
         if self.is_mounted and action != "quit" and self._editor_open():
             # The dashboard is hidden behind the editor; its shortcuts must not act on it.
             return False

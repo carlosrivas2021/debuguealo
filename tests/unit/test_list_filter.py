@@ -1,10 +1,14 @@
 """/ filters the Containers and Code lists, like k9s."""
 
+import pytest
+from launch_ui_helpers import save_remembered_profile
 from test_code_debug_ui import debug_app
-from test_tui_grouping import Docker, item, ready, until
+from test_tui_compose import Service
+from test_tui_grouping import Docker, item, ready, select_key, until
 from textual.widgets import DataTable, Input
 
 from debugpilot.core.engine import DebugPilotEngine
+from debugpilot.docker.compose import ComposeProject
 from debugpilot.storage.config import Settings
 from debugpilot.tui.app import DebugPilotApp
 from debugpilot.tui.container_list import ContainerRow, filter_rows
@@ -79,3 +83,52 @@ async def test_slash_filters_code_profiles(monkeypatch, tmp_path):
         assert "two" in str(app.query_one("#code-run-state").render())  # It is selected.
         await pilot.press("slash", "escape")
         await until(pilot, lambda: keys(app, "#code-projects") == ["one", "two"])
+
+
+@pytest.mark.parametrize("target", ["profile:Orders", "profile-child"])
+async def test_filtering_out_the_selected_launch_profile_row_never_crashes(
+        tmp_path, monkeypatch, target):
+    (tmp_path / "compose.yaml").write_text("services: {}")
+    monkeypatch.setattr("debugpilot.docker.compose.ComposeService", lambda _settings: Service())
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), refresh_interval=0.05)
+    app._remember_compose_project(ComposeProject.create(tmp_path, ("compose.yaml",), "orders"))
+    save_remembered_profile(app, "orders")
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: ready(app))
+        key = next(k for k in keys(app) if k.startswith(target))
+        select_key(app, key)
+        await pilot.pause()
+        await pilot.press("slash", *"catalog")
+        await until(pilot, lambda: keys(app) == [
+            "project:catalog", "container:catalog-api", "container:catalog-worker"])
+        await pilot.pause(0.3)  # Refreshes with the selected row hidden.
+        await pilot.press("escape")
+        await until(pilot, lambda: key in keys(app))
+
+
+async def test_esc_in_the_list_clears_a_kept_filter():
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), refresh_interval=0.05)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: ready(app))
+        everything = keys(app)
+        table = app.query_one("#launch-profiles", DataTable)
+        table.focus()
+        await pilot.press("slash", *"worker", "enter")
+        await until(pilot, lambda: table.has_focus and keys(app) == WORKERS)
+        await pilot.press("escape")
+        await until(pilot, lambda: keys(app) == everything)
+        assert not app.query_one("#containers-filter").display and table.has_focus
+
+
+async def test_esc_in_the_profile_list_clears_a_kept_filter(monkeypatch, tmp_path):
+    app, _roots, _store = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click("#area-code")
+        profiles = app.query_one("#code-projects", DataTable)
+        await until(pilot, lambda: keys(app, "#code-projects") == ["one", "two"])
+        profiles.focus()
+        await pilot.press("slash", "t", "w", "enter")
+        await until(pilot, lambda: profiles.has_focus and keys(app, "#code-projects") == ["two"])
+        await pilot.press("escape")
+        await until(pilot, lambda: keys(app, "#code-projects") == ["one", "two"])
+        assert not app.query_one("#code-filter").display

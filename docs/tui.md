@@ -44,7 +44,8 @@ shortcuts are inactive there. Ctrl+O edits the active area's launch file.
 profiles in Code. The list narrows while you type, ignoring case, and the cursor goes to the first
 match. A matching project keeps all its containers, a matching container keeps its project, and
 collapsed projects open while filtering. **Enter** returns to the list and keeps the filter (inventory
-refreshes keep it too); **/** edits it again and **Esc** clears it. In Code the title shows how many
+refreshes keep it too); **/** edits it again, and **Esc**, in the filter or in the list,
+clears it. In Code the title shows how many
 profiles match, such as `2/5`.
 
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and

@@ -68,6 +68,7 @@ class CodeWorkspace(Vertical):
         # Go to the live program's input: Program input while debugging, else its terminal.
         Binding("p", "focus_prompt", "Prompt"),
         Binding("slash", "filter_profiles", "Filter"),
+        Binding("escape", "clear_profiles_filter", show=False),
         # Move the boundary between profiles and files, like dragging the splitter.
         Binding("alt+up", "resize_profiles(-1)", show=False),
         Binding("alt+down", "resize_profiles(1)", show=False),
@@ -539,6 +540,11 @@ class CodeWorkspace(Vertical):
         self._sync_controls()
 
     def check_action(self, action, parameters):
+        if action == "clear_profiles_filter":
+            # Esc in the profile list clears a kept filter.
+            focused = self.app.focused
+            return bool(self.query_one("#code-filter", ListFilter).value
+                        and focused is not None and focused.id == "code-projects")
         if action in {
             "stop_run", "resize_profiles", "reload_profiles", "restart_run", "focus_prompt",
             "filter_profiles",
@@ -568,6 +574,9 @@ class CodeWorkspace(Vertical):
 
     def action_filter_profiles(self) -> None:
         self.query_one("#code-filter", ListFilter).open()
+
+    def action_clear_profiles_filter(self) -> None:
+        self.query_one("#code-filter", ListFilter).action_clear_filter()
 
     @on(Input.Changed, "#code-filter")
     def _filter_changed(self) -> None:
