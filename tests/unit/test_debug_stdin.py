@@ -77,23 +77,13 @@ async def test_input_lines_and_end_of_input_reach_the_debugged_program(tmp_path,
 
 
 @pytest.mark.skipif(os.name == 'nt', reason='reads the POSIX terminal echo flag')
-async def test_echo_follows_the_program_terminal_mode(tmp_path):
-    (tmp_path / 'main.py').write_text(
-        'import getpass\nname = input("name? ")\nprint("ASKED", flush=True)\n'
-        'secret = getpass.getpass("pw? ")\nprint(f"LEN:{len(secret)}", flush=True)\n')
-    output = []
-    session = PythonDebugSession(on_output=lambda category, chunk: output.append(chunk))
-    try:
-        await session.start(CodeProject('p', tmp_path, ('python3', 'main.py')), {})
-        await output_contains(output, 'name? ')
-        assert session.input_echo() is True
-        session.send_input('ana')
-        await output_contains(output, 'ASKED')
-        await poll(lambda: not session.input_echo(), seconds=10)
-        session.send_input('hunter2')
-        await output_contains(output, 'LEN:7')
-    finally:
-        await session.close()
+@pytest.mark.parametrize('echo,shown', [(True, True), (False, False), (None, False)])
+def test_go_echo_follows_the_terminal_echo_mode(echo, shown):
+    # Delve reports output over DAP, where the terminal's echo never arrives, so the UI
+    # echoes typed lines only while the terminal echoes; unknown (Windows) hides them.
+    session = GoDebugSession()
+    session._adapter = SimpleNamespace(echo_enabled=lambda: echo)
+    assert session.input_echo() is shown
 
 
 async def test_node_never_asks_the_ui_to_echo(tmp_path):
@@ -139,8 +129,9 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         await until(pilot, lambda: field.has_focus)
         await pilot.press(*'ana', 'enter')
         await until(pilot, lambda: 'HELLO:ana' in output())
-        # The program echoes, so the typed line shows in the output like a terminal.
-        assert '[one · input] ana' in output()
+        # The terminal's own echo shows the typed line once, like a terminal.
+        assert output().count('ana') == 2 and '[one · stdout] ana' in output()
+        assert '· input]' not in output()
         assert field.value == ''
         await pilot.press('s')  # Typing in the field never triggers Code shortcuts.
         assert field.value == 's'
@@ -164,9 +155,27 @@ def test_end_of_input_uses_the_windows_console_sequence():
     assert written == ['\x1a\r']
 
 
-def test_unknown_echo_hides_typed_input():
-    # Windows cannot report the terminal's echo mode, and a getpass prompt there must
-    # not end up in the debug output, so unknown hides typed lines.
-    session = PythonDebugSession()
-    session._adapter = SimpleNamespace(echo_enabled=lambda: None)
-    assert session.input_echo() is False
+async def test_python_shows_its_terminal_prompts_and_echo(tmp_path):
+    # getpass writes its prompt to the terminal, not stdout, and turns echo off.
+    (tmp_path / 'main.py').write_text(
+        'import getpass\nname = input("name? ")\nprint(f"HELLO:{name}", flush=True)\n'
+        'secret = getpass.getpass("password? ")\nprint(f"LEN:{len(secret)}", flush=True)\n')
+    output = []
+    session = PythonDebugSession(on_output=lambda category, chunk: output.append(chunk))
+    try:
+        await session.start(CodeProject('python', tmp_path, ('python3', 'main.py')), {})
+        await wait_running(session)
+        await output_contains(output, 'name? ')
+        session.send_input('ana')
+        await output_contains(output, 'HELLO:ana')
+        await output_contains(output, 'password? ')
+        session.send_input('hunter2')
+        await output_contains(output, 'LEN:7')
+        text = ''.join(output)
+        assert 'hunter2' not in text
+        # The terminal's own echo: once, before the program's answer.
+        assert text.count('ana') == 2 and text.index('ana') < text.index('HELLO:ana')
+        assert text.count('HELLO:ana') == 1  # Never twice (once from DAP, once from the PTY).
+        assert session.input_echo() is False
+    finally:
+        await session.close()

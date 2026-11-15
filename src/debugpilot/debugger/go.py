@@ -45,6 +45,9 @@ def _target(profile):
 class GoDebugSession(PythonDebugSession):
     """One Go/Delve session with the same events and inspection API as Python debug."""
 
+    # Delve reports the program's output over DAP; its terminal holds only Delve's own.
+    terminal_output = False
+
     def __init__(self, on_event=None, on_output=None, *, timeout=15):
         super().__init__(on_event, on_output, timeout=timeout)
         self._build_dir = None

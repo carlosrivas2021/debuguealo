@@ -19,6 +19,7 @@ from debugpilot.debugger.python import (
     _line_options,
 )
 from debugpilot.debugger.source_maps import SourceMapIndex
+from debugpilot.debugger.terminal_lines import TerminalLines
 from debugpilot.storage.code_projects import (
     is_npm_command,
     profile_environment,
@@ -33,11 +34,6 @@ _GRAMMAR = (
     'F5 keeps the original command. No run-mode fallback.'
 )
 _TYPESCRIPT = frozenset({'.ts', '.cts', '.mts'})
-_ANSI = re.compile(r'\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]')
-# An escape sequence cut off at the end of a chunk.
-_PARTIAL_ESCAPE = re.compile(r'\x1b(?:\[[0-?]*[ -/]*|\][^\x07]*)?$')
-# Seconds a line without newline waits for the rest before showing (a prompt).
-PARTIAL_LINE_DELAY = 0.1
 # A JavaScript name that can be assigned to, for scopes V8 cannot set directly.
 _IDENTIFIER = re.compile(r'[A-Za-z_$][\w$]*')
 _ENDPOINT = re.compile(r'^Debugger listening on (ws://127\.0\.0\.1:[1-9]\d*/[\da-f-]{36})$')
@@ -178,42 +174,16 @@ class NodeDebugSession(PythonDebugSession):
         # Scope reference -> (call frame, scope number, scope type) for set_variable.
         self._scopes = {}
         self._changed = {}
-        self._buffer = ''
-        self._partial = None
+        self._lines = TerminalLines(self._line, self._partial_output)
         self._disconnect_task = None
         self._exiting = False
         self._source_maps = None
 
     def _output(self, text):
-        self._cancel_partial()
-        self._buffer += text
-        # ConPTY may split escape sequences; clean only complete lines.
-        while '\n' in self._buffer:
-            line, self._buffer = self._buffer.split('\n', 1)
-            text = _ANSI.sub('', line).replace('\r', '')
-            if text or '\x1b' not in line:
-                # A line of only cursor moves (ConPTY's '\x1b[6;1H') is no output.
-                self._line(text)
-        if len(self._buffer) > 65536:
-            self._line(_ANSI.sub('', self._buffer[:65536]))
-            self._buffer = self._buffer[65536:]
-        if self._buffer:
-            # A prompt such as readline's 'name? ' has no newline and waits for input;
-            # show it once no more output follows, as a terminal would.
-            with contextlib.suppress(RuntimeError):
-                self._partial = asyncio.get_running_loop().call_later(
-                    PARTIAL_LINE_DELAY, self._flush_partial)
+        self._lines.feed(text)
 
-    def _cancel_partial(self):
-        if self._partial is not None:
-            self._partial.cancel()
-            self._partial = None
-
-    def _flush_partial(self):
-        self._partial = None
-        text = _ANSI.sub('', _PARTIAL_ESCAPE.sub('', self._buffer)).replace('\r', '')
-        self._buffer = ''
-        if text.strip() and self.on_output:
+    def _partial_output(self, text):
+        if self.on_output:
             self.on_output('stdout', text)
 
     def _line(self, line):
@@ -238,11 +208,7 @@ class NodeDebugSession(PythonDebugSession):
             self.on_output('stdout', line + '\n')
 
     def _process_exit(self):
-        self._cancel_partial()
-        if self._buffer:
-            text, self._buffer = self._buffer, ''
-            if self.on_output:
-                self.on_output('stdout', _ANSI.sub('', text).replace('\r', ''))
+        self._lines.finish()
         if self.state not in {'closing', 'closed'}:
             self.exit_code = self._adapter.exit_code
             self._emit({'event': 'exited', 'body': {'exitCode': self.exit_code}})
@@ -305,7 +271,7 @@ class NodeDebugSession(PythonDebugSession):
         self._url = None
         self._initial = True
         self._scripts = {}
-        self._buffer = ''
+        self._lines.reset()
         self._exiting = False
         self._disconnect_task = None
         self._starting = asyncio.current_task()

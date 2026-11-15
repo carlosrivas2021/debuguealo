@@ -9,6 +9,7 @@ from pathlib import Path
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger.dap import DAPClient, DebugError
+from debugpilot.debugger.terminal_lines import TerminalLines
 from debugpilot.storage.breakpoints import BreakpointOptions
 from debugpilot.storage.code_projects import CodeProject, profile_environment, profile_variables
 from debugpilot.terminal.code_session import CodeSession, command_argv
@@ -134,6 +135,7 @@ class PythonDebugSession:
         self._diagnostic = ''
         # Scope reference -> its frame during a pause, to check a value before setting it.
         self._scope_frames = {}
+        self._lines = TerminalLines(self._terminal_line, self._terminal_partial)
 
     def _emit(self, message):
         self.events.put_nowait(message)
@@ -171,11 +173,27 @@ class PythonDebugSession:
             if self._cleanup_task is None or self._cleanup_task.done():
                 self._cleanup_task = asyncio.create_task(self._cleanup())
 
+    # The program runs in the adapter's terminal, so its output (prompts written straight
+    # to the terminal, such as getpass's, and the terminal's own echo included) is read
+    # there, once and in order, as in a terminal. Delve reports output over DAP instead.
+    terminal_output = True
+
     def _adapter_output(self, text):
-        # Adapter diagnostics are not target stdout; retain a bounded startup tail.
+        # Keep a bounded tail for startup errors.
         self._diagnostic = (self._diagnostic + text)[-8192:]
+        if self.terminal_output:
+            self._lines.feed(text)
+
+    def _terminal_line(self, line):
+        if self.on_output:
+            self.on_output('stdout', line + '\n')
+
+    def _terminal_partial(self, text):
+        if self.on_output:
+            self.on_output('stdout', text)
 
     def _adapter_exit(self):
+        self._lines.finish()
         if self._client is not None and self.state not in {'closing', 'closed'}:
             self._event({'event': 'adapterExited', 'body': {
                 'message': self._diagnostic, 'exitCode': self._adapter.exit_code,
@@ -198,6 +216,7 @@ class PythonDebugSession:
         self.events = asyncio.Queue()
         self._initialized.clear()
         self._diagnostic = ''
+        self._lines.reset()
         self._starting = asyncio.current_task()
         self._state('starting')
         launch = None
@@ -232,7 +251,7 @@ class PythonDebugSession:
                 launch = asyncio.create_task(self._client.request('launch', {
                     'name': self.profile.name, 'type': 'debugpy', 'request': 'launch',
                     'python': interpreter, 'cwd': str(self.profile.root),
-                    'console': 'internalConsole', 'redirectOutput': True,
+                    'console': 'internalConsole', 'redirectOutput': False,
                     'subProcess': False, 'justMyCode': True,
                     'pythonArgs': ['-u'] if '-u' in profile.command[1:2] else [],
                     **({'env': variables} if variables else {}),
@@ -368,10 +387,12 @@ class PythonDebugSession:
     def input_echo(self):
         """Whether the UI should show typed input: only while the program echoes it.
 
-        Output arrives over DAP, so the terminal's own echo never reaches it; a program
-        that turns echo off (getpass) keeps its input hidden. Unknown (Windows) hides it
-        too, so a password typed there never shows.
+        Terminal output already holds the terminal's own echo, which a program that turns
+        echo off (getpass) keeps hidden. Over DAP the echo never arrives, so it follows the
+        terminal's echo mode; unknown (Windows) hides it, so a password never shows.
         """
+        if self.terminal_output:
+            return False
         if self._adapter is None:
             return True
         return self._adapter.echo_enabled() is True
