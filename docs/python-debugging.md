@@ -88,8 +88,11 @@ link, size and read-only safeguards**, even for adapter stack frames.
 `transportClosed`, and `breakpoints` notifications. Alternatively consume `session.events`,
 an asyncio queue for this run (replaced on start); attach to it after start begins. Drain
 it continuously to avoid retaining an unbounded event history. `on_output(category, text)`
-receives DAP output, with stdout/stderr separate from console/telemetry. Adapter PTY
-startup diagnostics are kept as a bounded tail for errors, not mixed with target stdout.
+receives the program's terminal output as `stdout`: debugpy runs the program in the adapter's
+PTY without redirecting its output, so stdout, stderr, prompts written straight to the terminal
+(such as `getpass`) and the terminal's echo arrive once, in order. DAP `console` output
+(debugpy messages, logpoints) still arrives separately. A bounded tail of the PTY output is kept
+for startup errors.
 Events such as `stopped` can arrive before `start` returns. A `continued` event clears the
 current thread; `exited` records exit status; `terminated` and transport loss schedule
 cleanup. The TUI should clear its own stack/variable/source-location presentation on

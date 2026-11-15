@@ -320,13 +320,12 @@ paused waits until it reads again. Starting never moves the focus: press **P** t
 program run with **F5**). Typing in the field never triggers Code shortcuts; **Esc** leaves it
 for the profile list.
 
-The typed line also shows in the debug output, as `[profile · input] text`, only while the
-program's terminal echoes input, exactly like a terminal: a password prompt that turns echo off
-(Python's `getpass`) keeps what you type hidden. Windows cannot report whether the terminal
-echoes, so there typed lines never show for Python and Go, to keep passwords out of the output.
-Node echoes through its own terminal, so its
-output shows the typed line directly. `getpass` writes its prompt to the terminal rather than to
-standard output, so that prompt does not appear in the debug output; the input still reaches it.
+For Python and Node, the debug output is what the program's terminal shows: prompts written
+straight to the terminal, such as Python's `getpass` prompt, and the terminal's own echo of what
+you type, so a password prompt that turns echo off keeps the password hidden. stdout and stderr
+are merged in order. For Go, Delve reports the output itself, and the typed line shows as
+`[profile · input] text` only while the program's terminal echoes; Windows cannot report that,
+so there typed lines never show for Go, to keep passwords out of the output.
 Attached processes are not owned by Code, so attach sessions have no program input.
 
 ## Change a variable while paused
