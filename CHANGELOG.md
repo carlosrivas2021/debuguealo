@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.5.2...v0.6.0) (2026-11-15)
+
+
+### Features
+
+* **code:** P goes to the program's input, Esc leaves it ([5759bda](https://github.com/carlosrivas2021/debuguealo/commit/5759bdae4a1bca78020a11f0b470ed8de9bfd126))
+* **code:** P goes to the running program's input ([bb563fe](https://github.com/carlosrivas2021/debuguealo/commit/bb563fe362e497f3d979cd7abb09b958b4deec9d))
+* **tui:** filter the Containers and Code lists with / ([b544a3d](https://github.com/carlosrivas2021/debuguealo/commit/b544a3dcf468f7e03d732db180b9ee2943a74730))
+* **tui:** filter the Containers and Code lists with / ([77e6ce9](https://github.com/carlosrivas2021/debuguealo/commit/77e6ce98beea1f9a73dd94d706178484d6545bcb))
+
+
+### Bug Fixes
+
+* **code:** drop Node output lines made only of cursor moves ([57307b8](https://github.com/carlosrivas2021/debuguealo/commit/57307b88a4eeb84c4021e67e1c7a4354579607db))
+* **code:** Esc leaves the Program input field ([24ca5d7](https://github.com/carlosrivas2021/debuguealo/commit/24ca5d7d5829edeedcb5f7b5f1f2d8b40a756cab))
+* **tui:** filter no longer crashes on a hidden profile row; Esc clears it from the list ([42e3004](https://github.com/carlosrivas2021/debuguealo/commit/42e3004ae416683794f107f7cecc09918111aa1c))
+
+
+### Performance Improvements
+
+* **code:** moving between profiles no longer touches the disk per file ([378d180](https://github.com/carlosrivas2021/debuguealo/commit/378d180ba17cb19220e46feabfeebfe3db1dc17f))
+* **code:** moving between profiles no longer touches the disk per file ([4cc3bf6](https://github.com/carlosrivas2021/debuguealo/commit/4cc3bf6e9d00efb37edfc482e13bc71fddd8ce05))
+
 ## [0.5.2](https://github.com/carlosrivas2021/debuguealo/compare/v0.5.1...v0.5.2) (2026-11-14)
 
 
