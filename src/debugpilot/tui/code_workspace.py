@@ -28,7 +28,12 @@ from debugpilot.tui.source_browser import SourceBrowser
 from debugpilot.tui.terminal_view import TerminalPane
 
 # Left to right on screen; Ctrl+Left/Right (or Alt+Left/Right) move between them.
-PANES = ("#code-projects", "#source-tree", "#source-text")
+# The debug panel's tables join while a debug session shows it; its text fields are left
+# out, since they keep Ctrl/Alt+arrows for moving in the text.
+PANES = (
+    "#code-projects", "#source-tree", "#source-text",
+    "#code-stack", "#code-watches", "#code-variables",
+)
 # The profile list keeps room for six profiles until resized; the file tree keeps four rows.
 DEFAULT_PROFILE_ROWS = 6
 MIN_PROFILE_ROWS = 2
@@ -595,9 +600,18 @@ class CodeWorkspace(Vertical):
         if target is not None:
             target.focus()
 
+    def _shown(self, widget) -> bool:
+        """Whether the widget and every container up to this workspace are displayed."""
+        node = widget
+        while node is not None and node is not self:
+            if not node.display:
+                return False
+            node = node.parent
+        return True
+
     def action_focus_pane(self, step: int) -> None:
         panes = [pane for selector in PANES for pane in self.query(selector)
-                 if pane.display and pane.focusable]
+                 if pane.focusable and self._shown(pane)]
         if not panes:
             return
         focused = self.app.focused

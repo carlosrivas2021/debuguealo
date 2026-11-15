@@ -73,3 +73,36 @@ async def test_a_scope_heading_is_not_editable(monkeypatch, tmp_path):
         await pilot.press('enter')
         await pilot.pause(0.2)
         assert not app.query_one('#variable-value').display
+
+
+async def test_alt_arrows_reach_the_debug_panes_while_debugging(monkeypatch, tmp_path):
+    app, _roots, _store = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pause_on_answer(pilot, app)
+        app.query_one('#code-projects').focus()
+        visited = []
+        for _ in range(7):
+            await pilot.press('alt+right')
+            await pilot.pause()
+            visited.append(app.focused.id)
+        assert visited == ['source-tree', 'source-text', 'code-stack', 'code-watches',
+                           'code-variables', 'code-projects', 'source-tree']
+        table = app.query_one('#code-variables')
+        table.focus()
+        row = table.cursor_row
+        await pilot.press('up')  # Arrows move between the variables.
+        await pilot.pause()
+        assert table.cursor_row == row - 1
+
+
+async def test_alt_arrows_skip_the_hidden_debug_panes(monkeypatch, tmp_path):
+    app, _roots, _store = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        app.query_one('#code-projects').focus()
+        visited = []
+        for _ in range(3):
+            await pilot.press('alt+right')
+            await pilot.pause()
+            visited.append(app.focused.id)
+        assert visited == ['source-tree', 'source-text', 'code-projects']
