@@ -149,6 +149,8 @@ class NodeAttachSession(NodeDebugSession):
         self._frames = []
         self._scripts = {}
         self._objects = {}
+        self._scopes = {}
+        self._changed = {}
         self._exiting = False
         self._target_paused = False
         self._transport_lost = False
@@ -268,6 +270,8 @@ class NodeAttachSession(NodeDebugSession):
             await super()._cleanup()
             self._frames = []
             self._objects = {}
+            self._scopes = {}
+            self._changed = {}
             self._target_paused = False
             self._remote_root = None
             self._local_root = None

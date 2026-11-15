@@ -11,6 +11,7 @@ import socket
 import pytest
 from test_code_debug_ui import debug_app, rendered, until
 from test_go_attach_ui import FakeGoAttach
+from test_set_variable import scope_of
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger import DebugError, NodeAttachSession, node_attach
@@ -214,6 +215,10 @@ async def test_real_node_breaks_maps_steps_detaches_and_reattaches(tmp_path):
         assert 'value' in values
         assert await session.evaluate('value + 100', frames[0]['id']) == str(
             int(values['value']) + 100)
+        reference, _ = await scope_of(session, 'value')
+        assert await session.set_variable(reference, 'value', '1234') == '1234'
+        assert (await scope_of(session, 'value'))[1] == '1234'
+        assert await session.evaluate('value', frames[0]['id']) == '1234'
 
         await session.step_over()
         await next_state(session, 'stopped')

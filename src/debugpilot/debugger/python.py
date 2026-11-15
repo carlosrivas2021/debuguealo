@@ -132,6 +132,8 @@ class PythonDebugSession:
         self._cleanup_task = None
         self._initialized = asyncio.Event()
         self._diagnostic = ''
+        # Scope reference -> its frame during a pause, to check a value before setting it.
+        self._scope_frames = {}
 
     def _emit(self, message):
         self.events.put_nowait(message)
@@ -293,13 +295,29 @@ class PythonDebugSession:
 
     async def scopes(self, frame_id):
         self._stopped()
-        return (await self._client.request('scopes', {'frameId': frame_id})).get('scopes', [])
+        scopes = (await self._client.request('scopes', {'frameId': frame_id})).get('scopes', [])
+        for scope in scopes:
+            self._scope_frames[scope.get('variablesReference')] = frame_id
+        return scopes
 
     async def variables(self, reference):
         self._stopped()
         return (await self._client.request('variables', {
             'variablesReference': reference, 'start': 0, 'count': 200,
         })).get('variables', [])
+
+    async def set_variable(self, reference, name, value):
+        """Set a variable of a paused scope to a value expression; returns its new value."""
+        self._stopped()
+        frame_id = self._scope_frames.get(reference)
+        if frame_id is not None:
+            # debugpy keeps the old value without an error when the expression fails, so
+            # evaluate it first: its error is raised and nothing changes.
+            await self.evaluate(value, frame_id)
+        body = await self._client.request('setVariable', {
+            'variablesReference': reference, 'name': name, 'value': value,
+        })
+        return str(body.get('value', ''))
 
     async def evaluate(self, expression, frame_id):
         """Evaluate a watch expression in a paused frame; the debugger's error is raised."""
@@ -317,6 +335,7 @@ class PythonDebugSession:
 
     async def _resume(self, command):
         thread = self._stopped()
+        self._scope_frames = {}
         # Clear stale thread state before awaiting: a stopped event can precede the response.
         self.thread_id = None
         self._state('running')
