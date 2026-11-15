@@ -40,7 +40,7 @@ class TwoFrameDebug(FakeDebug):
 
 
 def variables_text(app):
-    return str(app.query_one("#code-variables").render())
+    return app.query_one("#code-variables").text
 
 
 async def start_debug(pilot, app, monkeypatch, session_class):

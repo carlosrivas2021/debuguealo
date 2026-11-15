@@ -9,7 +9,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Input, RichLog, Static
+from textual.widgets import Button, DataTable, Input, RichLog
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger import (
@@ -57,6 +57,50 @@ def _watch_error(error):
 def _watch_value(value):
     value = ' '.join(str(value).split())
     return value if len(value) <= MAX_WATCH_VALUE else value[:MAX_WATCH_VALUE - 1] + '…'
+
+
+@dataclass(frozen=True)
+class VariableRow:
+    """A scope heading (name None) or one variable of the paused frame."""
+
+    scope: str
+    reference: int
+    name: str | None = None
+    value: str = ''
+
+    @property
+    def line(self):
+        return f'{self.scope}:' if self.name is None else (
+            f'{self.name} = {_variable_value(self.value)}')
+
+
+class VariablesTable(DataTable):
+    """The paused frame's variables: scope headings and one selectable row per variable."""
+
+    def __init__(self, **kwargs):
+        super().__init__(cursor_type='row', show_header=False, **kwargs)
+        self.variable_rows: tuple[VariableRow, ...] = ()
+
+    def on_mount(self):
+        self.add_column('Variable')
+
+    def show(self, rows):
+        rows = tuple(rows)
+        if rows == self.variable_rows and self.row_count == len(rows):
+            return
+        row = self.cursor_row
+        self.variable_rows = rows
+        self.clear()
+        for index, variable in enumerate(rows):
+            style = 'bold #a9c2cc' if variable.name is None else ''
+            self.add_row(Text(variable.line, style=style, no_wrap=True), key=str(index))
+        if rows:
+            self.move_cursor(row=min(row, len(rows) - 1))
+
+    @property
+    def text(self):
+        """What the pane shows, one line per row."""
+        return '\n'.join(row.line for row in self.variable_rows) or 'Variables: —'
 
 
 class OutputLines:
@@ -120,7 +164,7 @@ class DebugContext:
     start_task: object = None
     frames: list = field(default_factory=list)
     output: list = field(default_factory=list)
-    variables: str = 'Variables: —'
+    variables: tuple = ()
     execution: tuple | None = None
     state: str = ''
     unexpected_disconnect: bool = False
@@ -214,7 +258,7 @@ class CodeDebug(Vertical):
                 yield Input(placeholder='+ Add watch expression', id='code-watch-input',
                             compact=True)
                 yield DataTable(id='code-watches', cursor_type='row')
-            yield Static('Variables: —', id='code-variables', markup=False)
+            yield VariablesTable(id='code-variables')
 
     def on_mount(self):
         stack = self.query_one('#code-stack', DataTable)
@@ -222,7 +266,7 @@ class CodeDebug(Vertical):
         stack.border_title = 'Call stack'
         self.query_one('#code-watches', DataTable).add_columns('Expression', 'Value')
         self.query_one('#code-watch-pane').border_title = 'Watch'
-        self.query_one('#code-variables', Static).border_title = 'Variables'
+        self.query_one('#code-variables', VariablesTable).border_title = 'Variables'
         self.display = False
         if self._watch_error:
             self.app.notify(self._watch_error, severity='warning')
@@ -266,7 +310,7 @@ class CodeDebug(Vertical):
             return
         self.query_one('#code-stack', DataTable).clear()
         self.query_one('#code-watches', DataTable).clear()
-        self.query_one('#code-variables', Static).update('Variables: —')
+        self.query_one('#code-variables', VariablesTable).show(())
         self.output.clear()
         self.browser.clear_execution()
         for button in self.query(Button):
@@ -297,7 +341,7 @@ class CodeDebug(Vertical):
         """Refresh variables, controls and marker; the stack keeps its cursor."""
         if self.selected is not context or not self.query(DataTable):
             return
-        self.query_one('#code-variables', Static).update(context.variables)
+        self.query_one('#code-variables', VariablesTable).show(context.variables)
         self._render_watches(context)
         enabled = (
             context.active and context.session is not None
@@ -496,7 +540,7 @@ class CodeDebug(Vertical):
         context.unexpected_disconnect = False
         context.output.clear()
         context.frames.clear()
-        context.variables = 'Variables: —'
+        context.variables = ()
         context.execution = None
         self.display = True
         self._render_context(context)
@@ -582,7 +626,7 @@ class CodeDebug(Vertical):
     def _invalidate(self, context):
         context.pause += 1
         context.frames = []
-        context.variables = 'Variables: —'
+        context.variables = ()
         context.execution = None
         context.frame_row = 0
         context.watch_values = {}
@@ -677,10 +721,12 @@ class CodeDebug(Vertical):
                 return
             if scope.get('expensive'):
                 continue
-            variables = await context.session.variables(scope['variablesReference'])
-            values.append(scope.get('name', 'Scope') + ':')
+            reference = scope['variablesReference']
+            variables = await context.session.variables(reference)
+            name = scope.get('name', 'Scope')
+            values.append(VariableRow(name, reference))
             values.extend(
-                f"{value['name']} = {_variable_value(value.get('value', ''))}"
+                VariableRow(name, reference, value['name'], str(value.get('value', '')))
                 for value in variables
             )
         if not self._paused(context, generation, pause):
@@ -689,7 +735,7 @@ class CodeDebug(Vertical):
         await self._evaluate_watches(context, generation, pause, frame['id'])
         if not self._paused(context, generation, pause):
             return
-        context.variables = '\n'.join(values) or 'Variables: —'
+        context.variables = tuple(values)
         path = frame.get('source', {}).get('path')
         context.execution = (
             (context.profile.root, Path(path), frame.get('line', 1)) if path else None
@@ -701,7 +747,7 @@ class CodeDebug(Vertical):
         context = self.selected
         if context is not None and context.active and context.session.state == 'stopped':
             context.pause += 1
-            context.variables = 'Variables: —'
+            context.variables = ()
             context.execution = None
             context.watch_values = {}
             context.frame_row = event.cursor_row

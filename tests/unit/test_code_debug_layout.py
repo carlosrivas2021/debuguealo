@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 from test_code_debug_ui import debug_app
-from textual.widgets import DataTable, Static
+from textual.widgets import DataTable
 
 from debugpilot.debugger import NodeDebugSession
 from debugpilot.debugger.node import _display
@@ -18,7 +18,7 @@ async def test_debug_panel_sections_have_titles(monkeypatch, tmp_path):
         await pilot.click('#area-code')
         assert app.query_one('#code-stack', DataTable).border_title == 'Call stack'
         assert app.query_one('#code-watch-pane').border_title == 'Watch'
-        assert app.query_one('#code-variables', Static).border_title == 'Variables'
+        assert app.query_one('#code-variables').border_title == 'Variables'
 
 
 def test_frames_without_source_are_dimmed():

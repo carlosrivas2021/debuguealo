@@ -47,7 +47,9 @@ async def mark(pilot, app, line=4):
 
 
 def rendered(app, selector):
-    return str(app.query_one(selector).render())
+    widget = app.query_one(selector)
+    # The Variables table exposes the lines it shows; other widgets render text.
+    return widget.text if selector == '#code-variables' else str(widget.render())
 
 
 async def test_real_shift_f5_breakpoint_inspection_steps_continue_and_attribution(
