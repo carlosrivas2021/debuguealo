@@ -329,6 +329,19 @@ output shows the typed line directly. `getpass` writes its prompt to the termina
 standard output, so that prompt does not appear in the debug output; the input still reaches it.
 Attached processes are not owned by Code, so attach sessions have no program input.
 
+## Change a variable while paused
+
+While a session is paused, select a variable in **Variables** and press **Enter** (or click the
+selected row). Its value turns into a field on the same row: type the new value as an expression of the
+program's language, such as `42`, `'text'` or `[1, 2]` in Python, and press **Enter**; **Esc**
+cancels. The program uses the new value from then on, and the variables and watches are read
+again. A value the debugger cannot evaluate or assign shows a warning and changes nothing.
+
+It works for Python, Go and Node, launched or attached, on the variables the pane lists (the
+top level of each scope; fields inside objects cannot be changed yet). Python and Go evaluate the
+value once to check it before setting it, so an expression with side effects runs twice; Delve
+assigns only the value types it supports and reports the others.
+
 ## Watch expressions
 
 The debug panel has three titled sections: **Call stack**, **Watch** and **Variables**. In

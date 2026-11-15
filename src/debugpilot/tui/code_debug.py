@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
@@ -103,6 +104,20 @@ class VariablesTable(DataTable):
         return '\n'.join(row.line for row in self.variable_rows) or 'Variables: —'
 
 
+class VariableEditor(Input):
+    """Edits a variable over its own row: Enter sets the typed value, Esc cancels."""
+
+    BINDINGS = [Binding('escape', 'cancel', 'Cancel', show=False)]
+
+    def __init__(self, cancel):
+        super().__init__(id='variable-value', compact=True, select_on_focus=False)
+        self._cancel = cancel
+        self.display = False
+
+    def action_cancel(self) -> None:
+        self._cancel()
+
+
 class OutputLines:
     """Turns a debugged program's output chunks into debug output lines.
 
@@ -188,6 +203,8 @@ class CodeDebug(Vertical):
         self.finished = finished
         self.contexts: dict[tuple, DebugContext] = {}
         self.selected_key: tuple | None = None
+        # (context, generation, pause, variable) while a variable's value is edited.
+        self._editing = None
         # Owned here but placed by the host (at the bottom, like the run terminal).
         self.output = RichLog(id='code-debug-output', max_lines=2000, markup=False, wrap=True)
         self.output.border_title = 'Debug output'
@@ -258,7 +275,9 @@ class CodeDebug(Vertical):
                 yield Input(placeholder='+ Add watch expression', id='code-watch-input',
                             compact=True)
                 yield DataTable(id='code-watches', cursor_type='row')
-            yield VariablesTable(id='code-variables')
+            with Vertical(id='code-variables-pane'):
+                yield VariablesTable(id='code-variables')
+                yield VariableEditor(self._close_variable_editor)
 
     def on_mount(self):
         stack = self.query_one('#code-stack', DataTable)
@@ -310,6 +329,7 @@ class CodeDebug(Vertical):
             return
         self.query_one('#code-stack', DataTable).clear()
         self.query_one('#code-watches', DataTable).clear()
+        self._hide_variable_editor()
         self.query_one('#code-variables', VariablesTable).show(())
         self.output.clear()
         self.browser.clear_execution()
@@ -341,6 +361,10 @@ class CodeDebug(Vertical):
         """Refresh variables, controls and marker; the stack keeps its cursor."""
         if self.selected is not context or not self.query(DataTable):
             return
+        # Its row may no longer hold the same variable; the keys go back to the table.
+        table, refocus = self._hide_variable_editor()
+        if refocus:
+            table.focus()
         self.query_one('#code-variables', VariablesTable).show(context.variables)
         self._render_watches(context)
         enabled = (
@@ -741,6 +765,71 @@ class CodeDebug(Vertical):
             (context.profile.root, Path(path), frame.get('line', 1)) if path else None
         )
         self._render_inspection(context)
+
+    @on(DataTable.RowSelected, '#code-variables')
+    def edit_variable(self, event):
+        """Enter (or a click on the selected row) sets the variable to a new value."""
+        event.stop()
+        context = self.selected
+        table = self.query_one('#code-variables', VariablesTable)
+        if (context is None or not context.active or context.session is None
+                or context.session.state != 'stopped'
+                or not hasattr(context.session, 'set_variable')
+                or not 0 <= event.cursor_row < len(table.variable_rows)):
+            return
+        variable = table.variable_rows[event.cursor_row]
+        if variable.name is None:
+            return  # A scope heading.
+        self._editing = (context, context.generation, context.pause, variable)
+        pane = self.query_one('#code-variables-pane').region
+        content = table.content_region
+        prefix = table.cell_padding + cell_len(f'{variable.name} = ')
+        row_y = content.y - pane.y + event.cursor_row - int(table.scroll_y)
+        editor = self.query_one(VariableEditor)
+        editor.styles.offset = (content.x - pane.x + prefix, row_y)
+        editor.styles.width = max(8, content.width - prefix)
+        editor.value = variable.value
+        editor.display = True
+        editor.cursor_position = len(editor.value)
+        table.border_subtitle = "Enter set · Esc cancel · a value in the program's language"
+        editor.focus()
+
+    def _hide_variable_editor(self):
+        editor = self.query_one(VariableEditor)
+        refocus = editor.has_focus
+        self._editing = None
+        editor.display = False
+        table = self.query_one('#code-variables', VariablesTable)
+        table.border_subtitle = ''
+        return table, refocus
+
+    def _close_variable_editor(self):
+        table, _ = self._hide_variable_editor()
+        table.focus()
+
+    @on(Input.Submitted, '#variable-value')
+    def _variable_submitted(self, event):
+        event.stop()
+        editing = self._editing
+        self._close_variable_editor()
+        if editing is None:
+            return
+        context, generation, pause, variable = editing
+        if self._paused(context, generation, pause):
+            self._spawn(context, self._set_variable(
+                context, generation, pause, variable, event.value))
+
+    async def _set_variable(self, context, generation, pause, variable, value):
+        try:
+            await context.session.set_variable(variable.reference, variable.name, value)
+        except DebugError as error:
+            if self._paused(context, generation, pause):
+                self.app.notify(f'Cannot set {variable.name}: {error}', severity='warning')
+            return
+        if self._paused(context, generation, pause) and context.frames:
+            # Read the frame again: other variables and watches may depend on it.
+            frame = context.frames[min(context.frame_row, len(context.frames) - 1)]
+            await self._frame(context, generation, pause, frame)
 
     @on(DataTable.RowSelected, '#code-stack')
     def select_frame(self, event):
