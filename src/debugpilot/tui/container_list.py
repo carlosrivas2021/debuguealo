@@ -81,3 +81,33 @@ def container_rows(inventory: list[ContainerInfo]) -> list[ContainerRow]:
             for item in members
         )
     return rows
+
+
+def filter_rows(rows: list[ContainerRow], query: str) -> list[ContainerRow]:
+    """Rows whose label contains the query, ignoring case, as a k9s filter does.
+
+    A matching group keeps all its containers; a matching container keeps its group.
+    """
+    if not query:
+        return list(rows)
+    needle = query.casefold()
+    result: list[ContainerRow] = []
+    header: ContainerRow | None = None
+    members: list[ContainerRow] = []
+
+    def flush() -> None:
+        if header is not None and needle in header.label.casefold():
+            result.extend([header, *members])
+            return
+        hits = [row for row in members if needle in row.label.casefold()]
+        if hits:
+            result.extend([header, *hits] if header is not None else hits)
+
+    for row in rows:
+        if row.container is None:
+            flush()
+            header, members = row, []
+        else:
+            members.append(row)
+    flush()
+    return result

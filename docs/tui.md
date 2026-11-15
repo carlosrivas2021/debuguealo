@@ -39,6 +39,15 @@ starting or stopping processes. `Ctrl+T` is unavailable while a modal is open or
 terminal pane has focus (press `Esc` first). Code lists registered project folders and command arguments; container
 shortcuts are inactive there. Ctrl+O edits the active area's launch file.
 **Open code launch.json** opens the separate central code configuration directly.
+
+**/** filters the list of the active area, as in k9s: projects and containers in Containers,
+profiles in Code. The list narrows while you type, ignoring case, and the cursor goes to the first
+match. A matching project keeps all its containers, a matching container keeps its project, and
+collapsed projects open while filtering. **Enter** returns to the list and keeps the filter (inventory
+refreshes keep it too); **/** edits it again, and **Esc**, in the filter or in the list,
+clears it. In Code the title shows how many
+profiles match, such as `2/5`.
+
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
 the source, in screen order; **Alt+Left** and **Alt+Right** do the same. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
 terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **S** or **Stop** ends only the selected Code

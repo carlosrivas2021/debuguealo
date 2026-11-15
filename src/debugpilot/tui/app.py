@@ -30,11 +30,13 @@ from debugpilot.tui.container_list import (
     ContainerRow,
     container_label,
     container_rows,
+    filter_rows,
     group_style,
     state_glyph,
 )
 from debugpilot.tui.execution_console import ExecutionConsole
 from debugpilot.tui.host_terminal import HostTerminal
+from debugpilot.tui.list_filter import ListFilter
 from debugpilot.tui.log_viewer import LogViewer
 from debugpilot.tui.terminal_view import TerminalPane
 
@@ -98,6 +100,7 @@ class DebugPilotApp(App):
         Binding("ctrl+r", "retry_logs", "Retry logs"),
         Binding("d", "show_container_details", "Details"),
         Binding("space", "toggle_project", "Expand/collapse"),
+        Binding("slash", "filter_containers", "Filter"),
         Binding("c", "open_container_terminal", "Container shell"),
         Binding("h", "open_host_terminal", "Host Bash"),
         Binding("o", "toggle_host_terminal", "Host terminal"),
@@ -107,6 +110,8 @@ class DebugPilotApp(App):
         Binding("a", "refresh_aws_credentials", "AWS creds"),
         Binding("A,shift+a", "edit_aws_files", "Edit AWS files"),
         Binding("ctrl+o", "open_launch_file", "Open launch.json"),
+        # Esc in the list clears a kept filter; otherwise it cancels a Compose preview.
+        Binding("escape", "clear_containers_filter", show=False),
         Binding("escape", "cancel_compose", show=False),
         Binding("f5", "run_code", "Run code"),
         Binding("shift+f5", "debug_code", "Debug"),
@@ -263,6 +268,7 @@ class DebugPilotApp(App):
                     with Horizontal(id="active-container-heading"):
                         yield Static("PROJECTS / CONTAINERS", id="launch-title", markup=False)
                         yield Checkbox("Show all", id="show-all")
+                    yield ListFilter("#launch-profiles", id="containers-filter")
                     yield DataTable(id="launch-profiles", cursor_type="row", zebra_stripes=True)
                     with Horizontal(id="profile-actions"):
                         yield Button("Play / Recreate", id="profile-recreate", disabled=True)
@@ -529,8 +535,26 @@ class DebugPilotApp(App):
             return f"profile:{profile.name or 'unnamed'}:{digest}:{occurrence}"
         return f"profile:{profile.name}"
 
+    def action_filter_containers(self) -> None:
+        self.query_one("#containers-filter", ListFilter).open()
+
+    def action_clear_containers_filter(self) -> None:
+        self.query_one("#containers-filter", ListFilter).action_clear_filter()
+
+    @on(Input.Changed, "#containers-filter")
+    def _containers_filter_changed(self) -> None:
+        # Rebuild from the whole inventory: the shown rows are already filtered.
+        self._show_inventory(list(self._inventory.values()), force=True)
+        table = self.query_one("#launch-profiles", DataTable)
+        selected = self._selection_key or self._selected_profile_key
+        if table.row_count and selected not in table.rows:
+            table.move_cursor(row=0)  # The first match, as k9s does.
+
     def _render_launch_profiles(self) -> None:
         table = self.query_one("#launch-profiles", DataTable)
+        query = self.query_one("#containers-filter", ListFilter).value
+        # While filtering, collapsed groups open so their containers can match.
+        collapsed = set() if query else self._collapsed_projects
         rows: list[ContainerRow] = []
         self._launch_rows = {}
         self._launch_child_rows = {}
@@ -552,14 +576,14 @@ class DebugPilotApp(App):
             rows.append(
                 ContainerRow(
                     key=key,
-                    label=f"{'▸' if key in self._collapsed_projects else '▾'} "
+                    label=f"{'▸' if key in collapsed else '▾'} "
                     f"{name} · {profile.project_name or 'Needs setup'}",
                     # Non-numeric "…" marks a profile that still needs setup.
                     state="…" if profile.pending_reason else f"{running}/{len(members)}",
                     project=profile.project_name,
                 )
             )
-            for item in (() if key in self._collapsed_projects else members):
+            for item in (() if key in collapsed else members):
                 child_key = f"profile-child:{key}:{item.id}"
                 self._launch_child_rows[child_key] = (profile, item)
                 rows.append(
@@ -575,15 +599,25 @@ class DebugPilotApp(App):
         hidden = False
         for row in self._rows.values():
             if row.container is None:
-                hidden = row.key in self._collapsed_projects
+                hidden = row.key in collapsed
                 rows.append(replace(row, label=row.label.replace("▾", "▸", 1)) if hidden else row)
             elif not hidden:
                 rows.append(row)
+        unfiltered = rows
+        rows = filter_rows(rows, query)
+        if query:
+            # Like self._rows, the lookups hold only shown rows, so a hidden selection is
+            # never moved to or selected.
+            shown = {row.key for row in rows}
+            self._launch_rows = {k: v for k, v in self._launch_rows.items() if k in shown}
+            self._launch_child_rows = {
+                k: v for k, v in self._launch_child_rows.items() if k in shown}
         redrawn = self._render_inventory(table, rows)
         selected_row_key = self._selection_key or self._selected_profile_key
         if redrawn and selected_row_key in table.rows:
             table.move_cursor(row=table.get_row_index(selected_row_key))
-        empty = self._launch_loaded and not rows and not self._launch_error
+        # A filter that matches nothing is not an empty inventory.
+        empty = self._launch_loaded and not unfiltered and not self._launch_error
         self.query_one("#empty-welcome").display = empty
         table.display = not empty
         # Retain compatibility action widgets for integrations/tests, but the
@@ -860,7 +894,7 @@ class DebugPilotApp(App):
             selected = self._rows.get(f"project:{previous_project}")
         if selected is None and not self._initial_inventory_selection_complete:
             # Auto-select once only; a vanished selection must not jump to unrelated logs.
-            selected = next((row for row in rows if row.container is not None), None)
+            selected = next((row for row in all_rows if row.container is not None), None)
         if selected is None and not self._initial_inventory_selection_complete:
             selected = next(iter(all_rows), None)
         if selected:
@@ -2540,6 +2574,14 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "clear_containers_filter":
+            focused = self.focused
+            return bool(
+                self.is_mounted
+                and self.query_one("#containers-filter", ListFilter).value
+                and focused is not None and focused.id == "launch-profiles"
+                and not self.query_one("#inline-compose").display
+            )
         if self.is_mounted and action != "quit" and self._editor_open():
             # The dashboard is hidden behind the editor; its shortcuts must not act on it.
             return False
@@ -2563,7 +2605,7 @@ class DebugPilotApp(App):
             "toggle_project", "open_container_terminal", "open_host_terminal",
             "recreate_selected", "build_selected", "stop_selected", "cancel_compose",
             "compose", "start_project", "restart_selected", "rebuild_selected",
-            "refresh_aws_credentials", "container_pane",
+            "refresh_aws_credentials", "container_pane", "filter_containers",
         }:
             return False
         if action in {
