@@ -38,6 +38,8 @@ _ANSI = re.compile(r'\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]')
 _PARTIAL_ESCAPE = re.compile(r'\x1b(?:\[[0-?]*[ -/]*|\][^\x07]*)?$')
 # Seconds a line without newline waits for the rest before showing (a prompt).
 PARTIAL_LINE_DELAY = 0.1
+# A JavaScript name that can be assigned to, for scopes V8 cannot set directly.
+_IDENTIFIER = re.compile(r'[A-Za-z_$][\w$]*')
 _ENDPOINT = re.compile(r'^Debugger listening on (ws://127\.0\.0\.1:[1-9]\d*/[\da-f-]{36})$')
 
 
@@ -150,6 +152,17 @@ def _source(url):
     return str(Path(url2pathname(unquote(parsed.path))))
 
 
+def _call_argument(result):
+    """The CDP CallArgument that passes an evaluated RemoteObject on."""
+    if 'objectId' in result:
+        return {'objectId': result['objectId']}
+    if 'unserializableValue' in result:
+        return {'unserializableValue': result['unserializableValue']}
+    if result.get('type') == 'undefined':
+        return {}
+    return {'value': result.get('value')}
+
+
 class NodeDebugSession(PythonDebugSession):
     """Reuse Python's UI events and idempotent owned CodeSession cleanup, not its DAP wire."""
 
@@ -162,6 +175,9 @@ class NodeDebugSession(PythonDebugSession):
         self._frames = []
         self._scripts = {}
         self._objects = {}
+        # Scope reference -> (call frame, scope number, scope type) for set_variable.
+        self._scopes = {}
+        self._changed = {}
         self._buffer = ''
         self._partial = None
         self._disconnect_task = None
@@ -240,12 +256,16 @@ class NodeDebugSession(PythonDebugSession):
         elif method == 'Debugger.paused':
             self._frames = params.get('callFrames', [])[:100]
             self._objects = {}
+            self._scopes = {}
+            self._changed = {}
             self._paused.set()
             if not self._initial:
                 self._event({'event': 'stopped', 'body': {'threadId': 1}})
         elif method == 'Debugger.resumed':
             self._frames = []
             self._objects = {}
+            self._scopes = {}
+            self._changed = {}
             self._event({'event': 'continued', 'body': {}})
         elif method == 'Debugger.breakpointResolved':
             for entries in self.verified_breakpoints.values():
@@ -445,9 +465,47 @@ class NodeDebugSession(PythonDebugSession):
         frame = next((f for f in self._frames if f['callFrameId'] == frame_id), None)
         if frame is None:
             raise DebugError('Frame is no longer paused.')
-        return [{'name': s.get('name') or s['type'], 'expensive': s['type'] == 'global',
-                 'variablesReference': self._reference(s['object'].get('objectId'))}
-                for s in frame['scopeChain']]
+        scopes = []
+        for number, scope in enumerate(frame['scopeChain']):
+            reference = self._reference(scope['object'].get('objectId'))
+            self._scopes[reference] = (frame_id, number, scope['type'])
+            scopes.append({'name': scope.get('name') or scope['type'],
+                           'expensive': scope['type'] == 'global',
+                           'variablesReference': reference})
+        return scopes
+
+    async def set_variable(self, reference, name, value):
+        """Set a variable of a paused scope to a value expression; returns its new value."""
+        self._stopped()
+        if reference not in self._scopes:
+            raise DebugError('Variables are no longer paused.')
+        frame_id, number, kind = self._scopes[reference]
+        if kind in {'local', 'closure', 'catch'}:
+            result = await self._evaluate_on(frame_id, value)
+            await self._client.request('Debugger.setVariableValue', {
+                'scopeNumber': number, 'variableName': name,
+                'newValue': _call_argument(result), 'callFrameId': frame_id,
+            })
+        else:
+            # V8 sets only local, closure and catch scopes; assign the others (block,
+            # script, module) in the frame, where the name resolves to that variable.
+            if not _IDENTIFIER.fullmatch(name):
+                raise DebugError(f'{name} cannot be set.')
+            result = await self._evaluate_on(frame_id, f'{name} = ({value})')
+        # V8's scope objects are copies taken at the pause, so remember the new value.
+        self._changed[(frame_id, number, name)] = result
+        return _display(result)
+
+    async def _evaluate_on(self, frame_id, expression):
+        response = await self._client.request('Debugger.evaluateOnCallFrame', {
+            'callFrameId': frame_id, 'expression': expression, 'generatePreview': False,
+        })
+        details = response.get('exceptionDetails')
+        if details is not None:
+            message = (details.get('exception', {}).get('description')
+                       or details.get('text') or 'Evaluation failed.')
+            raise DebugError(message.splitlines()[0])
+        return response.get('result', {})
 
     async def variables(self, reference):
         self._stopped()
@@ -458,8 +516,10 @@ class NodeDebugSession(PythonDebugSession):
             'generatePreview': False,
         })
         values = []
+        frame_id, number, _ = self._scopes.get(reference, (None, None, None))
         for prop in result.get('result', [])[:200]:
-            value = prop.get('value')  # Do not invoke getters or evaluate expressions.
+            value = self._changed.get((frame_id, number, prop['name']), prop.get('value'))
+            # Do not invoke getters or evaluate expressions.
             if value is not None:
                 values.append({'name': prop['name'], 'value': _display(value),
                                'variablesReference': self._reference(value.get('objectId'))})
