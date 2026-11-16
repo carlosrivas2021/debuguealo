@@ -57,7 +57,7 @@ context. **R** restarts the selected profile while it runs or debugs; when it is
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
 an active profile returns to its context. Same-endpoint attaches are rejected, while distinct
 endpoints may coexist. **Shift+F5** or **Debug** starts Python debugging from that same profile
-and its requested source breakpoints, which **F9** toggles at the source cursor. **Shift+F9**
+and its requested source breakpoints, which **F9** toggles at the source cursor; the **BREAKPOINTS** list under the file tree opens, switches off and removes them (see [breakpoints list](code-projects.md#breakpoints-list)). **Shift+F9**
 adds a condition, a log message (logpoint) or a hit count to the line; see
 [conditional breakpoints and logpoints](code-projects.md#conditional-breakpoints-and-logpoints). The debug panel's **Watch** section re-evaluates
 expressions on every pause; see [watch expressions](code-projects.md#watch-expressions). An uncaught exception pauses where it is raised, and **E** switches between uncaught, all and no exceptions for the project; see [pause on exceptions](code-projects.md#pause-on-exceptions). While paused, **:** goes to the **Evaluate** field under the debug output, which runs an expression in the selected frame; see [debug console](code-projects.md#debug-console). At a pause, inspect the stack/variables and the

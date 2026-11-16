@@ -56,3 +56,94 @@ async def test_a_disabled_breakpoint_is_kept_but_never_stops(monkeypatch, tmp_pa
         assert browser.breakpoints(*key) == (3,)
         assert store(tmp_path).load_disabled() == {key: (3,)}
         assert store(tmp_path).load_options() == {}
+
+
+def listed(app):
+    table = app.query_one('#source-breakpoints')
+    return [' '.join(str(cell) for cell in table.get_row_at(row)).rstrip()
+            for row in range(table.row_count)] if table.display else []
+
+
+def title(app):
+    return str(app.query_one('#source-breakpoints-title').render())
+
+
+async def test_the_sidebar_lists_opens_switches_and_removes_breakpoints(monkeypatch, tmp_path):
+    from textual.widgets import DataTable, TextArea
+
+    from debugpilot.tui.source_browser import SourceBrowser
+
+    app, roots, _ = debug_app(monkeypatch, tmp_path)
+    (roots[0] / 'lib').mkdir()
+    (roots[0] / 'lib' / 'util.py').write_text('VALUE = 1\nOTHER = 2\n', encoding='utf-8')
+    root, main = roots[0].resolve(), (roots[0] / 'main.py').resolve()
+    util = (roots[0] / 'lib' / 'util.py').resolve()
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        assert listed(app) == [] and title(app) == 'BREAKPOINTS · F9 adds one'
+        browser = await open_main(pilot, app, 4)
+        await edit(pilot, app, condition='answer == 41')
+        await open_main(pilot, app, 3)
+        await pilot.press('f9')
+        browser.open_source(roots[0], util, 2)
+        await pilot.pause()
+        await pilot.press('f9')
+        # By file, then line, with each one's kind and condition.
+        assert listed(app) == [' ● lib/util.py:2', ' ● main.py:3', ' ◆ main.py:4 if answer == 41']
+        assert title(app) == 'BREAKPOINTS (3)'
+
+        # Only the selected profile's project is listed.
+        profiles = app.query_one('#code-projects', DataTable)
+        profiles.move_cursor(row=1)
+        await until(pilot, lambda: title(app) == 'BREAKPOINTS · F9 adds one')
+        assert listed(app) == []
+        profiles.move_cursor(row=0)
+        await until(pilot, lambda: title(app) == 'BREAKPOINTS (3)')
+
+        # Ctrl+Right from the file tree reaches the list.
+        browser.query_one('#source-tree').focus()
+        await pilot.press('ctrl+right')
+        table = app.query_one('#source-breakpoints')
+        assert app.focused is table
+        table.move_cursor(row=2)
+        await pilot.press('space')
+        assert listed(app)[2] == ' ○ main.py:4 if answer == 41 (off)'
+        assert store(tmp_path).load_disabled() == {(root, main): (4,)}
+        assert browser.breakpoint_snapshot(roots[0]) == {str(util): (2,), str(main): (3,)}
+        await pilot.press('space')
+        assert listed(app)[2] == ' ◆ main.py:4 if answer == 41'
+        assert store(tmp_path).load_disabled() == {}
+
+        # A: all off while any is on, then all back on.
+        await pilot.press('space', 'a')
+        assert all('(off)' in row for row in listed(app))
+        assert browser.breakpoint_snapshot(roots[0]) == {}
+        await pilot.press('a')
+        assert not any('(off)' in row for row in listed(app))
+        assert store(tmp_path).load_disabled() == {}
+
+        # Delete removes the line, with its options; the cursor stays on the list.
+        table.move_cursor(row=0)
+        await pilot.press('delete')
+        assert listed(app) == [' ● main.py:3', ' ◆ main.py:4 if answer == 41']
+        assert store(tmp_path).load() == {(root, main): (3, 4)}
+        assert browser.breakpoints(root, util) == ()
+
+        # Enter opens the line in the editor.
+        table.move_cursor(row=1)
+        await pilot.press('enter')
+        editor = browser.query_one(TextArea)
+        assert browser.file_path == main and app.focused is editor
+        assert editor.cursor_location == (3, 0)
+
+        # While debugging, the row of the paused line is marked.
+        await pilot.press('shift+f5')
+        await until(pilot, lambda: listed(app)[0] == '▶● main.py:3')
+        assert listed(app)[1] == ' ◆ main.py:4 if answer == 41'
+        await pilot.click('#code-continue')
+        await until(pilot, lambda: listed(app)[1] == '▶◆ main.py:4 if answer == 41')
+        assert listed(app)[0] == ' ● main.py:3'
+        await pilot.click('#code-continue')
+        await until(pilot, lambda: 'Exited: 0' in rendered(app, '#code-run-state'))
+        assert listed(app) == [' ● main.py:3', ' ◆ main.py:4 if answer == 41']
+        assert isinstance(app.query_one(SourceBrowser), SourceBrowser)

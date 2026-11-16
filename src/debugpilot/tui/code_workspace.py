@@ -31,7 +31,7 @@ from debugpilot.tui.terminal_view import TerminalPane
 # The debug panel's tables join while a debug session shows it; its text fields are left
 # out, since they keep Ctrl/Alt+arrows for moving in the text.
 PANES = (
-    "#code-projects", "#source-tree", "#source-text",
+    "#code-projects", "#source-tree", "#source-breakpoints", "#source-text",
     "#code-stack", "#code-watches", "#code-variables",
 )
 # The profile list keeps room for six profiles until resized; the file tree keeps four rows.
@@ -113,7 +113,7 @@ class CodeWorkspace(Vertical):
         self._branch.display = False
         self._pane = CodeTerminal(
             self._run_context_state, id="code-terminal",
-            escape_hook=lambda: self.query_one(DataTable).focus(),
+            escape_hook=lambda: self.query_one("#code-projects", DataTable).focus(),
         )
         profiles = Vertical(
             # The count sits at the right end of the title row.
@@ -155,20 +155,21 @@ class CodeWorkspace(Vertical):
         """O collapses the bottom area: run terminal or debug output."""
         self._bottom.display = not self._bottom.display
         if not self._bottom.display and self.app.focused in self._bottom.query("*"):
-            self.query_one(DataTable).focus()
+            self.query_one("#code-projects", DataTable).focus()
 
     def _show_bottom(self) -> None:
         self._bottom.display = True
 
     def on_mount(self) -> None:
         # Wide enough for the cursor highlight to span the sidebar.
-        self._profile_column = self.query_one(DataTable).add_column("Profile", width=26)
+        self._profile_column = self.query_one("#code-projects", DataTable).add_column(
+            "Profile", width=26)
         self.reload_profiles()
         self.set_interval(STATUS_REFRESH_SECONDS, self._refresh_status_icons)
 
     @on(Button.Pressed, "#code-reload")
     def reload_profiles(self) -> None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#code-projects", DataTable)
         selected = None
         if table.row_count:
             selected = table.ordered_rows[table.cursor_row].key.value
@@ -228,7 +229,7 @@ class CodeWorkspace(Vertical):
 
     @on(DataTable.RowHighlighted, "#code-projects")
     def select_source_project(self):
-        table = self.query_one(DataTable)
+        table = self.query_one("#code-projects", DataTable)
         profile = None
         if table.row_count:
             profile = self._profiles.get(table.ordered_rows[table.cursor_row].key.value)
@@ -369,7 +370,7 @@ class CodeWorkspace(Vertical):
         return Text.assemble((icon, style), f" {profile.name}")
 
     def _refresh_status_icons(self):
-        tables = self.query(DataTable)
+        tables = self.query("#code-projects")
         if not tables:
             return
         table = tables.first()
@@ -383,7 +384,7 @@ class CodeWorkspace(Vertical):
 
     def _highlighted_profile(self):
         # Session callbacks can arrive while the area unmounts; there is nothing to show then.
-        tables = self.query(DataTable)
+        tables = self.query("#code-projects")
         if not tables or not tables.first().row_count:
             return None
         table = tables.first()
@@ -457,7 +458,7 @@ class CodeWorkspace(Vertical):
     def run_selected(self):
         if self._shutting_down:
             return
-        table = self.query_one(DataTable)
+        table = self.query_one("#code-projects", DataTable)
         if not table.row_count:
             self._state("No Code profile selected. Open code launch.json to add one.")
             return
@@ -530,7 +531,7 @@ class CodeWorkspace(Vertical):
         self._reconnect_button.display = False
         if self._shutting_down:
             return
-        table = self.query_one(DataTable)
+        table = self.query_one("#code-projects", DataTable)
         if not table.row_count:
             self._state("No Code profile selected. Open code launch.json to add one.")
             return

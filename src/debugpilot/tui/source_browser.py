@@ -21,6 +21,7 @@ from textual.widgets import Button, Static, TextArea, Tree
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.breakpoints import BreakpointOptions, BreakpointStore
 from debugpilot.tui.breakpoint_dialog import DIALOG_ROWS, BreakpointDialog
+from debugpilot.tui.breakpoint_list import BreakpointList
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
@@ -171,9 +172,6 @@ class FileTree(Tree):
 class SourceBrowser(Vertical):
     """Expand files lazily; keep source intent independent of adapter verification."""
 
-    class MarksChanged(Message):
-        """Any breakpoint was added, removed, edited or switched on or off."""
-
     class BreakpointsChanged(Message):
         def __init__(self, root, path, lines, options=None):
             super().__init__()
@@ -186,6 +184,7 @@ class SourceBrowser(Vertical):
     SourceBrowser #source-layout { height: 1fr; }
     SourceBrowser #source-sidebar { width: 30; min-width: 22; }
     SourceBrowser #source-tree { height: 1fr; }
+    SourceBrowser #source-breakpoints { height: auto; max-height: 8; overflow-x: hidden; }
     SourceBrowser #source-main { width: 1fr; }
     SourceBrowser #source-editor-row { height: 2fr; min-height: 6; }
     SourceBrowser #source-pane { width: 1fr; }
@@ -232,6 +231,8 @@ class SourceBrowser(Vertical):
         self._resolved_root: Path | None = None
         self._file_node = None
         self._verification = {}
+        # The (root, file, line) of the paused line shown in the editor, if any.
+        self._execution: tuple[Path, Path, int] | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="source-layout"):
@@ -240,6 +241,8 @@ class SourceBrowser(Vertical):
                     yield self._sidebar_header
                 yield Static("FILES", id="source-files-title", classes="pane-title")
                 yield FileTree("Files", id="source-tree")
+                yield Static("BREAKPOINTS", id="source-breakpoints-title", classes="pane-title")
+                yield BreakpointList(id="source-breakpoints")
             with Vertical(id="source-main"):
                 with Horizontal(id="source-editor-row"):
                     with Vertical(id="source-pane"):
@@ -274,6 +277,7 @@ class SourceBrowser(Vertical):
         tree.root.expand()
         if root is not None:
             self._populate(tree.root)
+        self._refresh_list()
 
     def reload(self):
         """Read the tree and the open file again, e.g. after a branch switch changed them."""
@@ -405,6 +409,8 @@ class SourceBrowser(Vertical):
             editor = self.query_one(SourceText)
             editor.execution_line = line
             editor.refresh()
+            self._execution = (Path(root).resolve(), self.file_path, line)
+            self._refresh_list()
 
     def clear_execution(self):
         if not self.query(SourceText):
@@ -412,6 +418,61 @@ class SourceBrowser(Vertical):
         editor = self.query_one(SourceText)
         editor.execution_line = None
         editor.refresh()
+        if self._execution is not None:
+            self._execution = None
+            self._refresh_list()
+
+    def _refresh_list(self):
+        """List the shown project's breakpoints by file, then line."""
+        if not self.query(BreakpointList):
+            return
+        root = self._resolved_root
+        rows = []
+        for key in sorted((key for key, lines in self._marks.items()
+                           if lines and root is not None and key[0] == root),
+                          key=lambda key: key[1].relative_to(key[0]).as_posix().casefold()):
+            relative = key[1].relative_to(key[0]).as_posix()
+            off = self._disabled.get(key, set())
+            options = self._options.get(key, {})
+            for line in sorted(self._marks[key]):
+                option = options.get(line)
+                glyph, style = BREAKPOINT_GLYPHS[
+                    "disabled" if line in off else breakpoint_kind(option)]
+                rows.append(((key, line), glyph, style, f"{relative}:{line}",
+                             _shorten(_breakpoint_hint(option)), line in off,
+                             self._execution == (key[0], key[1], line)))
+        table = self.query_one(BreakpointList)
+        table.show(rows)
+        table.display = bool(rows)
+        title = self.query_one("#source-breakpoints-title", Static)
+        title.update(f"BREAKPOINTS ({len(rows)})" if rows else "BREAKPOINTS · F9 adds one")
+
+    @on(BreakpointList.RowSelected, "#source-breakpoints")
+    def _open_breakpoint(self, event):
+        location = event.data_table.location_at(event.cursor_row)
+        if location is None:
+            return
+        (root, path), line = location
+        if self.root_path is not None and self.open_source(self.root_path, path, line):
+            self.query_one(SourceText).focus()
+
+    @on(BreakpointList.Toggle)
+    def _toggle_listed(self, event):
+        key, line = event.location
+        self.set_enabled({key: {line}}, line in self._disabled.get(key, set()))
+
+    @on(BreakpointList.Remove)
+    def _remove_listed(self, event):
+        key, line = event.location
+        self.remove_breakpoints({key: {line}})
+
+    @on(BreakpointList.ToggleAll)
+    def _toggle_all_listed(self, _event):
+        """All off while any is on; all back on when every one is already off."""
+        listed = {key: set(lines) for key, lines in self._marks.items()
+                  if lines and key[0] == self._resolved_root}
+        any_on = any(lines - self._disabled.get(key, set()) for key, lines in listed.items())
+        self.set_enabled(listed, not any_on)
 
     def options_snapshot(self, root):
         """Detached root-scoped options of enabled lines, keyed like breakpoint_snapshot."""
@@ -626,7 +687,7 @@ class SourceBrowser(Vertical):
                 {line: option for line, option in self._options.get(key, {}).items()
                  if line in enabled},
             ))
-        self.post_message(self.MarksChanged())
+        self._refresh_list()
 
     def _tree_node(self, key):
         """The loaded tree node of a stored file, or None when its folder is not listed."""

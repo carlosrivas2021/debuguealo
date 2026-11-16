@@ -41,8 +41,9 @@ processes. Container action shortcuts are inactive in Code.
 
 ## Layout
 
-Code is laid out like an IDE: profile names and the file tree on the left (the tree's root
-is the selected profile's folder; the **PROFILES** title shows how many there are), source in
+Code is laid out like an IDE: profile names, the file tree and the project's breakpoints on the
+left (the tree's root is the selected profile's folder; the **PROFILES** title shows how many
+there are), source in
 the center, the **Debug** panel (controls, stack, variables) on the right while a debug
 session is selected, and the bottom area below: the Code terminal for runs or **Debug output**
 for debug sessions. **O** hides or shows the bottom area, the same key that shows the host
@@ -169,6 +170,33 @@ environment.
 
 The red dot stays aligned while scrolling and reappears when you reopen the marked
 file. Red indicates requested intent, **not debugger verification**.
+
+## Breakpoints list
+
+The **BREAKPOINTS** section under the file tree lists every breakpoint of the selected
+profile's folder, by file and then line, for example `◆ main.py:4 if answer == 41`. Its title
+shows how many there are; with none it reads **BREAKPOINTS · F9 adds one**. **Ctrl+Right**
+from the file tree (or **Alt+Right**) moves to it.
+
+| Key | Action |
+|---|---|
+| **Enter** | Open the file at that line, with the cursor on it |
+| **Space** | Switch the breakpoint off, or back on |
+| **Delete** | Remove the breakpoint, with its condition, log message or hit count |
+| **A** | Switch every breakpoint of the project off; when all are off, switch them back on |
+
+A breakpoint that is off keeps its line, condition, log message and hit count, but the
+debugger never receives it: it neither stops nor logs. It shows a grey **○** in the list and
+the gutter, **(off)** in the list and **off** in the file tree. Switching one off or on applies
+to an active debug session right away. **F9** on a line that is off removes it.
+
+While debugging, **▶** marks the row of the paused line shown in the source, so a stop at a
+breakpoint shows which one it was.
+
+Lines that are off are saved in `projects/breakpoints.json` as a `disabled` list beside the
+file's `lines`. A file with none keeps exactly the previous format; versions of debugealo
+before this feature refuse a file that has one, so switching them back on keeps it readable
+by those versions.
 
 ## Conditional breakpoints and logpoints
 
