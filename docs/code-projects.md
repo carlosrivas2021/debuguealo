@@ -324,7 +324,7 @@ For Python and Node, the debug output is what the program's terminal shows: prom
 straight to the terminal, such as Python's `getpass` prompt, and the terminal's own echo of what
 you type, so a password prompt that turns echo off keeps the password hidden. stdout and stderr
 are merged in order. Each line starts with its kind, such as `[stdout]`; the profile's
-name is in the panel's title, `Debug output · <profile>`. For Go, Delve reports the output itself, and the typed line shows as
+name is in the panel's title, `Debug output · <profile> · Exceptions: <mode>`. For Go, Delve reports the output itself, and the typed line shows as
 `[input] text` only while the program's terminal echoes; Windows cannot report that,
 so there typed lines never show for Go, to keep passwords out of the output.
 Attached processes are not owned by Code, so attach sessions have no program input.
@@ -409,11 +409,17 @@ Press **E** in Code to move the highlighted profile's project to the next mode:
 
 The mode applies right away to the project's running debug sessions and to the next ones. It
 is kept per project in `projects/exceptions.json`; the default `uncaught` is not written. The
-debug output's subtitle shows the current mode, for example `Exceptions: uncaught`.
+debug output's title shows the current mode, for example `Exceptions: uncaught`.
 
 Every debugger supports it, launched or attached. In Go, `uncaught` and `all` both pause on an
 unrecovered panic or a fatal runtime error: a panic that `recover` handles never reaches the
-debugger.
+debugger. In Python, `all` pauses again in each of your functions an exception leaves.
+
+An exception can stop inside the runtime's own code, outside the project: Go's
+`runtime/panic.go`, or Node's `fs` module in the `all` mode. Code then selects the first
+frame of the stack whose file is inside the project, so the execution line, the variables
+and the watches show your function. The runtime frames stay above it in **Call stack**.
+Breakpoints and steps always show the top frame.
 
 ## Attach to an existing Go/Delve target
 

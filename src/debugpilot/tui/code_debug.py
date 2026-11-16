@@ -48,6 +48,19 @@ def _frame_cells(frame):
     return tuple(Text(str(cell), style=style) for cell in cells)
 
 
+def _own_frame(frames, root):
+    """The first frame whose source is inside the project, or the top frame when none is."""
+    root = Path(root).resolve()
+    for index, frame in enumerate(frames):
+        path = frame.get('source', {}).get('path')
+        try:
+            if path and Path(path).resolve().is_relative_to(root):
+                return index
+        except (OSError, ValueError, RuntimeError):
+            continue
+    return 0
+
+
 def _variable_value(value):
     """One line per variable: a multi-line value (like a function body) shows its first line."""
     lines = str(value).splitlines() or ['']
@@ -510,7 +523,6 @@ class CodeDebug(Vertical):
         self._show_preview()
         self.output.clear()
         self.output.border_title = 'Debug output'
-        self.output.border_subtitle = ''
         self.browser.clear_execution()
         for button in self.query(Button):
             button.disabled = True
@@ -520,9 +532,7 @@ class CodeDebug(Vertical):
             return
         log = self.output
         log.clear()
-        # The profile is named once, in the title, instead of on every line.
-        log.border_title = f'Debug output · {context.profile.name}'
-        log.border_subtitle = f'Exceptions: {self.exception_mode(context.profile.root)}'
+        log.border_title = self._output_title(context)
         for line in context.output:
             log.write(line)
         self._render_pause(context)
@@ -920,8 +930,9 @@ class CodeDebug(Vertical):
             context.pause += 1
             # Controls never wait for inspection, which may be slow or fail.
             self._render_inspection(context)
-            self._spawn(context, self._inspect(context, generation, context.pause))
-            if body.get('reason') == 'exception':
+            exception = body.get('reason') == 'exception'
+            self._spawn(context, self._inspect(context, generation, context.pause, exception))
+            if exception:
                 self._spawn(context, self._show_exception(context, generation, context.pause))
         elif name in {'breakpoint', 'breakpoints'}:
             if self.selected is context:
@@ -938,6 +949,12 @@ class CodeDebug(Vertical):
         self._append_output(context, f'[exception] {text}')
         self._set_state(context, f'Paused on exception: {text.splitlines()[0]} · '
                                  f'{context.profile.name} · {context.profile.root}')
+
+    def _output_title(self, context):
+        # The profile is named once, in the title, instead of on every line. The output has
+        # only a top border, so the exception mode goes in the title too, never a subtitle.
+        mode = self.exception_mode(context.profile.root)
+        return f'Debug output · {context.profile.name} · Exceptions: {mode}'
 
     def exception_mode(self, root):
         return self.exception_modes.get(Path(root).resolve(), DEFAULT_EXCEPTION_MODE)
@@ -957,7 +974,7 @@ class CodeDebug(Vertical):
                     and Path(context.profile.root).resolve() == root):
                 self._spawn(context, self._apply_exceptions(context, mode))
         if self.selected is not None and Path(self.selected.profile.root).resolve() == root:
-            self.output.border_subtitle = f'Exceptions: {mode}'
+            self.output.border_title = self._output_title(self.selected)
         return mode
 
     async def _apply_exceptions(self, context, mode):
@@ -971,16 +988,18 @@ class CodeDebug(Vertical):
         return (self._current(context, generation) and pause == context.pause
                 and context.session.state == 'stopped')
 
-    async def _inspect(self, context, generation, pause):
+    async def _inspect(self, context, generation, pause, exception=False):
         try:
             frames = await context.session.stack()
             if not self._paused(context, generation, pause):
                 return
             context.frames = frames
-            context.frame_row = 0
+            # An exception can stop inside runtime code (Go's panic.go, Node's fs); show
+            # the project's own frame instead. Steps and breakpoints keep the top frame.
+            context.frame_row = _own_frame(frames, context.profile.root) if exception else 0
             self._render_pause(context)
             if frames:
-                await self._frame(context, generation, pause, frames[0])
+                await self._frame(context, generation, pause, frames[context.frame_row])
         except DebugError as error:
             if self._paused(context, generation, pause):
                 self.app.notify(str(error), severity='warning')
