@@ -7,6 +7,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Button, DataTable, Input, Static
 
@@ -97,6 +98,8 @@ class CodeWorkspace(Vertical):
         self._shutting_down = False
         self._restarting = False
         self._profile_rows = DEFAULT_PROFILE_ROWS
+        # The keys the footer last drew; redrawing rebuilds every footer key.
+        self._drawn_bindings = None
         # Last view the user chose per profile ("run" or "debug"), used when neither is live.
         self._last_view: dict[str, str] = {}
         # Branch each profile was launched from; a live session keeps showing it after a checkout.
@@ -162,6 +165,7 @@ class CodeWorkspace(Vertical):
         self._bottom.display = True
 
     def on_mount(self) -> None:
+        self.screen.bindings_updated_signal.subscribe(self, self._bindings_drawn)
         # Wide enough for the cursor highlight to span the sidebar.
         self._profile_column = self.query_one("#code-projects", DataTable).add_column(
             "Profile", width=26)
@@ -352,7 +356,34 @@ class CodeWorkspace(Vertical):
         self._branch.display = bool(branch)
         self._refresh_status_icons()
         # R switches between Restart and Reload as the selection goes live or stops.
-        self.refresh_bindings()
+        self._refresh_footer()
+
+    def _offered_bindings(self):
+        return tuple(
+            (key, binding.action, binding.description, enabled, tooltip)
+            for key, (_, binding, enabled, tooltip) in self.screen.active_bindings.items()
+        )
+
+    def _refresh_footer(self) -> None:
+        """Redraw the footer only when the keys it offers changed.
+
+        Textual rebuilds the whole footer on every refresh, which made each move between
+        profiles visibly slow while the keys stayed the same.
+        """
+        try:
+            unchanged = self._offered_bindings() == self._drawn_bindings
+        except NoMatches:
+            unchanged = False  # Still mounting: redraw, as before.
+        if not unchanged:
+            self.refresh_bindings()
+
+    def _bindings_drawn(self, _screen) -> None:
+        # Any refresh (ours, a focus change, Textual's own) leaves these keys drawn.
+        try:
+            self._drawn_bindings = self._offered_bindings()
+        except NoMatches:
+            # Still mounting: unknown, so the next change redraws the footer.
+            self._drawn_bindings = None
 
     def _profile_status(self, profile):
         debug = self._debug.context_for(profile)

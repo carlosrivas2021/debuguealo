@@ -46,3 +46,41 @@ async def test_switching_profiles_does_not_resolve_every_file(monkeypatch, tmp_p
         await pilot.pause()
         # A handful for the root and the branch, never one or more per file.
         assert len(calls) < 30, len(calls)
+
+
+async def test_moving_between_profiles_rebuilds_the_footer_only_when_its_keys_change(
+        monkeypatch, tmp_path):
+    from test_code_debug_ui import debug_app
+    from textual.widgets import Footer
+    from textual.widgets._footer import FooterKey
+
+    app, _roots, _store = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click("#area-code")
+        table = app.query_one("#code-projects", DataTable)
+        await until(pilot, lambda: table.row_count == 2)
+        table.focus()
+        await pilot.pause(0.3)
+        footer = app.query_one(Footer)
+
+        def shown():
+            return {key.description for key in footer.query(FooterKey)}
+
+        assert "Reload" in shown() and "Restart" not in shown()
+        rebuilt = []
+        recompose = Footer.recompose
+
+        async def counted(self):
+            rebuilt.append(self)
+            return await recompose(self)
+
+        monkeypatch.setattr(Footer, "recompose", counted)
+        for key in ("down", "up", "down", "up"):
+            await pilot.press(key)
+            await pilot.pause()
+        # Two stopped profiles offer the same keys: the footer is left as it is.
+        assert rebuilt == []
+        # Starting a debug session changes the keys (R restarts): the footer follows.
+        await pilot.press("shift+f5")
+        await until(pilot, lambda: "Restart" in shown())
+        assert rebuilt and "Reload" not in shown()
