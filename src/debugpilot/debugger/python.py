@@ -393,6 +393,10 @@ class PythonDebugSession:
 
     async def evaluate(self, expression, frame_id):
         """Evaluate a watch expression in a paused frame; the debugger's error is raised."""
+        return (await self.inspect(expression, frame_id))['value']
+
+    async def inspect(self, expression, frame_id):
+        """A watch's value, and the variables reference of its fields (0 when it has none)."""
         self._stopped()
         try:
             body = await self._client.request('evaluate', {
@@ -403,7 +407,8 @@ class PythonDebugSession:
             if error.detail:
                 raise DebugError(error.detail) from None
             raise
-        return str(body.get('result', ''))
+        return {'value': str(body.get('result', '')),
+                'variablesReference': body.get('variablesReference') or 0}
 
     async def _resume(self, command):
         thread = self._stopped()

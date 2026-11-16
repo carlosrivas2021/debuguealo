@@ -377,6 +377,12 @@ another stack frame, in that frame's scope. Without a paused session its value s
 If an expression fails, its row shows the debugger's error, for example
 `⚠ NameError: name 'count' is not defined`, and the other watches keep working.
 
+A watch whose value has fields (an object, dict, list, struct or map) opens like a variable:
+`▸` before the expression, **Right** or **Space** to list its fields, **Left** to close them
+or go back to the watch, and the whole value of the highlighted row under the list. **C**
+copies that value, as in [Variables](#expand-nested-variables). **Delete** removes only a
+whole watch, never a field opened under it.
+
 Watches work with Python, Go and Node debugging and with Python, Go and Node attach. They are
 saved per project root in `projects/watches.json`, beside the breakpoints file; values are
 never saved.

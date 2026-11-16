@@ -127,8 +127,12 @@ async def _copy_tree(session, reference, depth, lines):
             await _copy_tree(session, children, depth + 1, lines)
 
 
-class VariablesTable(DataTable):
-    """The paused frame's variables: scope headings and one selectable row per variable."""
+# Watch rows' paths start with this, so they never meet a scope's variables in `expanded`.
+WATCH_PATH = '#watch'
+
+
+class ValueTable(DataTable):
+    """Rows of values that open into their fields: Right/Left/Space expand, C copies."""
 
     BINDINGS = [
         Binding('right', 'expand', 'Expand', show=False),
@@ -151,11 +155,8 @@ class VariablesTable(DataTable):
             return self.table
 
     def __init__(self, **kwargs):
-        super().__init__(cursor_type='row', show_header=False, **kwargs)
+        super().__init__(cursor_type='row', **kwargs)
         self.variable_rows: tuple[VariableRow, ...] = ()
-
-    def on_mount(self):
-        self.add_column('Variable')
 
     def show(self, rows):
         rows = tuple(rows)
@@ -165,10 +166,12 @@ class VariablesTable(DataTable):
         self.variable_rows = rows
         self.clear()
         for index, variable in enumerate(rows):
-            style = 'bold #a9c2cc' if variable.name is None else ''
-            self.add_row(Text(variable.line, style=style, no_wrap=True), key=str(index))
+            self.add_row(*self._cells(variable), key=str(index))
         if rows:
             self.move_cursor(row=min(row, len(rows) - 1))
+
+    def _cells(self, variable):
+        raise NotImplementedError
 
     def on_resize(self) -> None:
         # The value preview below grows and shrinks this table; keep the cursor's row in view.
@@ -226,10 +229,38 @@ class VariablesTable(DataTable):
                 self.move_cursor(row=index)
                 return
 
+
+
+class VariablesTable(ValueTable):
+    """The paused frame's variables: scope headings and one selectable row per variable."""
+
+    def __init__(self, **kwargs):
+        super().__init__(show_header=False, **kwargs)
+
+    def on_mount(self):
+        self.add_column('Variable')
+
+    def _cells(self, variable):
+        style = 'bold #a9c2cc' if variable.name is None else ''
+        return (Text(variable.line, style=style, no_wrap=True),)
+
     @property
     def text(self):
         """What the pane shows, one line per row."""
         return '\n'.join(row.line for row in self.variable_rows) or 'Variables: —'
+
+
+class WatchTable(ValueTable):
+    """Watch expressions and their values; a value with fields opens like a variable."""
+
+    def on_mount(self):
+        self.add_columns('Expression', 'Value')
+
+    def _cells(self, watch):
+        # A plain watch shows its expression as typed; markers only where something opens.
+        label = watch.name if watch.depth == 0 and not watch.children else (
+            watch.prefix + watch.name)
+        return Text(label, no_wrap=True), Text(_watch_value(watch.value), no_wrap=True)
 
 
 class VariableEditor(Input):
@@ -312,8 +343,8 @@ class DebugContext:
     state: str = ''
     unexpected_disconnect: bool = False
     frame_row: int = 0
-    # Watch expression -> displayed value for the current pause and frame.
-    watch_values: dict = field(default_factory=dict)
+    # Each evaluated watch and the fields opened under it, for the current pause and frame.
+    watch_rows: tuple = ()
     watch_frame: object = None
     # Paths (scope, variable, field, ...) the user expanded; kept across pauses.
     expanded: set = field(default_factory=set)
@@ -404,7 +435,8 @@ class CodeDebug(Vertical):
             with Vertical(id='code-watch-pane'):
                 yield Input(placeholder='+ Add watch expression', id='code-watch-input',
                             compact=True)
-                yield DataTable(id='code-watches', cursor_type='row')
+                yield WatchTable(id='code-watches')
+                yield Static('', id='watch-preview', markup=False)
             with Vertical(id='code-variables-pane'):
                 yield VariablesTable(id='code-variables')
                 yield Static('', id='variable-preview', markup=False)
@@ -414,7 +446,6 @@ class CodeDebug(Vertical):
         stack = self.query_one('#code-stack', DataTable)
         stack.add_columns('Frame', 'Source', 'Line')
         stack.border_title = 'Call stack'
-        self.query_one('#code-watches', DataTable).add_columns('Expression', 'Value')
         self.query_one('#code-watch-pane').border_title = 'Watch'
         self.query_one('#code-variables', VariablesTable).border_title = 'Variables'
         self.display = False
@@ -522,29 +553,48 @@ class CodeDebug(Vertical):
     def _render_watches(self, context):
         if self.selected is not context or not self.query('#code-watches'):
             return
-        table = self.query_one('#code-watches', DataTable)
-        row = table.cursor_row
-        table.clear()
         paused = context.session is not None and context.session.state == 'stopped'
+        evaluated = {}
+        for watch in context.watch_rows if paused else ():
+            if watch.depth == 0:
+                evaluated[watch.name] = []
+            evaluated[watch.path[1]].append(watch)
+        rows = []
         for expression in self._watches(context):
-            value = context.watch_values.get(expression, '—') if paused else '—'
-            table.add_row(expression, value)
-        if table.row_count:
-            table.move_cursor(row=min(row, table.row_count - 1))
+            # A watch added since the last evaluation waits for the next one.
+            rows.extend(evaluated.get(expression) or (
+                VariableRow(WATCH_PATH, 0, expression, '—', path=(WATCH_PATH, expression)),))
+        self.query_one('#code-watches', WatchTable).show(rows)
+        self._show_preview()
 
     async def _evaluate_watches(self, context, generation, pause, frame_id):
-        values = {}
+        rows = []
         for expression in list(self._watches(context)):
             if not self._paused(context, generation, pause):
                 return
             try:
-                values[expression] = _watch_value(
-                    await context.session.evaluate(expression, frame_id))
+                result = await self._inspect_watch(context.session, expression, frame_id)
             except DebugError as error:
                 # One failing watch never stops the others.
-                values[expression] = _watch_error(error)
+                result = {'value': _watch_error(error), 'variablesReference': 0}
+            children = result.get('variablesReference') or 0
+            path = (WATCH_PATH, expression)
+            watch = VariableRow(WATCH_PATH, 0, expression, str(result.get('value', '')), 0,
+                                children, path, bool(children) and path in context.expanded,
+                                expression)
+            rows.append(watch)
+            if watch.expanded and not await self._variables(
+                    context, generation, pause, rows, watch):
+                return
         if self._paused(context, generation, pause):
-            context.watch_values = values
+            context.watch_rows = tuple(rows)
+
+    @staticmethod
+    async def _inspect_watch(session, expression, frame_id):
+        inspect = getattr(session, 'inspect', None)
+        if inspect is None:
+            return {'value': await session.evaluate(expression, frame_id)}
+        return await inspect(expression, frame_id)
 
     async def _refresh_watches(self, context, generation, pause):
         await self._evaluate_watches(context, generation, pause, context.watch_frame)
@@ -590,10 +640,12 @@ class CodeDebug(Vertical):
         event.stop()
         context = self.selected
         watches = self._watches(context) if context is not None else []
-        row = table.first().cursor_row
-        if 0 <= row < len(watches):
-            watches.pop(row)
-            context.watch_values.pop(str(table.first().get_row_at(row)[0]), None)
+        watch = table.first().highlighted
+        # A field opened under a watch is not a watch of its own.
+        if watch is not None and watch.depth == 0 and watch.name in watches:
+            watches.remove(watch.name)
+            context.watch_rows = tuple(row for row in context.watch_rows
+                                       if row.path[1] != watch.name)
             self._save_watches()
             self._render_watches(context)
 
@@ -790,7 +842,7 @@ class CodeDebug(Vertical):
         context.variables = ()
         context.execution = None
         context.frame_row = 0
-        context.watch_values = {}
+        context.watch_rows = ()
         context.watch_frame = None
         self._render_pause(context)
 
@@ -921,19 +973,22 @@ class CodeDebug(Vertical):
                 return False
         return True
 
-    @on(DataTable.RowHighlighted, '#code-variables')
-    def _variable_highlighted(self, event):
+    @on(DataTable.RowHighlighted, '#code-variables, #code-watches')
+    def _value_highlighted(self, event):
         event.stop()
         self._show_preview()
 
     def _show_preview(self):
-        """The highlighted variable's whole value, wrapped, under the cut-off rows."""
-        variable = self.query_one('#code-variables', VariablesTable).highlighted
-        preview = self.query_one('#variable-preview', Static)
-        preview.display = variable is not None and variable.name is not None
-        preview.update(f'{variable.name} = {variable.value}' if preview.display else '')
+        """The highlighted value in full, wrapped, under the cut-off rows of each table."""
+        for table, preview in (('#code-variables', '#variable-preview'),
+                               ('#code-watches', '#watch-preview')):
+            variable = self.query_one(table, ValueTable).highlighted
+            widget = self.query_one(preview, Static)
+            widget.display = (variable is not None and variable.name is not None
+                              and variable.value != '—')
+            widget.update(f'{variable.name} = {variable.value}' if widget.display else '')
 
-    @on(VariablesTable.CopyRequested, '#code-variables')
+    @on(ValueTable.CopyRequested, '#code-variables, #code-watches')
     def copy_variable(self, event):
         event.stop()
         context = self.selected
@@ -952,9 +1007,9 @@ class CodeDebug(Vertical):
             self.app.copy_to_clipboard(text)
             self.app.notify(f'Copied the value of {variable.name}', timeout=2)
 
-    @on(VariablesTable.Toggled, '#code-variables')
+    @on(ValueTable.Toggled, '#code-variables, #code-watches')
     def toggle_variable(self, event):
-        """Right expands a variable's fields, Left collapses them."""
+        """Right expands a variable's or a watch's fields, Left collapses them."""
         event.stop()
         context = self.selected
         if (context is None or not context.active or context.session is None
@@ -964,7 +1019,9 @@ class CodeDebug(Vertical):
             context.expanded.add(event.variable.path)
         else:
             context.expanded.discard(event.variable.path)
-        self._spawn(context, self._refresh_frame(context, context.generation, context.pause))
+        refresh = (self._refresh_watches if event.control.id == 'code-watches'
+                   else self._refresh_frame)
+        self._spawn(context, refresh(context, context.generation, context.pause))
 
     async def _refresh_frame(self, context, generation, pause):
         """Read the selected frame again: values, fields and watches."""
@@ -1047,7 +1104,7 @@ class CodeDebug(Vertical):
             context.pause += 1
             context.variables = ()
             context.execution = None
-            context.watch_values = {}
+            context.watch_rows = ()
             context.frame_row = event.cursor_row
             self._render_inspection(context)
             self._spawn(context, self._select_frame(

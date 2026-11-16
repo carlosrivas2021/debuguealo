@@ -528,18 +528,16 @@ class NodeDebugSession(PythonDebugSession):
 
     async def evaluate(self, expression, frame_id):
         """Evaluate a watch expression in a paused call frame; exceptions become errors."""
+        return (await self.inspect(expression, frame_id))['value']
+
+    async def inspect(self, expression, frame_id):
+        """A watch's value, and the variables reference of its fields (0 when it has none)."""
         self._stopped()
         if not any(frame['callFrameId'] == frame_id for frame in self._frames):
             raise DebugError('Frame is no longer paused.')
-        result = await self._client.request('Debugger.evaluateOnCallFrame', {
-            'callFrameId': frame_id, 'expression': expression, 'generatePreview': False,
-        })
-        details = result.get('exceptionDetails')
-        if details is not None:
-            message = (details.get('exception', {}).get('description')
-                       or details.get('text') or 'Evaluation failed.')
-            raise DebugError(message.splitlines()[0])
-        return _display(result.get('result', {}))
+        result = await self._evaluate_on(frame_id, expression)
+        return {'value': _display(result),
+                'variablesReference': self._reference(result.get('objectId'), frame_id)}
 
     async def _resume(self, command):
         self._stopped()

@@ -39,10 +39,11 @@ BreakpointDialog { background: transparent; }
 #code-watch-pane { height: auto; border-top: solid #2b3439; border-title-color: #a9c2cc; }
 /* A blank row above each debug section title keeps them apart. */
 #code-stack, #code-watch-pane, #code-variables { margin-top: 1; }
-#code-watches { height: auto; max-height: 8; }
+#code-watches { height: auto; max-height: 8; overflow-x: hidden; overflow-y: auto; }
 #code-variables { width: 1fr; height: 1fr; overflow-x: hidden; overflow-y: auto; padding: 0 1; border-top: solid #2b3439; border-title-color: #a9c2cc; }
 #code-variables-pane { width: 1fr; height: 1fr; }
 #variable-preview { height: auto; max-height: 40%; overflow-y: auto; padding: 0 1; border-top: solid #2b3439; color: #a9c2cc; }
+#watch-preview { height: auto; max-height: 4; overflow-y: auto; padding: 0 1; border-top: solid #2b3439; color: #a9c2cc; }
 /* Placed over the edited variable's row, after its name. */
 #variable-value { position: absolute; height: 1; }
 #code-bottom { height: 1fr; min-height: 4; }

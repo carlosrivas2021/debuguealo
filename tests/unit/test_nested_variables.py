@@ -146,3 +146,24 @@ async def test_copy_text_is_the_whole_value_in_the_language_or_a_tree(tmp_path, 
             assert any(line.startswith(f'  {point_name} = ') for line in lines)
     finally:
         await session.close()
+
+
+# A watch on the field, as each language writes it.
+FIELD = {'python': "config['port']", 'go': 'config.Port', 'node': 'config.port'}
+
+
+@pytest.mark.parametrize('language', ['python', 'go', 'node'])
+async def test_inspect_returns_a_watch_value_and_the_reference_of_its_fields(tmp_path, language):
+    session, _source = await start(tmp_path, language, [])
+    config_name, port_name, _point, _x = NAMES[language]
+    try:
+        frame_id = (await session.stack())[0]['id']
+        config = await session.inspect(config_name, frame_id)
+        assert config['variablesReference'] > 0
+        assert (await child(session, config['variablesReference'], port_name))['value'] == '80'
+        port = await session.inspect(FIELD[language], frame_id)
+        assert port == {'value': '80', 'variablesReference': 0}
+        with pytest.raises(DebugError):
+            await session.inspect('missing_name', frame_id)
+    finally:
+        await session.close()
