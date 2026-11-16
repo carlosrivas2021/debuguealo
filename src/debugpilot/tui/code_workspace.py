@@ -303,7 +303,19 @@ class CodeWorkspace(Vertical):
             # A session can end on its own (e.g. after Continue); drop the empty side panel.
             if self._apply_view(debug_context.profile) == "debug":
                 self._state(debug_context.state)
+            self._keep_focus()
         self._sync_controls()
+
+    def _keep_focus(self):
+        """Move the keys to the profiles when the focused pane was just hidden.
+
+        Without a focused widget, keys skip this workspace and Ctrl/Alt+arrows stop working.
+        """
+        if not self.display:
+            return  # Another area is open; its keys are not ours to move.
+        focused = self.app.focused
+        if focused is None or (self in focused.ancestors and not self._shown(focused)):
+            self.query_one("#code-projects").focus()
 
     def _sync_controls(self):
         run_context = self._pane.selected_context

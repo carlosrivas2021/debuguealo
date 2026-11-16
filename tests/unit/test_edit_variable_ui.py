@@ -106,3 +106,18 @@ async def test_alt_arrows_skip_the_hidden_debug_panes(monkeypatch, tmp_path):
             await pilot.pause()
             visited.append(app.focused.id)
         assert visited == ['source-tree', 'source-text', 'code-projects']
+
+
+async def test_focus_returns_to_the_profiles_when_the_debug_panel_closes(monkeypatch, tmp_path):
+    app, _roots, _store = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        table = await pause_on_answer(pilot, app)
+        assert table.has_focus
+        await pilot.press('f5')  # Continue: the program ends and the panel goes away.
+        await until(pilot, lambda: 'RESULT:42' in output(app))
+        await until(pilot, lambda: not app.query_one('#code-debug').display)
+        await until(pilot, lambda: app.focused is not None
+                    and app.focused.id == 'code-projects')
+        await pilot.press('alt+right')  # The panes are reachable again.
+        await pilot.pause()
+        assert app.focused.id == 'source-tree'
