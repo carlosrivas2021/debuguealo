@@ -72,6 +72,8 @@ class CodeWorkspace(Vertical):
         Binding("r", "reload_profiles", "Reload"),
         # Go to the live program's input: Program input while debugging, else its terminal.
         Binding("p", "focus_prompt", "Prompt"),
+        # The debug console, shown under the debug output while paused.
+        Binding("colon", "focus_console", "Evaluate"),
         # Where the debugger pauses on exceptions: uncaught, all, or none.
         Binding("e", "cycle_exceptions", "Exceptions"),
         Binding("slash", "filter_profiles", "Filter"),
@@ -131,7 +133,8 @@ class CodeWorkspace(Vertical):
         self._debug = CodeDebug(None, self._state, self._debug_finished)
         self._debug.border_title = "Debug"
         self._bottom = Vertical(
-            self._pane, self._debug.output, self._debug.input, id="code-bottom")
+            self._pane, self._debug.output, self._debug.console, self._debug.input,
+            id="code-bottom")
         self._browser = SourceBrowser(
             sidebar_header=profiles, editor_side=self._debug, bottom=self._bottom
         )
@@ -566,7 +569,7 @@ class CodeWorkspace(Vertical):
                         and focused is not None and focused.id == "code-projects")
         if action in {
             "stop_run", "resize_profiles", "reload_profiles", "restart_run", "focus_prompt",
-            "filter_profiles", "cycle_exceptions",
+            "filter_profiles", "cycle_exceptions", "focus_console",
         }:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
@@ -581,6 +584,10 @@ class CodeWorkspace(Vertical):
             if (action == "restart_run") != live:
                 return False
         if action == "focus_prompt" and self._prompt_target() is None:
+            return False
+        if action == "focus_console" and not (
+            self._debug.display and self._debug.console.display
+        ):
             return False
         if action == "focus_pane":
             focused = self.app.focused
@@ -705,6 +712,9 @@ class CodeWorkspace(Vertical):
             limit = table.size.height + tree.first().size.height - MIN_TREE_ROWS
         self._profile_rows = max(MIN_PROFILE_ROWS, min(rows, limit))
         table.styles.height = self._profile_rows
+
+    def action_focus_console(self) -> None:
+        self._debug.console.focus()
 
     def action_cycle_exceptions(self) -> None:
         profile = self._highlighted_profile()

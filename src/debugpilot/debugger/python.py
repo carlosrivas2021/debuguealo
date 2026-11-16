@@ -426,16 +426,20 @@ class PythonDebugSession:
             return None
         return value if isinstance(value, str) else None
 
-    async def evaluate(self, expression, frame_id):
-        """Evaluate a watch expression in a paused frame; the debugger's error is raised."""
-        return (await self.inspect(expression, frame_id))['value']
+    async def evaluate(self, expression, frame_id, context='watch'):
+        """Evaluate in a paused frame; the debugger's error is raised.
 
-    async def inspect(self, expression, frame_id):
+        The 'watch' context takes expressions; 'repl' (the debug console) also runs
+        statements such as assignments.
+        """
+        return (await self.inspect(expression, frame_id, context))['value']
+
+    async def inspect(self, expression, frame_id, context='watch'):
         """A watch's value, and the variables reference of its fields (0 when it has none)."""
         self._stopped()
         try:
             body = await self._client.request('evaluate', {
-                'expression': expression, 'frameId': frame_id, 'context': 'watch',
+                'expression': expression, 'frameId': frame_id, 'context': context,
             })
         except DebugError as error:
             # Delve keeps the reason in the response detail ("could not find symbol ...").

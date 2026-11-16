@@ -344,6 +344,73 @@ class ProgramInput(Input):
         self.value = ''
 
 
+MAX_CONSOLE_HISTORY = 100
+
+
+class EvaluateInput(Input):
+    """The debug console: Enter evaluates a line in the selected paused frame.
+
+    Up and Down walk the lines already run in this Debugealo session; Esc leaves.
+    """
+
+    BINDINGS = [
+        Binding('up', 'older', 'Older', show=False),
+        Binding('down', 'newer', 'Newer', show=False),
+        Binding('escape', 'leave', 'Leave', show=False),
+    ]
+
+    def __init__(self, run):
+        super().__init__(placeholder=_console_placeholder(None), id='code-debug-eval',
+                         compact=True)
+        self._run = run
+        self.history: list[str] = []
+        # The history line shown while walking it with Up/Down, or None when not walking.
+        self._position = None
+        self.display = False
+
+    def _on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input is not self:
+            return
+        event.stop()
+        text = self.value.strip()
+        self.value = ''
+        self._position = None
+        if not text:
+            return
+        if not self.history or self.history[-1] != text:
+            self.history.append(text)
+            del self.history[:-MAX_CONSOLE_HISTORY]
+        self._run(text)
+
+    def _recall(self, position):
+        self._position = position
+        self.value = '' if position is None else self.history[position]
+        self.cursor_position = len(self.value)
+
+    def action_older(self) -> None:
+        if self.history:
+            position = len(self.history) if self._position is None else self._position
+            self._recall(max(0, position - 1))
+
+    def action_newer(self) -> None:
+        if self._position is not None:
+            newer = self._position + 1
+            self._recall(newer if newer < len(self.history) else None)
+
+    def action_leave(self) -> None:
+        self.screen.query_one('#code-projects').focus()
+        self.value = ''
+        self._position = None
+
+
+def _console_placeholder(frame):
+    if frame is None:
+        return 'Evaluate · Enter runs in the paused frame · ↑↓ history'
+    path = frame.get('source', {}).get('path')
+    where = Path(path).name if path else frame.get('name', '?')
+    return f'Evaluate · Enter runs in {where}:{frame.get("line", "?")} · ↑↓ history'
+
+
 @dataclass
 class DebugContext:
     profile: object
@@ -389,6 +456,7 @@ class CodeDebug(Vertical):
         self.output.border_title = 'Debug output'
         self.output.display = False
         self.input = ProgramInput(self._send_input, self._end_input)
+        self.console = EvaluateInput(self._evaluate_console)
         self.watch_store = WatchStore()
         try:
             self.watches: dict[Path, list[str]] = {
@@ -572,6 +640,7 @@ class CodeDebug(Vertical):
         if context.execution is not None:
             root, path, line = context.execution
             self.browser.show_execution(root, path, line)
+        self.sync_console()
 
     def _watches(self, context):
         return self.watches.get(Path(context.profile.root).resolve(), [])
@@ -696,6 +765,52 @@ class CodeDebug(Vertical):
         if shown != self.input.display:
             self.input.display = shown
             self.refresh_bindings()  # The footer offers P only while there is a prompt.
+        self.sync_console()
+
+    def _console_frame(self):
+        """The selected paused context and the frame the console evaluates in."""
+        context = self.selected
+        if (context is None or not context.active or context.session is None
+                or context.session.state != 'stopped' or not context.frames):
+            return context, None
+        return context, context.frames[min(context.frame_row, len(context.frames) - 1)]
+
+    def sync_console(self):
+        """Show the console beside the output only while paused; it names its frame."""
+        context, frame = self._console_frame()
+        paused = bool(context and context.active and context.session is not None
+                      and context.session.state == 'stopped')
+        shown = bool(self.output.display and paused)
+        self.console.placeholder = _console_placeholder(frame)
+        if shown != self.console.display:
+            self.console.display = shown
+            self.refresh_bindings()  # The footer offers : only while paused.
+
+    def _evaluate_console(self, text):
+        context, frame = self._console_frame()
+        if frame is None:
+            self.app.notify('Pause the program to evaluate an expression.', severity='warning')
+            return
+        self._append_output(context, f'> {text}')
+        self._spawn(context, self._console(context, context.generation, context.pause,
+                                           text, frame))
+
+    async def _console(self, context, generation, pause, text, frame):
+        try:
+            value = await context.session.evaluate(text, frame['id'], context='repl')
+        except DebugError as error:
+            value = _watch_error(error)
+        if not self._current(context, generation):
+            return
+        if value:
+            # An assignment has no value; its effect shows in Variables and Watch.
+            self._append_output(context, value)
+        if self._paused(context, generation, pause):
+            try:
+                await self._frame(context, generation, pause, frame)
+            except DebugError as error:
+                if self._paused(context, generation, pause):
+                    self.app.notify(str(error), severity='warning')
 
     def _send_input(self, text):
         context, session = self._input_session()

@@ -391,6 +391,29 @@ never saved.
 pause, and a call with side effects repeats them. As in VS Code, debugealo does not block
 such expressions, so prefer reading values over calling functions that change state.
 
+## Debug console
+
+While a debug session is paused, an **Evaluate** field sits under the debug output, above
+**Program input**. Its placeholder names the frame it runs in, for example
+`Evaluate · Enter runs in main.py:25 · ↑↓ history`: the frame selected in **Call stack**.
+Press **:** to go to it, type an expression and press **Enter**. The debug output shows the
+line and its result, or the debugger's error:
+
+```text
+> len(orders)
+3
+> total / 0
+⚠ ZeroDivisionError: division by zero
+```
+
+Python and Go evaluate in the debugger's console context, so statements such as
+`total = 99` also run in Python; Node evaluates expressions and assignments alike. An
+assignment prints no value: after each line, **Variables** and **Watch** are read again, so its
+effect shows there. **↑** and **↓** walk the lines already run in this Debugealo session (up to
+100), and **Esc** returns to the profiles. The field is hidden while the program runs.
+
+Like a watch, a console line **runs code in your program**: `orders.pop()` changes it.
+
 ## Pause on exceptions
 
 By default the debugger pauses where an **uncaught** exception is raised, before it ends the
