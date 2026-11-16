@@ -4,7 +4,9 @@ from pathlib import Path
 
 from rich.style import Style
 from rich.text import Text
+from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal
 from textual.events import Click
 from textual.message import Message
 from textual.widgets import DataTable, Static
@@ -16,8 +18,11 @@ MUTED_STYLE = Style(color="#7f8c93")
 WARNING_STYLE = Style(color="#e5c07b")
 
 
-class BreakpointsTitle(Static, can_focus=True):
-    """The section title: click, Enter or Space opens or closes the list; Down enters it."""
+class BreakpointsTitle(Horizontal, can_focus=True):
+    """The section title, laid out like PROFILES: name on the left, count on the right.
+
+    Click, Enter or Space opens or closes the list.
+    """
 
     BINDINGS = [
         Binding("enter", "toggle", "Open/close", show=False),
@@ -25,14 +30,30 @@ class BreakpointsTitle(Static, can_focus=True):
     ]
 
     class Toggle(Message):
-        pass
+        def __init__(self, from_keyboard: bool):
+            super().__init__()
+            # From the keyboard, opening also moves into the list to pick a breakpoint.
+            self.from_keyboard = from_keyboard
+
+    def compose(self) -> ComposeResult:
+        yield Static("BREAKPOINTS", id="source-breakpoints-name")
+        yield Static("", id="source-breakpoints-count", markup=False)
+
+    def show(self, count: str) -> None:
+        self.query_one("#source-breakpoints-count", Static).update(count)
+
+    @property
+    def text(self) -> str:
+        """The title as shown, name and count, for tests and screen readers."""
+        count = self.query_one("#source-breakpoints-count", Static).render()
+        return f"BREAKPOINTS {count}".rstrip()
 
     def on_click(self, event: Click) -> None:
         event.stop()
-        self.post_message(self.Toggle())
+        self.post_message(self.Toggle(False))
 
     def action_toggle(self) -> None:
-        self.post_message(self.Toggle())
+        self.post_message(self.Toggle(True))
 
 
 class BreakpointList(DataTable):
@@ -58,7 +79,9 @@ class BreakpointList(DataTable):
         pass
 
     def __init__(self, **kwargs):
-        super().__init__(cursor_type="row", show_header=False, cell_padding=0, **kwargs)
+        # Same look as the profiles list above it.
+        super().__init__(cursor_type="row", show_header=False, zebra_stripes=True,
+                         cell_padding=0, **kwargs)
         self._locations: list[Location] = []
 
     def on_mount(self) -> None:

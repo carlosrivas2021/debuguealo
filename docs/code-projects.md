@@ -175,11 +175,14 @@ file. Red indicates requested intent, **not debugger verification**.
 
 The **BREAKPOINTS** section under the file tree lists every breakpoint of the selected
 profile's folder, by file and then line, for example `◆ main.py:4 if answer == 41`. It starts
-closed in every session, showing only its title with the count, for example
-**▸ BREAKPOINTS (3)**. Click the title, or focus it and press **Enter** or **Space**, to open
-it (**▾**) or close it again; it stays as you left it while debugealo runs. With no
-breakpoints the title reads **BREAKPOINTS · F9 adds one**. **Ctrl+Right** from the file tree
-(or **Alt+Right**) moves to the title, and then into the open list.
+closed in every session, showing only its title. Like **PROFILES**, the title has the count on
+the right, followed by **▸** while closed and **▾** while open, for example
+**BREAKPOINTS 3 ▸**. Click the title, or focus it and press **Enter** or **Space**, to open it
+or close it again; from the keyboard, opening also moves the focus into the list, ready to
+pick a breakpoint. It stays as you left it while debugealo runs. With no breakpoints the title
+reads **BREAKPOINTS F9 adds one** and is skipped by the pane keys. **Ctrl+Right** from the
+file tree (or **Alt+Right**) moves to the title, highlighted like a selected row, and then
+into the open list.
 
 | Key | Action |
 |---|---|
@@ -196,8 +199,8 @@ to an active debug session right away. **F9** on a line that is off removes it.
 While debugging, **▶** marks the row of the paused line shown in the source, so a stop at a
 breakpoint shows which one it was. A row also shows the debugger's answer when it needs a
 look: **unverified** when the debugger could not place the breakpoint, and **→ Line N** when it
-placed it on another line. The title counts them, for example
-**▸ BREAKPOINTS (3) · 1 unverified**, so they show even with the list closed. Verified and
+placed it on another line. The title counts the unverified ones after a **⚠**, for example
+**BREAKPOINTS 3 ⚠1 ▸**, so they show even with the list closed. Verified and
 pending breakpoints show no note.
 
 Lines that are off are saved in `projects/breakpoints.json` as a `disabled` list beside the

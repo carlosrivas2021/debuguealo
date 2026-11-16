@@ -195,7 +195,6 @@ class SourceBrowser(Vertical):
     SourceBrowser #source-sidebar { width: 30; min-width: 22; }
     SourceBrowser #source-tree { height: 1fr; }
     SourceBrowser #source-breakpoints { height: auto; max-height: 8; overflow-x: hidden; }
-    SourceBrowser #source-breakpoints-title:focus { background: $accent 40%; }
     SourceBrowser #source-main { width: 1fr; }
     SourceBrowser #source-editor-row { height: 2fr; min-height: 6; }
     SourceBrowser #source-pane { width: 1fr; }
@@ -251,8 +250,7 @@ class SourceBrowser(Vertical):
                     yield self._sidebar_header
                 yield Static("FILES", id="source-files-title", classes="pane-title")
                 yield FileTree("Files", id="source-tree")
-                yield BreakpointsTitle("BREAKPOINTS", id="source-breakpoints-title",
-                                       classes="pane-title")
+                yield BreakpointsTitle(id="source-breakpoints-title", classes="pane-title")
                 yield BreakpointList(id="source-breakpoints")
             with Vertical(id="source-main"):
                 with Horizontal(id="source-editor-row"):
@@ -448,16 +446,20 @@ class SourceBrowser(Vertical):
         # Nothing to open: the title stays out of the focus order.
         title.can_focus = bool(rows)
         if not rows:
-            title.update("BREAKPOINTS · F9 adds one")
+            title.show("F9 adds one")
             return
         unverified = sum(1 for row in rows if row[5] and not row[6])
-        title.update(f"{'▾' if self._list_open else '▸'} BREAKPOINTS ({len(rows)})"
-                     + (f" · {unverified} unverified" if unverified else ""))
+        # Like the PROFILES count, with ⚠ for unverified ones and the open/closed arrow.
+        title.show(f"{len(rows)}" + (f" ⚠{unverified}" if unverified else "")
+                   + (" ▾" if self._list_open else " ▸"))
 
     @on(BreakpointsTitle.Toggle)
-    def _toggle_list(self, _event):
+    def _toggle_list(self, event):
         self._list_open = not self._list_open
         self._refresh_list()
+        table = self.query_one(BreakpointList)
+        if self._list_open and event.from_keyboard and table.display:
+            table.focus()
 
     @on(BreakpointList.RowSelected, "#source-breakpoints")
     def _open_breakpoint(self, event):

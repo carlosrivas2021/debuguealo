@@ -64,7 +64,7 @@ def listed(app):
 
 
 def title(app):
-    return str(app.query_one('#source-breakpoints-title').render())
+    return app.query_one('#source-breakpoints-title').text
 
 
 async def test_the_sidebar_lists_opens_switches_and_removes_breakpoints(monkeypatch, tmp_path):
@@ -79,7 +79,7 @@ async def test_the_sidebar_lists_opens_switches_and_removes_breakpoints(monkeypa
     util = (roots[0] / 'lib' / 'util.py').resolve()
     async with app.run_test(size=(140, 52)) as pilot:
         await pilot.click('#area-code')
-        assert listed(app) == [] and title(app) == 'BREAKPOINTS · F9 adds one'
+        assert listed(app) == [] and title(app) == 'BREAKPOINTS F9 adds one'
         browser = await open_main(pilot, app, 4)
         await edit(pilot, app, condition='answer == 41')
         await open_main(pilot, app, 3)
@@ -88,20 +88,20 @@ async def test_the_sidebar_lists_opens_switches_and_removes_breakpoints(monkeypa
         await pilot.pause()
         await pilot.press('f9')
         # Closed at first: only the title, with the count.
-        assert title(app) == '▸ BREAKPOINTS (3)' and listed(app) == []
+        assert title(app) == 'BREAKPOINTS 3 ▸' and listed(app) == []
         await pilot.click('#source-breakpoints-title')
-        assert title(app) == '▾ BREAKPOINTS (3)'
+        assert title(app) == 'BREAKPOINTS 3 ▾'
         # By file, then line, with each one's kind and condition.
         assert listed(app) == [' ● lib/util.py:2', ' ● main.py:3', ' ◆ main.py:4 if answer == 41']
 
         # Only the selected profile's project is listed.
         profiles = app.query_one('#code-projects', DataTable)
         profiles.move_cursor(row=1)
-        await until(pilot, lambda: title(app) == 'BREAKPOINTS · F9 adds one')
+        await until(pilot, lambda: title(app) == 'BREAKPOINTS F9 adds one')
         assert listed(app) == []
         profiles.move_cursor(row=0)
         # Still open for the rest of the session.
-        await until(pilot, lambda: title(app) == '▾ BREAKPOINTS (3)')
+        await until(pilot, lambda: title(app) == 'BREAKPOINTS 3 ▾')
 
         # Ctrl+Right from the file tree reaches the title, then the list.
         browser.query_one('#source-tree').focus()
@@ -167,17 +167,25 @@ async def test_the_list_starts_closed_and_its_title_opens_and_closes_it(monkeypa
         await open_main(pilot, app, 3)
         await pilot.press('f9')
         heading = app.query_one('#source-breakpoints-title')
+        idle = heading.styles.background
         heading.focus()
+        await pilot.pause()
+        # Focused, the title looks selected, so Alt/Ctrl+arrows never land out of sight.
+        assert heading.styles.background != idle
         await pilot.press('enter')
-        assert title(app) == '▾ BREAKPOINTS (1)' and listed(app) == [' ● main.py:3']
+        assert title(app) == 'BREAKPOINTS 1 ▾' and listed(app) == [' ● main.py:3']
+        # Enter opens it and moves into it, ready to pick a breakpoint.
+        table = app.query_one('#source-breakpoints')
+        assert app.focused is table
+        heading.focus()
         await pilot.press('space')
-        assert title(app) == '▸ BREAKPOINTS (1)' and listed(app) == []
+        assert title(app) == 'BREAKPOINTS 1 ▸' and listed(app) == []
         assert app.focused is heading
         # With the list closed, Ctrl+Right skips from the title to the source.
         await pilot.press('ctrl+right')
         assert app.focused is app.query_one('#source-text')
         await pilot.press('space')  # In the source, Space is not the title's.
-        assert title(app) == '▸ BREAKPOINTS (1)'
+        assert title(app) == 'BREAKPOINTS 1 ▸'
         heading.focus()
         await pilot.press('enter')
         assert listed(app) == [' ● main.py:3']
@@ -185,4 +193,4 @@ async def test_the_list_starts_closed_and_its_title_opens_and_closes_it(monkeypa
     restarted = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), workspace=tmp_path)
     async with restarted.run_test(size=(140, 52)) as pilot:
         await pilot.click('#area-code')
-        assert title(restarted) == '▸ BREAKPOINTS (1)' and listed(restarted) == []
+        assert title(restarted) == 'BREAKPOINTS 1 ▸' and listed(restarted) == []

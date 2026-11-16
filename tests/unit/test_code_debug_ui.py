@@ -262,7 +262,7 @@ async def test_early_stop_event_breakpoint_updates_keep_original_root_and_intent
         await until(pilot, lambda: session.updates[-1][1] == (4,))
         assert browser.breakpoints(roots[0], roots[0] / 'main.py') == (4,)
         assert labels(browser) == ['▶● main.py:4 unverified → Line 5']
-        assert '1 unverified' in str(browser.query_one('#source-breakpoints-title').render())
+        assert browser.query_one('#source-breakpoints-title').text == 'BREAKPOINTS 1 ⚠1 ▸'
         assert '●' in browser.query_one(TextArea).render_line(3).text
         await pilot.click('#code-stop')
         session.on_output('stdout', 'late')
