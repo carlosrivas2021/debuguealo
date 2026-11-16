@@ -15,9 +15,12 @@ BreakpointDialog { background: transparent; }
 .pane-title { height: 1; padding: 0 1; color: #a9c2cc; text-style: bold; background: #171c20; }
 #code-profiles-pane { height: auto; }
 /* A fixed blank row above each sidebar title. */
-#code-title-row, #source-files-title { margin-top: 1; }
-#code-title { width: 1fr; }
-#code-count { width: auto; }
+#code-title-row, #source-files-title, #source-breakpoints-title { margin-top: 1; }
+#code-title, #source-breakpoints-name { width: 1fr; }
+#code-count, #source-breakpoints-count { width: auto; }
+/* The only focusable title: show where the focus is, like a selected row. */
+#source-breakpoints-title:focus { background: $block-cursor-background; color: $block-cursor-foreground; }
+#source-breakpoints { scrollbar-size-horizontal: 0; background: transparent; }
 #code-status { height: auto; max-height: 3; padding: 0 1; color: #9db5bf; }
 /* Transparent so the unused rows show the sidebar's background, not a gray block. */
 #code-projects { height: 6; scrollbar-size-horizontal: 0; background: transparent; }

@@ -46,7 +46,7 @@ async def test_red_breakpoint_button_tracks_line_scroll_and_file_context(tmp_pat
         tree.select_node(node)
         await pilot.pause()
         assert "●" in editor.render_line(2).text
-        assert "pending" in str(node.children[0].label)
+        assert not node.children  # Listed under BREAKPOINTS, not in the file tree.
         assert editor.text == original
     assert source.read_text(encoding="utf-8") == original
     assert other.read_text(encoding="utf-8") == "pass\n"

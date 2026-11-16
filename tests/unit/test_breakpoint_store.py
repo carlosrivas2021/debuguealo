@@ -222,3 +222,49 @@ def test_store_rejects_a_stored_condition_with_a_hit_count(tmp_path):
          "options": {"5": {"condition": "x", "hitCondition": "2"}}}]}))
     with pytest.raises(ConfigurationError, match="Invalid Code breakpoints"):
         BreakpointStore(path).load_options()
+
+
+def test_store_round_trips_disabled_lines_with_their_options(tmp_path):
+    import json
+
+    from debugpilot.storage.breakpoints import BreakpointOptions
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    key = (root, source)
+    options = {key: {4: BreakpointOptions(condition="n > 1")}}
+    # A disabled line without a breakpoint is dropped, like options are.
+    store.save({key: {2, 4, 6}}, options, {key: {4, 9}})
+    assert store.load() == {key: (2, 4, 6)}
+    assert store.load_options() == options
+    assert store.load_disabled() == {key: (4,)}
+    entry = json.loads(store.path.read_text())["breakpoints"][0]
+    assert entry["disabled"] == [4]
+
+
+def test_store_without_disabled_lines_writes_the_previous_format(tmp_path):
+    import json
+
+    store = BreakpointStore(tmp_path / "breakpoints.json")
+    root, source = _project(tmp_path)
+    store.save({(root, source): {2}}, None, {(root, source): set()})
+    assert json.loads(store.path.read_text())["breakpoints"] == [
+        {"root": str(root), "file": str(source), "lines": [2]}]
+    assert store.load_disabled() == {}
+
+
+@pytest.mark.parametrize("disabled", [[], [3], [2, 2], "2", [True]])
+def test_store_rejects_invalid_disabled_lines_and_keeps_the_file(tmp_path, disabled):
+    import json
+
+    root, source = _project(tmp_path)
+    path = tmp_path / "breakpoints.json"
+    path.write_text(json.dumps({"version": 1, "breakpoints": [
+        {"root": str(root), "file": str(source), "lines": [1, 2], "disabled": disabled}]}))
+    before = path.read_bytes()
+    store = BreakpointStore(path)
+    with pytest.raises(ConfigurationError, match="Invalid Code breakpoints"):
+        store.load_disabled()
+    with pytest.raises(ConfigurationError, match="Invalid Code breakpoints"):
+        store.save({})
+    assert path.read_bytes() == before

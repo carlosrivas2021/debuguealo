@@ -1,5 +1,5 @@
-from test_code_debug_ui import Docker, debug_app, mark, rendered
-from textual.widgets import TextArea, Tree
+from test_code_debug_ui import Docker, debug_app, labels, mark, rendered
+from textual.widgets import TextArea
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.core.exceptions import ConfigurationError
@@ -21,7 +21,9 @@ async def test_code_workspace_restores_and_persists_marks_across_recreation(
         browser = await mark(pilot, app, 4)
         assert browser.breakpoints(roots[0], roots[0] / 'main.py') == (4,)
         browser.set_verification(roots[0], {str(source): [{'verified': True, 'line': 4}]})
-        assert 'verified' in str(browser.query_one(Tree).root.children[0].children[0].label)
+        assert labels(browser) == [' ● main.py:4']
+        browser.set_verification(roots[0], {str(source): [{'verified': False, 'line': 4}]})
+        assert labels(browser) == [' ● main.py:4 unverified']
     assert source.read_bytes() == source_before
     assert launch_store.path.read_bytes() == launch_before
     restarted = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), workspace=tmp_path)
@@ -31,7 +33,8 @@ async def test_code_workspace_restores_and_persists_marks_across_recreation(
         assert browser.open_source(roots[0], roots[0] / 'main.py', 4)
         assert browser.breakpoints(roots[0], roots[0] / 'main.py') == (4,)
         assert 4 in browser.query_one(TextArea).breakpoint_lines
-        assert 'pending' in str(browser.query_one(Tree).root.children[0].children[0].label)
+        # Verification is never saved: the restored mark has no note.
+        assert labels(browser) == [' ● main.py:4']
         assert browser.breakpoint_snapshot(roots[1]) == {}
         assert launch_store.path.read_bytes() == launch_before
         await pilot.click('#source-breakpoint')
@@ -71,7 +74,7 @@ async def test_breakpoint_write_failure_keeps_ui_responsive_without_saved_claim(
     app, roots, _ = debug_app(monkeypatch, tmp_path)
     state = tmp_path / '.debugpilot' / 'projects' / 'breakpoints.json'
 
-    def fail_save(_store, _marks, _options=None):
+    def fail_save(_store, _marks, _options=None, _disabled=None):
         raise ConfigurationError(
             "Cannot save Code breakpoints; check the projects directory permissions."
         )

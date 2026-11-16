@@ -27,11 +27,14 @@ async def test_browse_source_and_toggle_pending_breakpoint_without_writes(tmp_pa
         editor.move_cursor((1, 0))
         await pilot.click("#source-breakpoint")
         assert browser.breakpoints(tmp_path, source) == (2,)
-        assert "pending" in str(node.children[0].label)
-        assert "2" in str(node.children[0].label)
-        assert "verified" not in str(node.children[0].label)
-        tree.select_node(node.children[0])
-        await pilot.pause()
+        # Listed under BREAKPOINTS, not as a child of the file in the tree.
+        assert not node.children
+        table = browser.query_one("#source-breakpoints")
+        assert str(table.get_row_at(0)[0]).rstrip() == " ● main.py:2"
+        editor.move_cursor((0, 0))
+        await pilot.click("#source-breakpoints-title")
+        table.focus()
+        await pilot.press("enter")
         assert editor.cursor_location[0] == 1
         await pilot.pause(0.3)
         await pilot.click("#source-breakpoint")

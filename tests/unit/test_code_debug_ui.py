@@ -46,6 +46,12 @@ async def mark(pilot, app, line=4):
     return browser
 
 
+def labels(browser):
+    """The rows of the BREAKPOINTS list (open or closed), as shown."""
+    table = browser.query_one('#source-breakpoints')
+    return [str(table.get_row_at(row)[0]).rstrip() for row in range(table.row_count)]
+
+
 def rendered(app, selector):
     widget = app.query_one(selector)
     # The Variables table exposes the lines it shows; other widgets render text.
@@ -94,7 +100,8 @@ async def test_real_shift_f5_breakpoint_inspection_steps_continue_and_attributio
         assert stack.row_count >= 1
         assert browser.query_one(TextArea).cursor_location[0] == 3
         assert '▶' in browser.query_one(TextArea).render_line(3).text
-        assert 'verified' in str(browser.query_one(Tree).root.children[0].children[0].label)
+        # Verified: the list row carries no note; ▶ marks the paused line.
+        assert labels(browser) == ['▶● main.py:4']
         assert browser.breakpoints(roots[0], roots[0] / 'main.py') == (4,)
         profiles = app.query_one('#code-projects', DataTable)
         profiles.focus()
@@ -254,8 +261,8 @@ async def test_early_stop_event_breakpoint_updates_keep_original_root_and_intent
         await mark(pilot, app, 4)
         await until(pilot, lambda: session.updates[-1][1] == (4,))
         assert browser.breakpoints(roots[0], roots[0] / 'main.py') == (4,)
-        label = str(browser.query_one(Tree).root.children[0].children[0].label)
-        assert 'unverified' in label and 'Line 5' in label
+        assert labels(browser) == ['▶● main.py:4 unverified → Line 5']
+        assert browser.query_one('#source-breakpoints-title').text == 'BREAKPOINTS 1 ⚠1 ▸'
         assert '●' in browser.query_one(TextArea).render_line(3).text
         await pilot.click('#code-stop')
         session.on_output('stdout', 'late')

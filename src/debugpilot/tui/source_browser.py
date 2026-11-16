@@ -21,6 +21,7 @@ from textual.widgets import Button, Static, TextArea, Tree
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.breakpoints import BreakpointOptions, BreakpointStore
 from debugpilot.tui.breakpoint_dialog import DIALOG_ROWS, BreakpointDialog
+from debugpilot.tui.breakpoint_list import BreakpointList, BreakpointsTitle
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
@@ -34,6 +35,8 @@ BREAKPOINT_GLYPHS = {
     "plain": ("●", Style(color="#ef4444", bold=True)),
     "condition": ("◆", Style(color="#ef4444", bold=True)),
     "log": ("◇", Style(color="#38bdf8", bold=True)),
+    # Switched off: kept with its options, but never sent to the debugger.
+    "disabled": ("○", Style(color="#7f8c93", bold=True)),
 }
 MAX_LABEL_TEXT = 40
 
@@ -56,6 +59,16 @@ def _breakpoint_hint(options: BreakpointOptions | None) -> str:
     if options is not None and options.hit_condition:
         parts.append(f"hit {options.hit_condition}")
     return " · ".join(parts)
+
+
+def _verification_note(state: str | None) -> str:
+    """What a row shows of the debugger's answer: nothing while pending or verified."""
+    if not state:
+        return ""
+    moved = state.partition(" → ")[2]
+    if state.startswith("unverified"):
+        return "unverified" + (f" → {moved}" if moved else "")
+    return f"→ {moved}" if moved else ""
 
 
 def _shorten(text: str) -> str:
@@ -181,6 +194,7 @@ class SourceBrowser(Vertical):
     SourceBrowser #source-layout { height: 1fr; }
     SourceBrowser #source-sidebar { width: 30; min-width: 22; }
     SourceBrowser #source-tree { height: 1fr; }
+    SourceBrowser #source-breakpoints { height: auto; max-height: 8; overflow-x: hidden; }
     SourceBrowser #source-main { width: 1fr; }
     SourceBrowser #source-editor-row { height: 2fr; min-height: 6; }
     SourceBrowser #source-pane { width: 1fr; }
@@ -212,17 +226,22 @@ class SourceBrowser(Vertical):
                 key: dict(options)
                 for key, options in self.breakpoint_store.load_options().items()
             }
+            self._disabled: dict[tuple[Path, Path], set[int]] = {
+                key: set(lines) for key, lines in self.breakpoint_store.load_disabled().items()
+            }
         except ConfigurationError as error:
             self._marks = {}
             self._options = {}
+            self._disabled = {}
             self._persistence_error = str(error)
         self._loaded = set()
-        # Folders shown in the tree, and the root as stored keys spell it, so moving
-        # between profiles never asks the disk about each file.
-        self._directories: set[Path] = set()
+        # The root as stored keys spell it, so moving between profiles never asks the disk.
         self._resolved_root: Path | None = None
-        self._file_node = None
         self._verification = {}
+        # The (root, file, line) of the paused line shown in the editor, if any.
+        self._execution: tuple[Path, Path, int] | None = None
+        # The breakpoints list starts closed in every session; its title opens it.
+        self._list_open = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="source-layout"):
@@ -231,6 +250,8 @@ class SourceBrowser(Vertical):
                     yield self._sidebar_header
                 yield Static("FILES", id="source-files-title", classes="pane-title")
                 yield FileTree("Files", id="source-tree")
+                yield BreakpointsTitle(id="source-breakpoints-title", classes="pane-title")
+                yield BreakpointList(id="source-breakpoints")
             with Vertical(id="source-main"):
                 with Horizontal(id="source-editor-row"):
                     with Vertical(id="source-pane"):
@@ -252,7 +273,6 @@ class SourceBrowser(Vertical):
             return
         self.root_path = root
         self._loaded.clear()
-        self._directories = {root} if root is not None else set()
         try:
             self._resolved_root = root.resolve() if root is not None else None
         except (OSError, RuntimeError):
@@ -265,6 +285,7 @@ class SourceBrowser(Vertical):
         tree.root.expand()
         if root is not None:
             self._populate(tree.root)
+        self._refresh_list()
 
     def reload(self):
         """Read the tree and the open file again, e.g. after a branch switch changed them."""
@@ -278,7 +299,6 @@ class SourceBrowser(Vertical):
 
     def _clear_source(self):
         self.file_path = None
-        self._file_node = None
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = ()
         editor.breakpoint_kinds = {}
@@ -310,14 +330,8 @@ class SourceBrowser(Vertical):
                     continue
                 kinds.append((entry, entry.is_dir(follow_symlinks=False)))
             kinds.sort(key=lambda kind: (not kind[1], kind[0].name.casefold()))
-            marked = self._root_has_marks()
             for entry, is_dir in kinds:
-                child_path = path / entry.name
-                child = node.add(Text(entry.name), (child_path, None), allow_expand=is_dir)
-                if is_dir:
-                    self._directories.add(child_path)
-                elif marked and entry.is_file(follow_symlinks=False):
-                    self._show_marks(child)
+                node.add(Text(entry.name), (path / entry.name, None), allow_expand=is_dir)
         except (OSError, ValueError, RuntimeError) as error:
             self._set_status(f"Unable to list {path}: {error}")
 
@@ -335,7 +349,7 @@ class SourceBrowser(Vertical):
         path, line = event.node.data
         if path is None or path.is_dir():
             return
-        self.open_source(self.root_path, path, line, node=event.node)
+        self.open_source(self.root_path, path, line)
 
     def _safe_path(self, path):
         path = Path(path).absolute()
@@ -348,7 +362,7 @@ class SourceBrowser(Vertical):
                 raise ValueError("Source paths cannot contain links or junctions")
         return path
 
-    def open_source(self, root, path, line=None, *, node=None):
+    def open_source(self, root, path, line=None):
         """Preview a debugger or tree path through the same bounded read-only checks."""
         self.set_project(root)
         self._clear_source()
@@ -373,15 +387,6 @@ class SourceBrowser(Vertical):
             self._set_status(f"Unable to open {path}: {error}")
             return False
         self.file_path = path.resolve()
-        self._file_node = node.parent if node is not None and line is not None else node
-        if self._file_node is None:
-            current = self.query_one(Tree).root
-            for part in self.file_path.relative_to(self.root_path).parts:
-                self._populate(current)
-                current = next((n for n in current.children if n.data[0].name == part), None)
-                if current is None:
-                    break
-            self._file_node = current
         editor = self.query_one(TextArea)
         editor.load_text(source)
         self._refresh_editor_marks()
@@ -396,6 +401,8 @@ class SourceBrowser(Vertical):
             editor = self.query_one(SourceText)
             editor.execution_line = line
             editor.refresh()
+            self._execution = (Path(root).resolve(), self.file_path, line)
+            self._refresh_list()
 
     def clear_execution(self):
         if not self.query(SourceText):
@@ -403,25 +410,112 @@ class SourceBrowser(Vertical):
         editor = self.query_one(SourceText)
         editor.execution_line = None
         editor.refresh()
+        if self._execution is not None:
+            self._execution = None
+            self._refresh_list()
+
+    def _refresh_list(self):
+        """List the shown project's breakpoints by file, then line."""
+        if not self.query(BreakpointList):
+            return
+        root = self._resolved_root
+        rows = []
+        for key in sorted((key for key, lines in self._marks.items()
+                           if lines and root is not None and key[0] == root),
+                          key=lambda key: key[1].relative_to(key[0]).as_posix().casefold()):
+            relative = key[1].relative_to(key[0]).as_posix()
+            off = self._disabled.get(key, set())
+            options = self._options.get(key, {})
+            for line in sorted(self._marks[key]):
+                option = options.get(line)
+                glyph, style = BREAKPOINT_GLYPHS[
+                    "disabled" if line in off else breakpoint_kind(option)]
+                rows.append(((key, line), glyph, style, f"{relative}:{line}",
+                             _shorten(_breakpoint_hint(option)),
+                             _verification_note(self._verification.get((key[0], key[1], line))),
+                             line in off, self._execution == (key[0], key[1], line)))
+        table = self.query_one(BreakpointList)
+        table.show(rows)
+        if not rows or not self._list_open:
+            if table.has_focus:
+                self.query_one(BreakpointsTitle).focus()
+            table.display = False
+        else:
+            table.display = True
+        title = self.query_one(BreakpointsTitle)
+        # Nothing to open: the title stays out of the focus order.
+        title.can_focus = bool(rows)
+        if not rows:
+            title.show("F9 adds one")
+            return
+        unverified = sum(1 for row in rows if row[5] and not row[6])
+        # Like the PROFILES count, with ⚠ for unverified ones and the open/closed arrow.
+        title.show(f"{len(rows)}" + (f" ⚠{unverified}" if unverified else "")
+                   + (" ▾" if self._list_open else " ▸"))
+
+    @on(BreakpointsTitle.Toggle)
+    def _toggle_list(self, event):
+        self._list_open = not self._list_open
+        self._refresh_list()
+        table = self.query_one(BreakpointList)
+        if self._list_open and event.from_keyboard and table.display:
+            table.focus()
+
+    @on(BreakpointList.RowSelected, "#source-breakpoints")
+    def _open_breakpoint(self, event):
+        location = event.data_table.location_at(event.cursor_row)
+        if location is None:
+            return
+        (root, path), line = location
+        if self.root_path is not None and self.open_source(self.root_path, path, line):
+            self.query_one(SourceText).focus()
+
+    @on(BreakpointList.Toggle)
+    def _toggle_listed(self, event):
+        key, line = event.location
+        self.set_enabled({key: {line}}, line in self._disabled.get(key, set()))
+
+    @on(BreakpointList.Remove)
+    def _remove_listed(self, event):
+        key, line = event.location
+        self.remove_breakpoints({key: {line}})
+
+    @on(BreakpointList.ToggleAll)
+    def _toggle_all_listed(self, _event):
+        """All off while any is on; all back on when every one is already off."""
+        listed = {key: set(lines) for key, lines in self._marks.items()
+                  if lines and key[0] == self._resolved_root}
+        any_on = any(lines - self._disabled.get(key, set()) for key, lines in listed.items())
+        self.set_enabled(listed, not any_on)
 
     def options_snapshot(self, root):
-        """Detached root-scoped options of marked lines, keyed like breakpoint_snapshot."""
+        """Detached root-scoped options of enabled lines, keyed like breakpoint_snapshot."""
         root = Path(root).resolve()
-        return {
-            str(path): {line: option for line, option in options.items()
-                        if line in self._marks.get((owner, path), set())}
-            for (owner, path), options in self._options.items()
-            if owner == root and options and self._marks.get((owner, path))
-        }
+        snapshot = {}
+        for (owner, path), options in self._options.items():
+            if owner != root:
+                continue
+            enabled = self._enabled((owner, path))
+            line_options = {line: option for line, option in options.items() if line in enabled}
+            if line_options:
+                snapshot[str(path)] = line_options
+        return snapshot
 
     def breakpoint_options(self, root: Path, path: Path) -> dict[int, BreakpointOptions]:
         return dict(self._options.get((root.resolve(), path.resolve()), {}))
 
     def breakpoint_snapshot(self, root):
-        """Detached root-scoped requested intent; adapter responses never modify it."""
+        """Detached root-scoped enabled intent; adapter responses never modify it."""
         root = Path(root).resolve()
-        return {str(path): tuple(sorted(lines)) for (owner, path), lines in self._marks.items()
-                if owner == root and lines}
+        return {str(path): enabled for (owner, path) in self._marks
+                if owner == root and (enabled := self._enabled((owner, path)))}
+
+    def _enabled(self, key) -> tuple[int, ...]:
+        """The marked lines of a file a debugger should stop at (or log from)."""
+        return tuple(sorted(self._marks.get(key, set()) - self._disabled.get(key, set())))
+
+    def disabled_lines(self, root: Path, path: Path) -> tuple[int, ...]:
+        return tuple(sorted(self._disabled.get((root.resolve(), path.resolve()), set())))
 
     def set_verification(self, root, responses, requested=None):
         root = Path(root).resolve()
@@ -429,70 +523,18 @@ class SourceBrowser(Vertical):
                               if key[0] != root}
         for path, entries in responses.items():
             lines = (requested.get(str(path), ()) if requested is not None
-                     else self.breakpoints(root, Path(path)))
+                     else self._enabled((root, Path(path).resolve())))
             for line, response in zip(lines, entries, strict=False):
                 state = "verified" if response.get("verified") else "unverified"
                 actual = response.get("line", line)
                 if actual != line:
                     state += f" → Line {actual}"
                 self._verification[(root, Path(path).resolve(), line)] = state
-        if self.root_path == root and self.query(Tree):
-            marked = self._root_has_marks()
-
-            def refresh_node(node):
-                path, line = node.data
-                if line is None and path is not None and path not in self._directories:
-                    if marked or node.children:
-                        self._show_marks(node)
-                else:
-                    for child in list(node.children):
-                        refresh_node(child)
-            refresh_node(self.query_one(Tree).root)
+        if self._resolved_root == root:
+            self._refresh_list()
 
     def breakpoints(self, root: Path, path: Path) -> tuple[int, ...]:
         return tuple(sorted(self._marks.get((root.resolve(), path.resolve()), set())))
-
-    def _root_has_marks(self) -> bool:
-        """Whether any file of the shown project has a breakpoint (usually none)."""
-        return any(lines and owner == self._resolved_root
-                   for (owner, _), lines in self._marks.items())
-
-    def _tree_key(self, path: Path) -> tuple[Path, Path]:
-        """The stored (root, file) key of a tree path, without asking the disk.
-
-        Tree paths have no links (the listing skips them and the root is checked), so
-        the resolved root plus the relative path is what resolving the file would give.
-        """
-        try:
-            return self._resolved_root, self._resolved_root / path.relative_to(self.root_path)
-        except (TypeError, ValueError):
-            return self.root_path.resolve(), path.resolve()
-
-    def _show_marks(self, node):
-        if node is None:
-            return
-        path, _ = node.data
-        root, key = self._tree_key(path)
-        marks = tuple(sorted(self._marks.get((root, key), ())))
-        if not marks and not node.children:
-            node.allow_expand = False  # Most files: nothing to show or remove.
-            return
-        node.remove_children()
-        options = self._options.get((root, key), {})
-        node.allow_expand = bool(marks)
-        for line in marks:
-            state = self._verification.get((self.root_path, key, line), "pending")
-            option = options.get(line)
-            detail = ""
-            if option is not None and option.condition:
-                detail += f" · if {_shorten(option.condition)}"
-            if option is not None and option.log_message:
-                detail += f" · log: {_shorten(option.log_message)}"
-            if option is not None and option.hit_condition:
-                detail += f" · hit {option.hit_condition}"
-            node.add_leaf(Text(f"Line {line}{detail} · {state}"), (path, line))
-        if marks:
-            node.expand()
 
     @on(SourceText.BreakpointClicked)
     def gutter_breakpoint(self, event):
@@ -542,6 +584,8 @@ class SourceBrowser(Vertical):
             marks.add(line)
         else:
             marks.discard(line)
+            # Removing a switched-off breakpoint forgets that it was off.
+            self._disabled.get(key, set()).discard(line)
         if present and options is not None:
             line_options[line] = options
         else:
@@ -549,20 +593,57 @@ class SourceBrowser(Vertical):
         if not line_options:
             self._options.pop(key, None)
         self._verification.pop((key[0], key[1], line), None)
-        if self.file_path is not None and self.file_path.resolve() == key[1]:
-            self._show_marks(self._file_node)
+        self._publish({key})
+
+    def remove_breakpoints(self, lines_by_file):
+        """Remove {(root, file): lines} with their options, saving and notifying once."""
+        for key, lines in lines_by_file.items():
+            self._marks.get(key, set()).difference_update(lines)
+            self._disabled.get(key, set()).difference_update(lines)
+            for line in lines:
+                self._options.get(key, {}).pop(line, None)
+                self._verification.pop((key[0], key[1], line), None)
+            if not self._options.get(key, True):
+                self._options.pop(key, None)
+        self._publish(set(lines_by_file))
+
+    def set_enabled(self, lines_by_file, enabled: bool):
+        """Switch {(root, file): lines} on or off, keeping their options."""
+        for key, lines in lines_by_file.items():
+            lines = set(lines) & self._marks.get(key, set())
+            off = self._disabled.setdefault(key, set())
+            if enabled:
+                off.difference_update(lines)
+            else:
+                off.update(lines)
+            for line in lines:
+                self._verification.pop((key[0], key[1], line), None)
+        self._publish(set(lines_by_file))
+
+    def _publish(self, keys):
+        """Show, save and send the changed files' breakpoints; sessions get enabled lines."""
+        for key in keys:
+            if not self._disabled.get(key, True):
+                self._disabled.pop(key, None)
+        open_file = self.file_path.resolve() if self.file_path is not None else None
+        if open_file in {key[1] for key in keys}:
             self._refresh_editor_marks()
         try:
-            # Always save marks and options together: saving marks alone drops options.
-            self.breakpoint_store.save(self._marks, self._options)
+            # Always save everything together: saving marks alone drops options.
+            self.breakpoint_store.save(self._marks, self._options, self._disabled)
             self._persistence_error = None
         except ConfigurationError as error:
             self._persistence_error = str(error)
         if self.file_path is not None:
             self._set_status(f"{self.file_path.name} · read-only")
-        self.post_message(self.BreakpointsChanged(
-            key[0], key[1], tuple(sorted(marks)), self._options.get(key, {})
-        ))
+        for key in sorted(keys):
+            enabled = self._enabled(key)
+            self.post_message(self.BreakpointsChanged(
+                key[0], key[1], enabled,
+                {line: option for line, option in self._options.get(key, {}).items()
+                 if line in enabled},
+            ))
+        self._refresh_list()
 
     @on(TextArea.SelectionChanged, "#source-text")
     def _cursor_moved(self, _event):
@@ -624,6 +705,8 @@ class SourceBrowser(Vertical):
                 for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
                 if (kind := breakpoint_kind(option)) != "plain"
             }
+            for line in self.disabled_lines(self.root_path, self.file_path):
+                editor.breakpoint_kinds[line] = "disabled"
             editor.breakpoint_hints = {
                 line: hint
                 for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
