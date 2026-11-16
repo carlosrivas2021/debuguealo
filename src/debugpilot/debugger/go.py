@@ -42,10 +42,20 @@ def _target(profile):
     return argv[0], program, args
 
 
+# Delve's exceptionBreakpointFilters. A recovered panic never reaches the debugger, so
+# pausing on every exception is the same as pausing on the uncaught ones.
+GO_EXCEPTION_FILTERS = {
+    'uncaught': ('unrecovered-panic', 'runtime-fatal-throw'),
+    'all': ('unrecovered-panic', 'runtime-fatal-throw'),
+    'none': (),
+}
+
+
 class GoDebugSession(PythonDebugSession):
     """One Go/Delve session with the same events and inspection API as Python debug."""
 
     VALUE_REPR = False  # Delve cannot run code to serialize a value.
+    EXCEPTION_FILTERS = GO_EXCEPTION_FILTERS
 
     # Delve reports the program's output over DAP; its terminal holds only Delve's own.
     terminal_output = False
@@ -136,6 +146,7 @@ class GoDebugSession(PythonDebugSession):
                 await self._initialized.wait()
                 for source, lines in intent.items():
                     await self.set_breakpoints(source, lines, start_options.get(source))
+                await self._apply_exception_mode()
                 await self._client.request('configurationDone')
                 await launch
                 if self.state == 'starting':

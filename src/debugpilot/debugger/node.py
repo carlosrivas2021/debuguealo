@@ -159,8 +159,22 @@ def _call_argument(result):
     return {'value': result.get('value')}
 
 
+def _exception_text(params):
+    """What an exception pause threw: an Error's text with its stack, or the thrown value."""
+    if params.get('reason') not in {'exception', 'promiseRejection'}:
+        return None
+    data = params.get('data') or {}
+    text = data.get('description')
+    if text is None:
+        text = data.get('value', data.get('unserializableValue', 'exception'))
+    return str(text)
+
+
 class NodeDebugSession(PythonDebugSession):
     """Reuse Python's UI events and idempotent owned CodeSession cleanup, not its DAP wire."""
+
+    # Inspector's Debugger.setPauseOnExceptions state for each mode.
+    PAUSE_ON_EXCEPTIONS = {'uncaught': 'uncaught', 'all': 'all', 'none': 'none'}
 
     def __init__(self, on_event=None, on_output=None, *, timeout=15):
         super().__init__(on_event, on_output, timeout=timeout)
@@ -178,6 +192,9 @@ class NodeDebugSession(PythonDebugSession):
         self._disconnect_task = None
         self._exiting = False
         self._source_maps = None
+        self._debugger_enabled = False
+        # The exception of the current pause, when an exception caused it.
+        self._exception = None
 
     def _output(self, text):
         self._lines.feed(text)
@@ -224,9 +241,13 @@ class NodeDebugSession(PythonDebugSession):
             self._objects = {}
             self._scopes = {}
             self._changed = {}
+            self._exception = _exception_text(params)
             self._paused.set()
             if not self._initial:
-                self._event({'event': 'stopped', 'body': {'threadId': 1}})
+                body = {'threadId': 1}
+                if self._exception is not None:
+                    body['reason'] = 'exception'
+                self._event({'event': 'stopped', 'body': body})
         elif method == 'Debugger.resumed':
             self._frames = []
             self._objects = {}
@@ -274,6 +295,8 @@ class NodeDebugSession(PythonDebugSession):
         self._lines.reset()
         self._exiting = False
         self._disconnect_task = None
+        self._debugger_enabled = False
+        self._exception = None
         self._starting = asyncio.current_task()
         self._state('starting')
         try:
@@ -295,6 +318,8 @@ class NodeDebugSession(PythonDebugSession):
                     self._url, self._cdp_event, timeout=self.timeout)
                 await self._client.request('Runtime.enable')
                 await self._client.request('Debugger.enable')
+                self._debugger_enabled = True
+                await self._apply_exception_mode()
                 for path, lines in intent.items():
                     await self.set_breakpoints(path, lines, start_options.get(path))
                 await self._client.request('Runtime.runIfWaitingForDebugger')
@@ -332,6 +357,20 @@ class NodeDebugSession(PythonDebugSession):
     def input_echo(self):
         # Node runs in the PTY itself, so the terminal's own echo is already in its output.
         return False
+
+    def _exceptions_ready(self):
+        return (self._client is not None and self._debugger_enabled
+                and self.state not in {'closing', 'closed'})
+
+    async def _apply_exception_mode(self):
+        await self._client.request('Debugger.setPauseOnExceptions', {
+            'state': self.PAUSE_ON_EXCEPTIONS[self.exception_mode],
+        })
+
+    async def exception_info(self):
+        """The exception of the current pause, as Node prints it, or None."""
+        self._stopped()
+        return self._exception
 
     async def set_breakpoints(self, source, lines, options=None):
         if self.profile is None or self._client is None:

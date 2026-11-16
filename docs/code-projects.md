@@ -391,6 +391,30 @@ never saved.
 pause, and a call with side effects repeats them. As in VS Code, debugealo does not block
 such expressions, so prefer reading values over calling functions that change state.
 
+## Pause on exceptions
+
+By default the debugger pauses where an **uncaught** exception is raised, before it ends the
+program, so you keep the stack, the variables and the watches of the crash. The status line
+reads `Paused on exception: ValueError: invalid literal for int() with base 10: 'abc'`, the
+debug output adds an `[exception]` line with the whole message, and the execution line marks
+where it was raised. **F5** continues, and the program then ends as it would without a debugger.
+
+Press **E** in Code to move the highlighted profile's project to the next mode:
+
+| Mode | Pauses on |
+|---|---|
+| `uncaught` (default) | Exceptions nothing catches. |
+| `all` | Every exception raised, even ones a `try`/`except` (or `catch`) handles. |
+| `none` | Nothing; a crash ends the program as in a normal run. |
+
+The mode applies right away to the project's running debug sessions and to the next ones. It
+is kept per project in `projects/exceptions.json`; the default `uncaught` is not written. The
+debug output's subtitle shows the current mode, for example `Exceptions: uncaught`.
+
+Every debugger supports it, launched or attached. In Go, `uncaught` and `all` both pause on an
+unrecovered panic or a fatal runtime error: a panic that `recover` handles never reaches the
+debugger.
+
 ## Attach to an existing Go/Delve target
 
 Use `goAttach` to connect Code to an already running headless Delve DAP server. Code
