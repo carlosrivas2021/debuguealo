@@ -24,6 +24,11 @@ from debugpilot.debugger import (
     PythonDebugSession,
 )
 from debugpilot.storage.code_projects import is_node_command, is_npm_command
+from debugpilot.storage.exception_modes import (
+    DEFAULT_EXCEPTION_MODE,
+    EXCEPTION_MODES,
+    ExceptionModeStore,
+)
 from debugpilot.storage.watches import MAX_WATCHES_PER_ROOT, WatchStore, watch_expression
 
 MAX_WATCH_VALUE = 200
@@ -380,6 +385,13 @@ class CodeDebug(Vertical):
         except ConfigurationError as error:
             self.watches = {}
             self._watch_error = str(error)
+        self.exception_store = ExceptionModeStore()
+        try:
+            self.exception_modes: dict[Path, str] = self.exception_store.load()
+            self._exception_error = None
+        except ConfigurationError as error:
+            self.exception_modes = {}
+            self._exception_error = str(error)
 
     @property
     def display(self):
@@ -451,6 +463,8 @@ class CodeDebug(Vertical):
         self.display = False
         if self._watch_error:
             self.app.notify(self._watch_error, severity='warning')
+        if self._exception_error:
+            self.app.notify(self._exception_error, severity='warning')
 
     def _spawn(self, context, coroutine):
         task = asyncio.create_task(coroutine)
@@ -496,6 +510,7 @@ class CodeDebug(Vertical):
         self._show_preview()
         self.output.clear()
         self.output.border_title = 'Debug output'
+        self.output.border_subtitle = ''
         self.browser.clear_execution()
         for button in self.query(Button):
             button.disabled = True
@@ -507,6 +522,7 @@ class CodeDebug(Vertical):
         log.clear()
         # The profile is named once, in the title, instead of on every line.
         log.border_title = f'Debug output · {context.profile.name}'
+        log.border_subtitle = f'Exceptions: {self.exception_mode(context.profile.root)}'
         for line in context.output:
             log.write(line)
         self._render_pause(context)
@@ -805,6 +821,7 @@ class CodeDebug(Vertical):
                 else PythonDebugSession
             )
             session = context.session = backend(on_event=event, on_output=output)
+            session.exception_mode = self.exception_mode(profile.root)
             await self._start(context, session, generation, intent, options)
         except (DebugError, OSError) as error:
             if self._current(context, generation):
@@ -904,9 +921,51 @@ class CodeDebug(Vertical):
             # Controls never wait for inspection, which may be slow or fail.
             self._render_inspection(context)
             self._spawn(context, self._inspect(context, generation, context.pause))
+            if body.get('reason') == 'exception':
+                self._spawn(context, self._show_exception(context, generation, context.pause))
         elif name in {'breakpoint', 'breakpoints'}:
             if self.selected is context:
                 self._verification(context)
+
+    async def _show_exception(self, context, generation, pause):
+        try:
+            text = await context.session.exception_info()
+        except DebugError:
+            text = None
+        if not self._paused(context, generation, pause):
+            return
+        text = (text or '').strip() or 'Unknown exception'
+        self._append_output(context, f'[exception] {text}')
+        self._set_state(context, f'Paused on exception: {text.splitlines()[0]} · '
+                                 f'{context.profile.name} · {context.profile.root}')
+
+    def exception_mode(self, root):
+        return self.exception_modes.get(Path(root).resolve(), DEFAULT_EXCEPTION_MODE)
+
+    def cycle_exceptions(self, root):
+        """Move a project to the next exception mode, save it and apply it to its live runs."""
+        root = Path(root).resolve()
+        modes = EXCEPTION_MODES
+        mode = modes[(modes.index(self.exception_mode(root)) + 1) % len(modes)]
+        self.exception_modes[root] = mode
+        try:
+            self.exception_store.save(self.exception_modes)
+        except ConfigurationError as error:
+            self.app.notify(str(error), severity='warning')
+        for context in self.contexts.values():
+            if (context.active and context.session is not None
+                    and Path(context.profile.root).resolve() == root):
+                self._spawn(context, self._apply_exceptions(context, mode))
+        if self.selected is not None and Path(self.selected.profile.root).resolve() == root:
+            self.output.border_subtitle = f'Exceptions: {mode}'
+        return mode
+
+    async def _apply_exceptions(self, context, mode):
+        try:
+            await context.session.set_exception_mode(mode)
+        except DebugError as error:
+            self.app.notify(f'Unable to change exceptions for {context.profile.name}: {error}',
+                            severity='warning')
 
     def _paused(self, context, generation, pause):
         return (self._current(context, generation) and pause == context.pause

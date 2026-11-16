@@ -1,5 +1,6 @@
 """Attach to an existing remote Delve DAP server."""
 
+from debugpilot.debugger.go import GO_EXCEPTION_FILTERS
 from debugpilot.debugger.remote_attach import RemoteAttachSession
 
 
@@ -7,6 +8,7 @@ class GoAttachSession(RemoteAttachSession):
     """Go inspection API over an existing loopback Delve DAP endpoint."""
 
     VALUE_REPR = False  # Delve cannot run code to serialize a value.
+    EXCEPTION_FILTERS = GO_EXCEPTION_FILTERS
 
     attach_field = 'go_attach'
     config_name = 'goAttach'

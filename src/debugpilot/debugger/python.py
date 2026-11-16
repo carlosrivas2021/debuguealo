@@ -13,6 +13,7 @@ from debugpilot.debugger.dap import DAPClient, DebugError
 from debugpilot.debugger.terminal_lines import TerminalLines
 from debugpilot.storage.breakpoints import BreakpointOptions
 from debugpilot.storage.code_projects import CodeProject, profile_environment, profile_variables
+from debugpilot.storage.exception_modes import EXCEPTION_MODES
 from debugpilot.terminal.code_session import CodeSession, command_argv
 
 _GRAMMAR = (
@@ -144,6 +145,9 @@ def dump(value, depth=0, seen=()):
 class PythonDebugSession:
     """One active immutable profile snapshot; callbacks are synchronous/nonblocking."""
 
+    # debugpy's exceptionBreakpointFilters for each mode.
+    EXCEPTION_FILTERS = {'uncaught': ('uncaught',), 'all': ('raised', 'uncaught'), 'none': ()}
+
     def __init__(self, on_event=None, on_output=None, *, timeout=15):
         self.events = asyncio.Queue()
         self.on_event = on_event
@@ -156,6 +160,8 @@ class PythonDebugSession:
         self.requested_breakpoints = {}
         self.verified_breakpoints = {}
         self.breakpoint_options = {}
+        # Set before start, or changed live with set_exception_mode().
+        self.exception_mode = 'uncaught'
         self._adapter = None
         self._client = None
         self._starting = None
@@ -290,6 +296,7 @@ class PythonDebugSession:
                 await self._initialized.wait()
                 for source, lines in intent.items():
                     await self.set_breakpoints(source, lines, start_options.get(source))
+                await self._apply_exception_mode()
                 await self._client.request('configurationDone')
                 await launch
                 if self.state == 'starting':
@@ -330,6 +337,34 @@ class PythonDebugSession:
         self._emit({'event': 'breakpoints', 'body': {'path': path,
                     'requested': intent, 'verified': self.verified_breakpoints[path]}})
         return self.verified_breakpoints[path]
+
+    async def set_exception_mode(self, mode):
+        """Choose where to pause on exceptions; a live session applies it right away."""
+        if mode not in EXCEPTION_MODES:
+            raise DebugError(f'Unknown exception mode: {mode}')
+        self.exception_mode = mode
+        if self._exceptions_ready():
+            await self._apply_exception_mode()
+
+    def _exceptions_ready(self):
+        # Before the adapter is initialized, start applies the mode itself.
+        return (self._client is not None and self._initialized.is_set()
+                and self.state not in {'closing', 'closed'})
+
+    async def _apply_exception_mode(self):
+        await self._client.request('setExceptionBreakpoints', {
+            'filters': list(self.EXCEPTION_FILTERS[self.exception_mode]),
+        })
+
+    async def exception_info(self):
+        """The exception of the current pause as "Type: message", or None when unknown."""
+        thread = self._stopped()
+        try:
+            body = await self._client.request('exceptionInfo', {'threadId': thread})
+        except DebugError:
+            return None
+        parts = [str(body.get(key) or '').strip() for key in ('exceptionId', 'description')]
+        return ': '.join(part for part in parts if part) or None
 
     def _stopped(self):
         if self.state != 'stopped' or self.thread_id is None or self._client is None:

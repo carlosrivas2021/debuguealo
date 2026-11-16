@@ -100,6 +100,7 @@ class RemoteAttachSession(PythonDebugSession):
                 await self._initialized.wait()
                 for source, lines in intent.items():
                     await self.set_breakpoints(source, lines, start_options.get(source))
+                await self._apply_exception_mode()
                 await self._client.request('configurationDone')
                 await attach_request
                 self._configured = True

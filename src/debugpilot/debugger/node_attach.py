@@ -155,6 +155,8 @@ class NodeAttachSession(NodeDebugSession):
         self._target_paused = False
         self._transport_lost = False
         self.disconnect_warning = None
+        self._debugger_enabled = False
+        self._exception = None
         self._starting = asyncio.current_task()
         self._state('starting')
         try:
@@ -168,6 +170,8 @@ class NodeAttachSession(NodeDebugSession):
                     raise DebugError(f'Unable to attach to {_TARGET}: {error}') from error
                 await self._client.request('Runtime.enable')
                 await self._client.request('Debugger.enable')
+                self._debugger_enabled = True
+                await self._apply_exception_mode()
                 for source, lines in intent.items():
                     await self.set_breakpoints(source, lines, start_options.get(source))
                 # Releases a target started with --inspect-brk; a no-op otherwise.
