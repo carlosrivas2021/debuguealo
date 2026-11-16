@@ -174,6 +174,8 @@ async def test_console_evaluates_in_the_selected_frame_with_history(monkeypatch,
         console.value = 'total = 99'
         await pilot.press('enter')
         await until(pilot, lambda: 'total = 99' in app.query_one('#code-variables').text)
+        # The assignment is echoed like any line; it has no value of its own.
+        assert output().endswith('> total = 99')
 
         await pilot.press('escape')
         assert app.focused is profiles
