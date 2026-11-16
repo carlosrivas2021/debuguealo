@@ -760,12 +760,22 @@ class CodeDebug(Vertical):
         return context, session
 
     def sync_input(self):
-        """Offer program input only beside a shown, live session that Code launched."""
-        shown = bool(self.output.display and self._input_session()[1])
+        """One line under the output: Program input while running, the console while paused.
+
+        Program input is offered only for a live session that Code launched. When the line
+        changes role, the focus goes with it, so typed keys never reach Code's shortcuts.
+        """
+        typing_input, typing_console = self.input.has_focus, self.console.has_focus
+        session = self._input_session()[1]
+        shown = bool(self.output.display and session and session.state != 'stopped')
         if shown != self.input.display:
             self.input.display = shown
             self.refresh_bindings()  # The footer offers P only while there is a prompt.
         self.sync_console()
+        if typing_input and self.console.display:
+            self.console.focus()
+        elif typing_console and self.input.display:
+            self.input.focus()
 
     def _console_frame(self):
         """The selected paused context and the frame the console evaluates in."""

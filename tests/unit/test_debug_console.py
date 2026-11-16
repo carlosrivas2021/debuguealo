@@ -141,8 +141,10 @@ async def test_console_evaluates_in_the_selected_frame_with_history(monkeypatch,
 
         profiles.focus()
         await pilot.press('colon')
-        assert app.focused is console
-        console.value = 'text'
+        await until(pilot, lambda: app.focused is console)
+        # The key only moves the focus; it is never typed into the field.
+        await pilot.press(*'text')
+        assert console.value == 'text'
         await pilot.press('enter')
         await until(pilot, lambda: "> text\n'abc'" in output())
         assert console.value == ''
@@ -178,3 +180,50 @@ async def test_console_evaluates_in_the_selected_frame_with_history(monkeypatch,
         await pilot.press('f5')
         await until(pilot, lambda: 'Exited' in str(app.query_one('#code-run-state').render()))
         assert not console.display
+
+
+async def test_one_field_switches_between_program_input_and_console(monkeypatch, tmp_path):
+    from test_code_project_store import configure
+    from test_tui_grouping import Docker
+
+    from debugpilot.core.engine import DebugPilotEngine
+    from debugpilot.storage.config import Settings
+    from debugpilot.tui.app import DebugPilotApp
+    from debugpilot.tui.code_debug import CodeDebug
+
+    store = configure(monkeypatch, tmp_path)
+    root = tmp_path / 'one'
+    root.mkdir()
+    (root / 'main.py').write_text('quantity = int(input("qty? "))\nprint(quantity)\n',
+                                  encoding='utf-8')
+    store.path.write_text(__import__('json').dumps({'version': 1, 'configurations': [
+        {'name': 'one', 'workspaceFolder': str(root),
+         'command': [sys.executable, '-u', 'main.py']},
+    ]}), encoding='utf-8')
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), workspace=tmp_path)
+
+    async def until(pilot, condition, seconds=20):
+        async with asyncio.timeout(seconds):
+            while not condition():
+                await pilot.pause(0.05)
+
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        program = app.query_one('#code-debug-input')
+        console = app.query_one('#code-debug-eval')
+        await pilot.press('shift+f5')
+        debug = app.query_one(CodeDebug)
+        await until(pilot, lambda: program.display and 'qty?' in '\n'.join(debug.selected.output))
+        assert not console.display  # Running: only Program input.
+        await pilot.press('p')
+        await until(pilot, lambda: program.has_focus)
+        await pilot.press(*'abc', 'enter')
+        # The crash pauses the program: the same line becomes the console and keeps the keys.
+        await until(pilot, lambda: console.display and not program.display)
+        await until(pilot, lambda: console.has_focus)
+        await pilot.press('s')  # Typed into the console, never Code's Stop.
+        assert console.value == 's' and debug.selected.active
+        await pilot.press('backspace')
+        await pilot.press('f5')
+        # Running again (it ends with the crash): Program input is back, the console hidden.
+        await until(pilot, lambda: not console.display)
