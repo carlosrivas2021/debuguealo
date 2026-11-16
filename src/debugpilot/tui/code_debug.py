@@ -523,7 +523,6 @@ class CodeDebug(Vertical):
         self._show_preview()
         self.output.clear()
         self.output.border_title = 'Debug output'
-        self.output.border_subtitle = ''
         self.browser.clear_execution()
         for button in self.query(Button):
             button.disabled = True
@@ -533,9 +532,7 @@ class CodeDebug(Vertical):
             return
         log = self.output
         log.clear()
-        # The profile is named once, in the title, instead of on every line.
-        log.border_title = f'Debug output · {context.profile.name}'
-        log.border_subtitle = f'Exceptions: {self.exception_mode(context.profile.root)}'
+        log.border_title = self._output_title(context)
         for line in context.output:
             log.write(line)
         self._render_pause(context)
@@ -953,6 +950,12 @@ class CodeDebug(Vertical):
         self._set_state(context, f'Paused on exception: {text.splitlines()[0]} · '
                                  f'{context.profile.name} · {context.profile.root}')
 
+    def _output_title(self, context):
+        # The profile is named once, in the title, instead of on every line. The output has
+        # only a top border, so the exception mode goes in the title too, never a subtitle.
+        mode = self.exception_mode(context.profile.root)
+        return f'Debug output · {context.profile.name} · Exceptions: {mode}'
+
     def exception_mode(self, root):
         return self.exception_modes.get(Path(root).resolve(), DEFAULT_EXCEPTION_MODE)
 
@@ -971,7 +974,7 @@ class CodeDebug(Vertical):
                     and Path(context.profile.root).resolve() == root):
                 self._spawn(context, self._apply_exceptions(context, mode))
         if self.selected is not None and Path(self.selected.profile.root).resolve() == root:
-            self.output.border_subtitle = f'Exceptions: {mode}'
+            self.output.border_title = self._output_title(self.selected)
         return mode
 
     async def _apply_exceptions(self, context, mode):

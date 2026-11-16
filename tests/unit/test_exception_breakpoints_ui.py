@@ -30,6 +30,12 @@ def crash_app(monkeypatch, tmp_path):
     return DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), workspace=tmp_path), root
 
 
+def output_border(app):
+    """The Debug output's top border as drawn, with its title (it has no bottom border)."""
+    output = app.query_one('#code-debug-output')
+    return ''.join(segment.text for segment in output.render_lines(output.region.reset_offset)[0])
+
+
 def run_state(app):
     return str(app.query_one('#code-run-state').render())
 
@@ -52,14 +58,14 @@ async def test_uncaught_exception_pauses_with_its_message_and_location(monkeypat
         debug = app.query_one(CodeDebug)
         output = '\n'.join(debug.selected.output)
         assert "[exception] ValueError: invalid literal for int() with base 10: 'abc'" in output
-        assert debug.output.border_subtitle == 'Exceptions: uncaught'
+        assert 'Exceptions: uncaught' in output_border(app)
         source = app.query_one(SourceBrowser).query_one(TextArea)
         await wait_for(pilot, lambda: '▶' in source.render_line(1).text)
         # The key applies to the paused session right away.
         app.query_one('#code-projects', DataTable).focus()
         await pilot.press('e')
         await wait_for(pilot, lambda: debug.session.exception_mode == 'all')
-        assert debug.output.border_subtitle == 'Exceptions: all'
+        await wait_for(pilot, lambda: 'Exceptions: all' in output_border(app))
 
 
 async def test_key_cycles_and_remembers_the_mode_for_the_next_launch(monkeypatch, tmp_path):

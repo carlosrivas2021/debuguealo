@@ -134,7 +134,8 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         assert '[input]' not in output()
         # The profile's name is in the pane's title, not on every line.
         assert 'one' not in output().replace('ana', '')
-        assert app.query_one('#code-debug-output').border_title == 'Debug output · one'
+        assert (app.query_one('#code-debug-output').border_title
+                == 'Debug output · one · Exceptions: uncaught')
         assert field.value == ''
         await pilot.press('s')  # Typing in the field never triggers Code shortcuts.
         assert field.value == 's'
