@@ -419,11 +419,12 @@ class NodeDebugSession(PythonDebugSession):
                            'line': line, 'source': {'path': path} if path else {}})
         return result
 
-    def _reference(self, object_id):
+    def _reference(self, object_id, frame_id):
+        """A variables reference for a remote object seen from a paused call frame."""
         if not object_id:
             return 0
         reference = len(self._objects) + 1
-        self._objects[reference] = object_id
+        self._objects[reference] = (object_id, frame_id)
         return reference
 
     async def scopes(self, frame_id):
@@ -433,7 +434,7 @@ class NodeDebugSession(PythonDebugSession):
             raise DebugError('Frame is no longer paused.')
         scopes = []
         for number, scope in enumerate(frame['scopeChain']):
-            reference = self._reference(scope['object'].get('objectId'))
+            reference = self._reference(scope['object'].get('objectId'), frame_id)
             self._scopes[reference] = (frame_id, number, scope['type'])
             scopes.append({'name': scope.get('name') or scope['type'],
                            'expensive': scope['type'] == 'global',
@@ -443,8 +444,10 @@ class NodeDebugSession(PythonDebugSession):
     async def set_variable(self, reference, name, value):
         """Set a variable of a paused scope to a value expression; returns its new value."""
         self._stopped()
-        if reference not in self._scopes:
+        if reference not in self._objects:
             raise DebugError('Variables are no longer paused.')
+        if reference not in self._scopes:
+            return await self._set_property(reference, name, value)
         frame_id, number, kind = self._scopes[reference]
         if kind in {'local', 'closure', 'catch'}:
             result = await self._evaluate_on(frame_id, value)
@@ -460,6 +463,22 @@ class NodeDebugSession(PythonDebugSession):
             result = await self._evaluate_on(frame_id, f'{name} = ({value})')
         # V8's scope objects are copies taken at the pause, so remember the new value.
         self._changed[(frame_id, number, name)] = result
+        return _display(result)
+
+    async def _set_property(self, reference, name, value):
+        """Set a field of an object; objects are live, so no overlay is needed."""
+        object_id, frame_id = self._objects[reference]
+        result = await self._evaluate_on(frame_id, value)
+        response = await self._client.request('Runtime.callFunctionOn', {
+            'objectId': object_id,
+            'functionDeclaration': "function (name, value) { 'use strict'; this[name] = value; }",
+            'arguments': [{'value': name}, _call_argument(result)],
+        })
+        details = response.get('exceptionDetails')
+        if details is not None:
+            message = (details.get('exception', {}).get('description')
+                       or details.get('text') or f'{name} cannot be set.')
+            raise DebugError(message.splitlines()[0])
         return _display(result)
 
     async def _evaluate_on(self, frame_id, expression):
@@ -478,17 +497,19 @@ class NodeDebugSession(PythonDebugSession):
         if reference not in self._objects:
             raise DebugError('Variables are no longer paused.')
         result = await self._client.request('Runtime.getProperties', {
-            'objectId': self._objects[reference], 'ownProperties': True,
+            'objectId': self._objects[reference][0], 'ownProperties': True,
             'generatePreview': False,
         })
         values = []
-        frame_id, number, _ = self._scopes.get(reference, (None, None, None))
+        frame_id = self._objects[reference][1]
+        _, number, _ = self._scopes.get(reference, (None, None, None))
         for prop in result.get('result', [])[:200]:
             value = self._changed.get((frame_id, number, prop['name']), prop.get('value'))
             # Do not invoke getters or evaluate expressions.
             if value is not None:
                 values.append({'name': prop['name'], 'value': _display(value),
-                               'variablesReference': self._reference(value.get('objectId'))})
+                               'variablesReference': self._reference(
+                                   value.get('objectId'), frame_id)})
         return values
 
     async def evaluate(self, expression, frame_id):

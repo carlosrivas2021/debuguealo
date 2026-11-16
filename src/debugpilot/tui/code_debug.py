@@ -10,6 +10,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.message import Message
 from textual.widgets import Button, DataTable, Input, RichLog
 
 from debugpilot.core.exceptions import ConfigurationError
@@ -60,23 +61,61 @@ def _watch_value(value):
     return value if len(value) <= MAX_WATCH_VALUE else value[:MAX_WATCH_VALUE - 1] + '…'
 
 
+# Nested variables open at most this many levels deep (cyclic objects never end).
+MAX_VARIABLE_DEPTH = 8
+
+
 @dataclass(frozen=True)
 class VariableRow:
-    """A scope heading (name None) or one variable of the paused frame."""
+    """A scope heading (name None) or one variable of the paused frame.
+
+    reference is the scope or object that holds the variable (what a change is sent to);
+    children is the variable's own reference when it has fields, else 0. path names the
+    scope and every variable down to this one, which keeps it expanded across pauses.
+    """
 
     scope: str
     reference: int
     name: str | None = None
     value: str = ''
+    depth: int = 0
+    children: int = 0
+    path: tuple = ()
+    expanded: bool = False
+
+    @property
+    def prefix(self):
+        """Indent and expand marker before the name."""
+        marker = '▾ ' if self.expanded else '▸ ' if self.children else '  '
+        return '  ' * self.depth + marker
 
     @property
     def line(self):
         return f'{self.scope}:' if self.name is None else (
-            f'{self.name} = {_variable_value(self.value)}')
+            f'{self.prefix}{self.name} = {_variable_value(self.value)}')
 
 
 class VariablesTable(DataTable):
     """The paused frame's variables: scope headings and one selectable row per variable."""
+
+    BINDINGS = [
+        Binding('right', 'expand', 'Expand', show=False),
+        Binding('left', 'collapse', 'Collapse', show=False),
+        Binding('space', 'toggle', 'Expand/collapse', show=False),
+    ]
+
+    class Toggled(Message):
+        """A variable with fields was expanded or collapsed."""
+
+        def __init__(self, table, variable, expanded):
+            super().__init__()
+            self.table = table
+            self.variable = variable
+            self.expanded = expanded
+
+        @property
+        def control(self):
+            return self.table
 
     def __init__(self, **kwargs):
         super().__init__(cursor_type='row', show_header=False, **kwargs)
@@ -97,6 +136,37 @@ class VariablesTable(DataTable):
             self.add_row(Text(variable.line, style=style, no_wrap=True), key=str(index))
         if rows:
             self.move_cursor(row=min(row, len(rows) - 1))
+
+    def _current(self):
+        if 0 <= self.cursor_row < len(self.variable_rows):
+            return self.variable_rows[self.cursor_row]
+        return None
+
+    def action_expand(self) -> None:
+        variable = self._current()
+        if variable is not None and variable.children and not variable.expanded:
+            self.post_message(self.Toggled(self, variable, True))
+
+    def action_toggle(self) -> None:
+        """Space opens or closes a variable's fields, as it does in the file tree."""
+        variable = self._current()
+        if variable is not None and variable.children:
+            self.post_message(self.Toggled(self, variable, not variable.expanded))
+
+    def action_collapse(self) -> None:
+        variable = self._current()
+        if variable is None or variable.name is None:
+            return
+        if variable.expanded:
+            self.post_message(self.Toggled(self, variable, False))
+            return
+        # On a field, go to the variable that holds it.
+        parent = variable.path[:-1]
+        for index in range(self.cursor_row - 1, -1, -1):
+            if self.variable_rows[index].name is not None and (
+                    self.variable_rows[index].path == parent):
+                self.move_cursor(row=index)
+                return
 
     @property
     def text(self):
@@ -187,6 +257,8 @@ class DebugContext:
     # Watch expression -> displayed value for the current pause and frame.
     watch_values: dict = field(default_factory=dict)
     watch_frame: object = None
+    # Paths (scope, variable, field, ...) the user expanded; kept across pauses.
+    expanded: set = field(default_factory=set)
     close_error: str | None = None
     update_lock: object = field(default_factory=asyncio.Lock)
     stopping: bool = False
@@ -565,6 +637,7 @@ class CodeDebug(Vertical):
         context.output.clear()
         context.frames.clear()
         context.variables = ()
+        context.expanded = set()
         context.execution = None
         self.display = True
         self._render_context(context)
@@ -746,13 +819,11 @@ class CodeDebug(Vertical):
             if scope.get('expensive'):
                 continue
             reference = scope['variablesReference']
-            variables = await context.session.variables(reference)
             name = scope.get('name', 'Scope')
             values.append(VariableRow(name, reference))
-            values.extend(
-                VariableRow(name, reference, value['name'], str(value.get('value', '')))
-                for value in variables
-            )
+            if not await self._variables(context, generation, pause, values,
+                                         VariableRow(name, reference, path=(name,), depth=-1)):
+                return
         if not self._paused(context, generation, pause):
             return
         context.watch_frame = frame['id']
@@ -765,6 +836,50 @@ class CodeDebug(Vertical):
             (context.profile.root, Path(path), frame.get('line', 1)) if path else None
         )
         self._render_inspection(context)
+
+    async def _variables(self, context, generation, pause, values, holder):
+        """Append holder's variables, and the fields of the expanded ones, to values."""
+        reference = holder.children or holder.reference
+        for value in await context.session.variables(reference):
+            if not self._paused(context, generation, pause):
+                return False
+            children = value.get('variablesReference') or 0
+            path = (*holder.path, value['name'])
+            variable = VariableRow(
+                holder.scope, reference, value['name'], str(value.get('value', '')),
+                holder.depth + 1, children, path,
+                bool(children) and path in context.expanded
+                and holder.depth + 1 < MAX_VARIABLE_DEPTH)
+            values.append(variable)
+            if variable.expanded and not await self._variables(
+                    context, generation, pause, values, variable):
+                return False
+        return True
+
+    @on(VariablesTable.Toggled, '#code-variables')
+    def toggle_variable(self, event):
+        """Right expands a variable's fields, Left collapses them."""
+        event.stop()
+        context = self.selected
+        if (context is None or not context.active or context.session is None
+                or context.session.state != 'stopped' or not context.frames):
+            return
+        if event.expanded:
+            context.expanded.add(event.variable.path)
+        else:
+            context.expanded.discard(event.variable.path)
+        self._spawn(context, self._refresh_frame(context, context.generation, context.pause))
+
+    async def _refresh_frame(self, context, generation, pause):
+        """Read the selected frame again: values, fields and watches."""
+        if not self._paused(context, generation, pause) or not context.frames:
+            return
+        frame = context.frames[min(context.frame_row, len(context.frames) - 1)]
+        try:
+            await self._frame(context, generation, pause, frame)
+        except DebugError as error:
+            if self._paused(context, generation, pause):
+                self.app.notify(str(error), severity='warning')
 
     @on(DataTable.RowSelected, '#code-variables')
     def edit_variable(self, event):
@@ -783,7 +898,7 @@ class CodeDebug(Vertical):
         self._editing = (context, context.generation, context.pause, variable)
         pane = self.query_one('#code-variables-pane').region
         content = table.content_region
-        prefix = table.cell_padding + cell_len(f'{variable.name} = ')
+        prefix = table.cell_padding + cell_len(f'{variable.prefix}{variable.name} = ')
         row_y = content.y - pane.y + event.cursor_row - int(table.scroll_y)
         editor = self.query_one(VariableEditor)
         editor.styles.offset = (content.x - pane.x + prefix, row_y)
@@ -826,10 +941,8 @@ class CodeDebug(Vertical):
             if self._paused(context, generation, pause):
                 self.app.notify(f'Cannot set {variable.name}: {error}', severity='warning')
             return
-        if self._paused(context, generation, pause) and context.frames:
-            # Read the frame again: other variables and watches may depend on it.
-            frame = context.frames[min(context.frame_row, len(context.frames) - 1)]
-            await self._frame(context, generation, pause, frame)
+        # Read the frame again: other variables and watches may depend on it.
+        await self._refresh_frame(context, generation, pause)
 
     @on(DataTable.RowSelected, '#code-stack')
     def select_frame(self, event):
