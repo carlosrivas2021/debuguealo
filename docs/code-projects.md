@@ -413,7 +413,9 @@ debug output's subtitle shows the current mode, for example `Exceptions: uncaugh
 
 Every debugger supports it, launched or attached. In Go, `uncaught` and `all` both pause on an
 unrecovered panic or a fatal runtime error: a panic that `recover` handles never reaches the
-debugger.
+debugger. Go and Node can pause inside their own runtime code (Go's `runtime/panic.go`,
+Node's `fs` module), which is outside the project; select your function in **Call stack** to
+see its line. In Python, `all` pauses again in each of your functions an exception leaves.
 
 ## Attach to an existing Go/Delve target
 
