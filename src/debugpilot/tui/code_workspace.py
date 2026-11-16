@@ -31,7 +31,8 @@ from debugpilot.tui.terminal_view import TerminalPane
 # The debug panel's tables join while a debug session shows it; its text fields are left
 # out, since they keep Ctrl/Alt+arrows for moving in the text.
 PANES = (
-    "#code-projects", "#source-tree", "#source-breakpoints", "#source-text",
+    "#code-projects", "#source-tree", "#source-breakpoints-title", "#source-breakpoints",
+    "#source-text",
     "#code-stack", "#code-watches", "#code-variables",
 )
 # The profile list keeps room for six profiles until resized; the file tree keeps four rows.

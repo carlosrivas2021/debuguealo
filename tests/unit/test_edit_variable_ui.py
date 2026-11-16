@@ -85,8 +85,8 @@ async def test_alt_arrows_reach_the_debug_panes_while_debugging(monkeypatch, tmp
             await pilot.press('alt+right')
             await pilot.pause()
             visited.append(app.focused.id)
-        # The breakpoints list joins once the project has a breakpoint.
-        assert visited == ['source-tree', 'source-breakpoints', 'source-text', 'code-stack',
+        # The breakpoints title joins once the project has a breakpoint (the list is closed).
+        assert visited == ['source-tree', 'source-breakpoints-title', 'source-text', 'code-stack',
                            'code-watches', 'code-variables', 'code-projects', 'source-tree']
         table = app.query_one('#code-variables')
         table.focus()

@@ -163,8 +163,8 @@ environment.
 1. Select a Code profile. Expand directories in the file tree, then select a file.
 2. Move the cursor to a line in the read-only source pane (mouse or arrow keys).
 3. Press **F9**, click the gutter, or click **● Breakpoint**. A red **●** appears in the
-   gutter beside that line number, before the code. Expand the file to see its
-   **Line N · pending** children; selecting one navigates to that line.
+   gutter beside that line number, before the code, and the line is added to the
+   [breakpoints list](#breakpoints-list) under the file tree.
 4. Click the red **●** to remove the mark, or click that gutter position on an
    unmarked line to add one. The original toggle button still works.
 
@@ -174,9 +174,12 @@ file. Red indicates requested intent, **not debugger verification**.
 ## Breakpoints list
 
 The **BREAKPOINTS** section under the file tree lists every breakpoint of the selected
-profile's folder, by file and then line, for example `◆ main.py:4 if answer == 41`. Its title
-shows how many there are; with none it reads **BREAKPOINTS · F9 adds one**. **Ctrl+Right**
-from the file tree (or **Alt+Right**) moves to it.
+profile's folder, by file and then line, for example `◆ main.py:4 if answer == 41`. It starts
+closed in every session, showing only its title with the count, for example
+**▸ BREAKPOINTS (3)**. Click the title, or focus it and press **Enter** or **Space**, to open
+it (**▾**) or close it again; it stays as you left it while debugealo runs. With no
+breakpoints the title reads **BREAKPOINTS · F9 adds one**. **Ctrl+Right** from the file tree
+(or **Alt+Right**) moves to the title, and then into the open list.
 
 | Key | Action |
 |---|---|
@@ -187,11 +190,15 @@ from the file tree (or **Alt+Right**) moves to it.
 
 A breakpoint that is off keeps its line, condition, log message and hit count, but the
 debugger never receives it: it neither stops nor logs. It shows a grey **○** in the list and
-the gutter, **(off)** in the list and **off** in the file tree. Switching one off or on applies
+the gutter, and **(off)** in the list. Switching one off or on applies
 to an active debug session right away. **F9** on a line that is off removes it.
 
 While debugging, **▶** marks the row of the paused line shown in the source, so a stop at a
-breakpoint shows which one it was.
+breakpoint shows which one it was. A row also shows the debugger's answer when it needs a
+look: **unverified** when the debugger could not place the breakpoint, and **→ Line N** when it
+placed it on another line. The title counts them, for example
+**▸ BREAKPOINTS (3) · 1 unverified**, so they show even with the list closed. Verified and
+pending breakpoints show no note.
 
 Lines that are off are saved in `projects/breakpoints.json` as a `disabled` list beside the
 file's `lines`. A file with none keeps exactly the previous format; versions of debugealo
@@ -245,15 +252,15 @@ source shows them and what they do, for example `if answer > 40   stops only whe
 disappears on other lines, and **Shift+F9** edits them.
 
 The gutter shows **●** for a plain breakpoint, **◆** for a conditional one (a hit count
-counts as one) and a blue **◇** for a logpoint. The file's tree entry shows the details, for example
-**Line 4 · if user_id == 42 · pending** or **Line 7 · log: order {order.id} received · pending**;
+counts as one) and a blue **◇** for a logpoint. The breakpoints list shows the details, for
+example **◆ main.py:4 if user_id == 42** or **◇ main.py:7 log: order {order.id} received**;
 a line with both shows the condition and the message, and a hit count shows as **hit >=10**.
 Changes apply to an active debug session immediately.
 
 Conditions and log messages work with Python, Go and Node debugging and with Python, Go and
 Node attach. The debugger evaluates them, not debugealo, so an invalid expression is handled by
 each debugger: Python reports the error in the debug output, Go marks the breakpoint
-**unverified** in the file tree, and Node accepts it but never stops there. Node has no
+**unverified** in the breakpoints list, and Node accepts it but never stops there. Node has no
 native logpoints: the message is
 logged with `console.log` from a condition that never stops, as VS Code does. Node has no
 native hit counts either: the condition counts passes in a `globalThis.__debugealoHits`

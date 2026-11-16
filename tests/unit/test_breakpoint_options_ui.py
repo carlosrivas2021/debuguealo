@@ -2,7 +2,7 @@
 
 import asyncio
 
-from test_code_debug_ui import Docker, debug_app, rendered
+from test_code_debug_ui import Docker, debug_app, labels, rendered
 from test_tui_grouping import until
 from textual.widgets import Input, Static, TextArea, Tree
 
@@ -48,9 +48,6 @@ def glyph(browser, line):
     return browser.query_one(TextArea).render_line(line - 1).text
 
 
-def labels(browser):
-    return [str(leaf.label) for leaf in browser.query_one(Tree).root.children[0].children]
-
 
 async def test_condition_and_logpoint_marks_labels_and_persistence(monkeypatch, tmp_path):
     app, roots, _ = debug_app(monkeypatch, tmp_path)
@@ -69,8 +66,8 @@ async def test_condition_and_logpoint_marks_labels_and_persistence(monkeypatch, 
         assert '◆' in glyph(browser, 4)
         assert '◇' in glyph(browser, 5)
         assert labels(browser) == [
-            'Line 3 · pending', 'Line 4 · if answer == 41 · pending',
-            'Line 5 · log: result {answer} · pending']
+            ' ● main.py:3', ' ◆ main.py:4 if answer == 41',
+            ' ◇ main.py:5 log: result {answer}']
         # The plain F9 save kept the other lines' options.
         assert store(tmp_path).load_options() == {key: {
             4: BreakpointOptions(condition='answer == 41'),
@@ -175,7 +172,7 @@ async def test_label_shows_condition_and_log_message_together(monkeypatch, tmp_p
         await pilot.click('#area-code')
         browser = await open_main(pilot, app, 4)
         await edit(pilot, app, condition='answer > 1', log='seen {answer}')
-        assert labels(browser) == ['Line 4 · if answer > 1 · log: seen {answer} · pending']
+        assert labels(browser) == [' ◇ main.py:4 if answer > 1 · log: seen {answer}']
         assert '◇' in glyph(browser, 4)
 
 
@@ -326,7 +323,7 @@ async def test_hit_count_marks_labels_panel_and_persistence(monkeypatch, tmp_pat
         await open_main(pilot, app, 5)
         await edit(pilot, app, log='seen {answer}', hits='%2')
         assert labels(browser) == [
-            'Line 4 · hit >=3 · pending', 'Line 5 · log: seen {answer} · hit %2 · pending']
+            ' ◆ main.py:4 hit >=3', ' ◇ main.py:5 log: seen {answer} · hit %2']
         assert '◆' in glyph(browser, 4)
         assert '◇' in glyph(browser, 5)
         assert store(tmp_path).load_options() == {key: {

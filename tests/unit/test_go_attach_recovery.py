@@ -5,7 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from test_code_debug_ui import debug_app, rendered, until
+from test_code_debug_ui import debug_app, labels, rendered, until
 from test_go_attach_ui import FakeGoAttach
 
 from debugpilot.tui import code_debug
@@ -50,8 +50,8 @@ async def test_recovery_controls_follow_selected_profile_and_reconnect_pinned_co
         reconnect = app.query_one("#code-reconnect")
         assert reconnect.display
         assert browser.breakpoints(roots[0], source) == marks == (1,)
-        pending = browser.query_one("Tree").root.children[0].children[0].label
-        assert "Line 1 · pending" in str(pending)
+        # Back to pending: the row has no verification note.
+        assert labels(browser) == [" ● main.py:1"]
         assert not app.query_one("#code-stop").disabled
 
         # Edited configuration cannot retarget the recovery context.

@@ -24,7 +24,7 @@ async def test_a_disabled_breakpoint_is_kept_but_never_stops(monkeypatch, tmp_pa
         # Off, it keeps its line and condition: grey ring in the gutter, "off" in the tree.
         assert browser.breakpoints(*key) == (3, 4)
         assert '○' in glyph(browser, 4) and '●' in glyph(browser, 3)
-        assert labels(browser) == ['Line 3 · pending', 'Line 4 · if answer == 41 · off']
+        assert labels(browser) == [' ● main.py:3', ' ○ main.py:4 if answer == 41 (off)']
         assert store(tmp_path).load_disabled() == {key: (4,)}
         assert store(tmp_path).load_options() == {key: {
             4: BreakpointOptions(condition='answer == 41')}}
@@ -43,8 +43,7 @@ async def test_a_disabled_breakpoint_is_kept_but_never_stops(monkeypatch, tmp_pa
         await pilot.click('#code-continue')
         await until(pilot, lambda: debug.selected.execution is not None
                     and debug.selected.execution[2] == 4)
-        assert labels(browser)[1].startswith('Line 4 · if answer == 41 · ')
-        assert 'off' not in labels(browser)[1]
+        assert labels(browser)[1] == '▶◆ main.py:4 if answer == 41'
         # Off again: Continue runs to the end instead of stopping.
         browser.set_enabled({key: {3, 4}}, False)
         await until(pilot, lambda: debug.session.requested_breakpoints.get(str(source)) == ())
@@ -88,9 +87,12 @@ async def test_the_sidebar_lists_opens_switches_and_removes_breakpoints(monkeypa
         browser.open_source(roots[0], util, 2)
         await pilot.pause()
         await pilot.press('f9')
+        # Closed at first: only the title, with the count.
+        assert title(app) == '▸ BREAKPOINTS (3)' and listed(app) == []
+        await pilot.click('#source-breakpoints-title')
+        assert title(app) == '▾ BREAKPOINTS (3)'
         # By file, then line, with each one's kind and condition.
         assert listed(app) == [' ● lib/util.py:2', ' ● main.py:3', ' ◆ main.py:4 if answer == 41']
-        assert title(app) == 'BREAKPOINTS (3)'
 
         # Only the selected profile's project is listed.
         profiles = app.query_one('#code-projects', DataTable)
@@ -98,10 +100,13 @@ async def test_the_sidebar_lists_opens_switches_and_removes_breakpoints(monkeypa
         await until(pilot, lambda: title(app) == 'BREAKPOINTS · F9 adds one')
         assert listed(app) == []
         profiles.move_cursor(row=0)
-        await until(pilot, lambda: title(app) == 'BREAKPOINTS (3)')
+        # Still open for the rest of the session.
+        await until(pilot, lambda: title(app) == '▾ BREAKPOINTS (3)')
 
-        # Ctrl+Right from the file tree reaches the list.
+        # Ctrl+Right from the file tree reaches the title, then the list.
         browser.query_one('#source-tree').focus()
+        await pilot.press('ctrl+right')
+        assert app.focused is app.query_one('#source-breakpoints-title')
         await pilot.press('ctrl+right')
         table = app.query_one('#source-breakpoints')
         assert app.focused is table
@@ -147,3 +152,37 @@ async def test_the_sidebar_lists_opens_switches_and_removes_breakpoints(monkeypa
         await until(pilot, lambda: 'Exited: 0' in rendered(app, '#code-run-state'))
         assert listed(app) == [' ● main.py:3', ' ◆ main.py:4 if answer == 41']
         assert isinstance(app.query_one(SourceBrowser), SourceBrowser)
+
+
+async def test_the_list_starts_closed_and_its_title_opens_and_closes_it(monkeypatch, tmp_path):
+    from test_code_debug_ui import Docker
+
+    from debugpilot.core.engine import DebugPilotEngine
+    from debugpilot.storage.config import Settings
+    from debugpilot.tui.app import DebugPilotApp
+
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        await open_main(pilot, app, 3)
+        await pilot.press('f9')
+        heading = app.query_one('#source-breakpoints-title')
+        heading.focus()
+        await pilot.press('enter')
+        assert title(app) == '▾ BREAKPOINTS (1)' and listed(app) == [' ● main.py:3']
+        await pilot.press('space')
+        assert title(app) == '▸ BREAKPOINTS (1)' and listed(app) == []
+        assert app.focused is heading
+        # With the list closed, Ctrl+Right skips from the title to the source.
+        await pilot.press('ctrl+right')
+        assert app.focused is app.query_one('#source-text')
+        await pilot.press('space')  # In the source, Space is not the title's.
+        assert title(app) == '▸ BREAKPOINTS (1)'
+        heading.focus()
+        await pilot.press('enter')
+        assert listed(app) == [' ● main.py:3']
+    # Every session starts with it closed, whatever it was before.
+    restarted = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), workspace=tmp_path)
+    async with restarted.run_test(size=(140, 52)) as pilot:
+        await pilot.click('#area-code')
+        assert title(restarted) == '▸ BREAKPOINTS (1)' and listed(restarted) == []

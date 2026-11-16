@@ -21,7 +21,7 @@ from textual.widgets import Button, Static, TextArea, Tree
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.breakpoints import BreakpointOptions, BreakpointStore
 from debugpilot.tui.breakpoint_dialog import DIALOG_ROWS, BreakpointDialog
-from debugpilot.tui.breakpoint_list import BreakpointList
+from debugpilot.tui.breakpoint_list import BreakpointList, BreakpointsTitle
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
@@ -59,6 +59,16 @@ def _breakpoint_hint(options: BreakpointOptions | None) -> str:
     if options is not None and options.hit_condition:
         parts.append(f"hit {options.hit_condition}")
     return " · ".join(parts)
+
+
+def _verification_note(state: str | None) -> str:
+    """What a row shows of the debugger's answer: nothing while pending or verified."""
+    if not state:
+        return ""
+    moved = state.partition(" → ")[2]
+    if state.startswith("unverified"):
+        return "unverified" + (f" → {moved}" if moved else "")
+    return f"→ {moved}" if moved else ""
 
 
 def _shorten(text: str) -> str:
@@ -185,6 +195,7 @@ class SourceBrowser(Vertical):
     SourceBrowser #source-sidebar { width: 30; min-width: 22; }
     SourceBrowser #source-tree { height: 1fr; }
     SourceBrowser #source-breakpoints { height: auto; max-height: 8; overflow-x: hidden; }
+    SourceBrowser #source-breakpoints-title:focus { background: $accent 40%; }
     SourceBrowser #source-main { width: 1fr; }
     SourceBrowser #source-editor-row { height: 2fr; min-height: 6; }
     SourceBrowser #source-pane { width: 1fr; }
@@ -225,14 +236,13 @@ class SourceBrowser(Vertical):
             self._disabled = {}
             self._persistence_error = str(error)
         self._loaded = set()
-        # Folders shown in the tree, and the root as stored keys spell it, so moving
-        # between profiles never asks the disk about each file.
-        self._directories: set[Path] = set()
+        # The root as stored keys spell it, so moving between profiles never asks the disk.
         self._resolved_root: Path | None = None
-        self._file_node = None
         self._verification = {}
         # The (root, file, line) of the paused line shown in the editor, if any.
         self._execution: tuple[Path, Path, int] | None = None
+        # The breakpoints list starts closed in every session; its title opens it.
+        self._list_open = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="source-layout"):
@@ -241,7 +251,8 @@ class SourceBrowser(Vertical):
                     yield self._sidebar_header
                 yield Static("FILES", id="source-files-title", classes="pane-title")
                 yield FileTree("Files", id="source-tree")
-                yield Static("BREAKPOINTS", id="source-breakpoints-title", classes="pane-title")
+                yield BreakpointsTitle("BREAKPOINTS", id="source-breakpoints-title",
+                                       classes="pane-title")
                 yield BreakpointList(id="source-breakpoints")
             with Vertical(id="source-main"):
                 with Horizontal(id="source-editor-row"):
@@ -264,7 +275,6 @@ class SourceBrowser(Vertical):
             return
         self.root_path = root
         self._loaded.clear()
-        self._directories = {root} if root is not None else set()
         try:
             self._resolved_root = root.resolve() if root is not None else None
         except (OSError, RuntimeError):
@@ -291,7 +301,6 @@ class SourceBrowser(Vertical):
 
     def _clear_source(self):
         self.file_path = None
-        self._file_node = None
         editor = self.query_one(SourceText)
         editor.breakpoint_lines = ()
         editor.breakpoint_kinds = {}
@@ -323,14 +332,8 @@ class SourceBrowser(Vertical):
                     continue
                 kinds.append((entry, entry.is_dir(follow_symlinks=False)))
             kinds.sort(key=lambda kind: (not kind[1], kind[0].name.casefold()))
-            marked = self._root_has_marks()
             for entry, is_dir in kinds:
-                child_path = path / entry.name
-                child = node.add(Text(entry.name), (child_path, None), allow_expand=is_dir)
-                if is_dir:
-                    self._directories.add(child_path)
-                elif marked and entry.is_file(follow_symlinks=False):
-                    self._show_marks(child)
+                node.add(Text(entry.name), (path / entry.name, None), allow_expand=is_dir)
         except (OSError, ValueError, RuntimeError) as error:
             self._set_status(f"Unable to list {path}: {error}")
 
@@ -348,7 +351,7 @@ class SourceBrowser(Vertical):
         path, line = event.node.data
         if path is None or path.is_dir():
             return
-        self.open_source(self.root_path, path, line, node=event.node)
+        self.open_source(self.root_path, path, line)
 
     def _safe_path(self, path):
         path = Path(path).absolute()
@@ -361,7 +364,7 @@ class SourceBrowser(Vertical):
                 raise ValueError("Source paths cannot contain links or junctions")
         return path
 
-    def open_source(self, root, path, line=None, *, node=None):
+    def open_source(self, root, path, line=None):
         """Preview a debugger or tree path through the same bounded read-only checks."""
         self.set_project(root)
         self._clear_source()
@@ -386,15 +389,6 @@ class SourceBrowser(Vertical):
             self._set_status(f"Unable to open {path}: {error}")
             return False
         self.file_path = path.resolve()
-        self._file_node = node.parent if node is not None and line is not None else node
-        if self._file_node is None:
-            current = self.query_one(Tree).root
-            for part in self.file_path.relative_to(self.root_path).parts:
-                self._populate(current)
-                current = next((n for n in current.children if n.data[0].name == part), None)
-                if current is None:
-                    break
-            self._file_node = current
         editor = self.query_one(TextArea)
         editor.load_text(source)
         self._refresh_editor_marks()
@@ -439,13 +433,31 @@ class SourceBrowser(Vertical):
                 glyph, style = BREAKPOINT_GLYPHS[
                     "disabled" if line in off else breakpoint_kind(option)]
                 rows.append(((key, line), glyph, style, f"{relative}:{line}",
-                             _shorten(_breakpoint_hint(option)), line in off,
-                             self._execution == (key[0], key[1], line)))
+                             _shorten(_breakpoint_hint(option)),
+                             _verification_note(self._verification.get((key[0], key[1], line))),
+                             line in off, self._execution == (key[0], key[1], line)))
         table = self.query_one(BreakpointList)
         table.show(rows)
-        table.display = bool(rows)
-        title = self.query_one("#source-breakpoints-title", Static)
-        title.update(f"BREAKPOINTS ({len(rows)})" if rows else "BREAKPOINTS · F9 adds one")
+        if not rows or not self._list_open:
+            if table.has_focus:
+                self.query_one(BreakpointsTitle).focus()
+            table.display = False
+        else:
+            table.display = True
+        title = self.query_one(BreakpointsTitle)
+        # Nothing to open: the title stays out of the focus order.
+        title.can_focus = bool(rows)
+        if not rows:
+            title.update("BREAKPOINTS · F9 adds one")
+            return
+        unverified = sum(1 for row in rows if row[5] and not row[6])
+        title.update(f"{'▾' if self._list_open else '▸'} BREAKPOINTS ({len(rows)})"
+                     + (f" · {unverified} unverified" if unverified else ""))
+
+    @on(BreakpointsTitle.Toggle)
+    def _toggle_list(self, _event):
+        self._list_open = not self._list_open
+        self._refresh_list()
 
     @on(BreakpointList.RowSelected, "#source-breakpoints")
     def _open_breakpoint(self, event):
@@ -516,64 +528,11 @@ class SourceBrowser(Vertical):
                 if actual != line:
                     state += f" → Line {actual}"
                 self._verification[(root, Path(path).resolve(), line)] = state
-        if self.root_path == root and self.query(Tree):
-            marked = self._root_has_marks()
-
-            def refresh_node(node):
-                path, line = node.data
-                if line is None and path is not None and path not in self._directories:
-                    if marked or node.children:
-                        self._show_marks(node)
-                else:
-                    for child in list(node.children):
-                        refresh_node(child)
-            refresh_node(self.query_one(Tree).root)
+        if self._resolved_root == root:
+            self._refresh_list()
 
     def breakpoints(self, root: Path, path: Path) -> tuple[int, ...]:
         return tuple(sorted(self._marks.get((root.resolve(), path.resolve()), set())))
-
-    def _root_has_marks(self) -> bool:
-        """Whether any file of the shown project has a breakpoint (usually none)."""
-        return any(lines and owner == self._resolved_root
-                   for (owner, _), lines in self._marks.items())
-
-    def _tree_key(self, path: Path) -> tuple[Path, Path]:
-        """The stored (root, file) key of a tree path, without asking the disk.
-
-        Tree paths have no links (the listing skips them and the root is checked), so
-        the resolved root plus the relative path is what resolving the file would give.
-        """
-        try:
-            return self._resolved_root, self._resolved_root / path.relative_to(self.root_path)
-        except (TypeError, ValueError):
-            return self.root_path.resolve(), path.resolve()
-
-    def _show_marks(self, node):
-        if node is None:
-            return
-        path, _ = node.data
-        root, key = self._tree_key(path)
-        marks = tuple(sorted(self._marks.get((root, key), ())))
-        if not marks and not node.children:
-            node.allow_expand = False  # Most files: nothing to show or remove.
-            return
-        node.remove_children()
-        options = self._options.get((root, key), {})
-        node.allow_expand = bool(marks)
-        for line in marks:
-            state = ("off" if line in self._disabled.get((root, key), ())
-                     else self._verification.get((self.root_path, key, line), "pending"))
-            option = options.get(line)
-            detail = ""
-            if option is not None and option.condition:
-                detail += f" · if {_shorten(option.condition)}"
-            if option is not None and option.log_message:
-                detail += f" · log: {_shorten(option.log_message)}"
-            if option is not None and option.hit_condition:
-                detail += f" · hit {option.hit_condition}"
-            node.add_leaf(Text(f"Line {line}{detail} · {state}"), (path, line))
-        if marks:
-            node.expand()
 
     @on(SourceText.BreakpointClicked)
     def gutter_breakpoint(self, event):
@@ -665,11 +624,6 @@ class SourceBrowser(Vertical):
             if not self._disabled.get(key, True):
                 self._disabled.pop(key, None)
         open_file = self.file_path.resolve() if self.file_path is not None else None
-        for key in keys:
-            node = (self._file_node if key[1] == open_file and key[0] == self._resolved_root
-                    else self._tree_node(key))
-            if node is not None:
-                self._show_marks(node)
         if open_file in {key[1] for key in keys}:
             self._refresh_editor_marks()
         try:
@@ -688,19 +642,6 @@ class SourceBrowser(Vertical):
                  if line in enabled},
             ))
         self._refresh_list()
-
-    def _tree_node(self, key):
-        """The loaded tree node of a stored file, or None when its folder is not listed."""
-        if self._resolved_root != key[0] or not self.query(Tree):
-            return None
-        node = self.query_one(Tree).root
-        for part in key[1].relative_to(key[0]).parts:
-            node = next((child for child in node.children
-                         if child.data[0] is not None and child.data[0].name == part
-                         and child.data[1] is None), None)
-            if node is None:
-                return None
-        return node
 
     @on(TextArea.SelectionChanged, "#source-text")
     def _cursor_moved(self, _event):

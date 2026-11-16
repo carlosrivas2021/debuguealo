@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from test_code_debug_ui import FakeDebug, debug_app, mark, rendered, until
+from test_code_debug_ui import FakeDebug, debug_app, labels, mark, rendered, until
 from textual.widgets import Button, DataTable
 
 import debugpilot.terminal.session as terminal_session
@@ -220,10 +220,11 @@ async def test_same_root_debug_contexts_keep_verification_and_inspection_separat
         first = FakeDebug.instances[0]
         await until(pilot, lambda: "answer = 101" in rendered(app, "#code-variables"))
         source = str((roots[0] / "main.py").resolve())
-        first.verified_breakpoints[source] = [{"verified": True, "line": 4}]
+        # Unverified in the first context only: the list row shows it there.
+        first.verified_breakpoints[source] = [{"verified": False, "line": 4}]
         first.emit("breakpoints")
         await pilot.pause()
-        assert "verified" in str(browser.query_one("Tree").root.children[0].children[0].label)
+        assert "main.py:4 unverified" in labels(browser)[0]
 
         table.move_cursor(row=1)
         await pilot.pause()
@@ -236,9 +237,7 @@ async def test_same_root_debug_contexts_keep_verification_and_inspection_separat
         await pilot.pause()
         output = app.query_one("#code-debug-output")
         assert "FIRST-ONLY" not in "\n".join(line.text for line in output.lines)
-        assert "Line 4 · pending" in str(
-            browser.query_one("Tree").root.children[0].children[0].label
-        )
+        assert labels(browser)[0].endswith("main.py:4")
         browser.query_one("TextArea").move_cursor((4, 0))
         await pilot.click("#source-breakpoint")
         await until(pilot, lambda: bool(first.updates) and bool(second.updates))
@@ -248,7 +247,7 @@ async def test_same_root_debug_contexts_keep_verification_and_inspection_separat
         table.move_cursor(row=0)
         await pilot.pause()
         assert "answer = 101" in rendered(app, "#code-variables")
-        assert "verified" in str(browser.query_one("Tree").root.children[0].children[0].label)
+        assert "main.py:4 unverified" in labels(browser)[0]
         assert "FIRST-ONLY" in "\n".join(
             line.text for line in app.query_one("#code-debug-output").lines
         )

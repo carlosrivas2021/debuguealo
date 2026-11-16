@@ -1,5 +1,6 @@
 import json
 
+from test_code_debug_ui import labels
 from test_code_project_store import configure
 from test_tui_grouping import Docker, until
 from textual.widgets import DataTable, TextArea, Tree
@@ -48,7 +49,9 @@ async def test_profile_navigation_preserves_source_breakpoints_and_container_con
         assert app.selected_container == selected
         await pilot.click("#area-code")
         assert browser.breakpoints(roots[0], roots[0] / "main.py") == (1,)
-        assert "pending" in str(tree.root.children[0].children[0].label)
+        # The mark is listed, without a debugger's note; the file itself has no children.
+        assert labels(browser) == [" ● main.py:1"]
+        assert not next(n for n in tree.root.children if str(n.label) == "main.py").children
         store.path.write_text('{"version":1,"configurations":[]}', encoding="utf-8")
         await pilot.click("#code-reload")
         assert browser.root_path is None

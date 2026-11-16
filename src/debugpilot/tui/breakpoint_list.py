@@ -5,13 +5,34 @@ from pathlib import Path
 from rich.style import Style
 from rich.text import Text
 from textual.binding import Binding
+from textual.events import Click
 from textual.message import Message
-from textual.widgets import DataTable
+from textual.widgets import DataTable, Static
 
 # A row's location: the stored (root, file) key and the line.
 Location = tuple[tuple[Path, Path], int]
 EXECUTION_STYLE = Style(color="#facc15", bold=True)
 MUTED_STYLE = Style(color="#7f8c93")
+WARNING_STYLE = Style(color="#e5c07b")
+
+
+class BreakpointsTitle(Static, can_focus=True):
+    """The section title: click, Enter or Space opens or closes the list; Down enters it."""
+
+    BINDINGS = [
+        Binding("enter", "toggle", "Open/close", show=False),
+        Binding("space", "toggle", "Open/close"),
+    ]
+
+    class Toggle(Message):
+        pass
+
+    def on_click(self, event: Click) -> None:
+        event.stop()
+        self.post_message(self.Toggle())
+
+    def action_toggle(self) -> None:
+        self.post_message(self.Toggle())
 
 
 class BreakpointList(DataTable):
@@ -45,11 +66,14 @@ class BreakpointList(DataTable):
         self.add_column("Breakpoint")
 
     def show(self, rows) -> None:
-        """rows: (location, glyph, glyph style, label, detail, off, executing), in order."""
+        """rows: (location, glyph, style, label, detail, note, off, executing), in order.
+
+        The note is the debugger's answer worth a look: unverified, or moved to another line.
+        """
         current = self.location
         self.clear()
         self._locations = []
-        for location, glyph, style, label, detail, off, executing in rows:
+        for location, glyph, style, label, detail, note, off, executing in rows:
             text = Text(no_wrap=True, overflow="crop")
             text.append("▶" if executing else " ", EXECUTION_STYLE)
             text.append(glyph, style)
@@ -58,6 +82,8 @@ class BreakpointList(DataTable):
                 text.append(f" {detail}", MUTED_STYLE)
             if off:
                 text.append(" (off)", MUTED_STYLE)
+            elif note:
+                text.append(f" {note}", WARNING_STYLE)
             self.add_row(text)
             self._locations.append(location)
         if current in self._locations:
