@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.7.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.6.0...v0.7.0) (2026-11-16)
+
+
+### Features
+
+* **code:** change a paused variable from the Variables pane ([e2a5e89](https://github.com/carlosrivas2021/debuguealo/commit/e2a5e89cdabbc333f23ea09d96da3ab2f3fc6e1f))
+* **code:** change debug variables while paused ([42179da](https://github.com/carlosrivas2021/debuguealo/commit/42179da997288110c6e0af60af8656ab13fbdf8c))
+* **code:** Ctrl/Alt+arrows reach the debug panes ([44766a2](https://github.com/carlosrivas2021/debuguealo/commit/44766a22bb3f3798d5d95bef4a49d4049f03747d))
+* **code:** expand nested variables ([9a681eb](https://github.com/carlosrivas2021/debuguealo/commit/9a681eb9c318cc50a0bced1c4c1d339e0c2a8448))
+* **code:** expand nested variables and change their fields ([8948b9c](https://github.com/carlosrivas2021/debuguealo/commit/8948b9cfab8bdcdf3e2853b51ea7ca219010bc6e))
+* **code:** name the profile in the Debug output title, not on every line ([9b61d1b](https://github.com/carlosrivas2021/debuguealo/commit/9b61d1b08bda9d4ae019e01ad78fd56531e1ea9e))
+* **code:** Python debug output shows the program's terminal ([eec73f7](https://github.com/carlosrivas2021/debuguealo/commit/eec73f776d13c56ffd5dd8e0f4aef9afcdac124a))
+* **code:** Python debug output shows the program's terminal, getpass prompt included ([8157f9f](https://github.com/carlosrivas2021/debuguealo/commit/8157f9ff2efef79110c240949ecc2ea25f2c21b9))
+* **code:** Right and Left open and close folders in the file tree ([a474ad1](https://github.com/carlosrivas2021/debuguealo/commit/a474ad14bd05a9a1f2dcfad88d936248c1a2806d))
+* **code:** show and copy a variable's whole value ([d00eec4](https://github.com/carlosrivas2021/debuguealo/commit/d00eec4560e48efbf1f8c0110f288efccae2d964))
+* **code:** show and copy a variable's whole value ([3d5fdff](https://github.com/carlosrivas2021/debuguealo/commit/3d5fdfff38a09a5070daf5d6054afababed5a526))
+* **code:** watches with fields expand like variables ([0320455](https://github.com/carlosrivas2021/debuguealo/commit/032045510bab81c0701b9786e7d8e76883ee40de))
+* **code:** watches with fields expand like variables ([147065d](https://github.com/carlosrivas2021/debuguealo/commit/147065d9b4277e796fe69ee5c73f3248f643a9bd))
+* **debugger:** set a paused variable to a value expression ([946bb87](https://github.com/carlosrivas2021/debuguealo/commit/946bb87ac7c5ac2940df7952e1defadf331f8daa))
+
+
+### Bug Fixes
+
+* **code:** focus returns to the profiles when the debug panel closes ([6663e90](https://github.com/carlosrivas2021/debuguealo/commit/6663e90cbb4f0b8b30a5484e5bf2533aae3838a6))
+
 ## [0.6.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.5.2...v0.6.0) (2026-11-15)
 
 
