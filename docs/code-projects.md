@@ -413,7 +413,13 @@ debug output's subtitle shows the current mode, for example `Exceptions: uncaugh
 
 Every debugger supports it, launched or attached. In Go, `uncaught` and `all` both pause on an
 unrecovered panic or a fatal runtime error: a panic that `recover` handles never reaches the
-debugger.
+debugger. In Python, `all` pauses again in each of your functions an exception leaves.
+
+An exception can stop inside the runtime's own code, outside the project: Go's
+`runtime/panic.go`, or Node's `fs` module in the `all` mode. Code then selects the first
+frame of the stack whose file is inside the project, so the execution line, the variables
+and the watches show your function. The runtime frames stay above it in **Call stack**.
+Breakpoints and steps always show the top frame.
 
 ## Attach to an existing Go/Delve target
 
