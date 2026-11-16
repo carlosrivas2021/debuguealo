@@ -6,6 +6,8 @@ from debugpilot.debugger.remote_attach import RemoteAttachSession
 class GoAttachSession(RemoteAttachSession):
     """Go inspection API over an existing loopback Delve DAP endpoint."""
 
+    VALUE_REPR = False  # Delve cannot run code to serialize a value.
+
     attach_field = 'go_attach'
     config_name = 'goAttach'
     language = 'Go'

@@ -1,5 +1,6 @@
 """Owned debugpy adapter with a deliberately bounded Python command grammar."""
 
+import ast
 import asyncio
 import contextlib
 import re
@@ -109,6 +110,35 @@ def _intent(root, breakpoints, options):
         intent[path] = lines
         by_path[path] = (options or {}).get(source)
     return intent, by_path
+
+
+# Run inside the paused program to copy a whole value: like repr(), but objects without
+# their own __repr__ show their attributes (read from __dict__, so no property runs), and
+# cycles or nesting past 8 levels stop at "...".
+VALUE_DUMP = """
+def dump(value, depth=0, seen=()):
+    if depth > 8 or id(value) in seen:
+        return '...'
+    seen = seen + (id(value),)
+    kind = type(value)
+
+    def inner(item):
+        return dump(item, depth + 1, seen)
+
+    if kind is dict:
+        return '{' + ', '.join(inner(k) + ': ' + inner(v) for k, v in value.items()) + '}'
+    if kind is list:
+        return '[' + ', '.join(map(inner, value)) + ']'
+    if kind is tuple:
+        return '(' + ', '.join(map(inner, value)) + (',' if len(value) == 1 else '') + ')'
+    if kind is set and value:
+        return '{' + ', '.join(map(inner, value)) + '}'
+    attributes = getattr(value, '__dict__', None)
+    if isinstance(attributes, dict) and kind.__repr__ is object.__repr__:
+        fields = ', '.join(str(k) + '=' + inner(v) for k, v in attributes.items())
+        return kind.__name__ + '(' + fields + ')'
+    return repr(value)
+"""
 
 
 class PythonDebugSession:
@@ -337,6 +367,29 @@ class PythonDebugSession:
             'variablesReference': reference, 'name': name, 'value': value,
         })
         return str(body.get('value', ''))
+
+    # Whether the adapter can run code to write a whole value; Delve cannot.
+    VALUE_REPR = True
+
+    async def full_value(self, expression, reference, frame_id):
+        """A variable's whole value in the program's language, or None when unknown.
+
+        debugpy shortens nested values in variables and watches ([{...}]); its clipboard
+        context returns the result in full. VALUE_DUMP runs in a fresh namespace, so nothing
+        is left behind in the program.
+        """
+        self._stopped()
+        if not expression or not self.VALUE_REPR:
+            return None
+        dump = f"(lambda ns: (exec({VALUE_DUMP!r}, ns), ns['dump']({expression}))[1])({{}})"
+        try:
+            body = await self._client.request('evaluate', {
+                'expression': dump, 'frameId': frame_id, 'context': 'clipboard',
+            })
+            value = ast.literal_eval(body.get('result', ''))
+        except (DebugError, ValueError, SyntaxError, MemoryError, RecursionError):
+            return None
+        return value if isinstance(value, str) else None
 
     async def evaluate(self, expression, frame_id):
         """Evaluate a watch expression in a paused frame; the debugger's error is raised."""

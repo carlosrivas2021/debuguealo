@@ -119,3 +119,30 @@ async def test_an_invalid_nested_value_is_refused_and_changes_nothing(tmp_path, 
         assert (await child(session, point['variablesReference'], x_name))['value'] == '1'
     finally:
         await session.close()
+
+
+@pytest.mark.parametrize('language', ['python', 'go', 'node'])
+async def test_copy_text_is_the_whole_value_in_the_language_or_a_tree(tmp_path, language):
+    from debugpilot.tui.code_debug import VariableRow, copy_text
+
+    session, _source = await start(tmp_path, language, [])
+    config_name, port_name, point_name, x_name = NAMES[language]
+    try:
+        config = await top(session, config_name)
+        frame_id = (await session.stack())[0]['id']
+        row = VariableRow('Locals', 0, config_name, config['value'],
+                          children=config['variablesReference'],
+                          expression=config.get('evaluateName', ''))
+        text = await copy_text(session, row, frame_id)
+        if language == 'python':  # Python's own repr, nothing shortened.
+            assert text == "{'port': 80, 'point': Point(x=1)}"
+        elif language == 'node':  # JSON, ready to paste.
+            assert text == '{\n  "port": 80,\n  "point": {\n    "x": 1\n  }\n}'
+        else:  # Delve cannot serialize: the fields as an indented tree.
+            lines = text.splitlines()
+            assert lines[0] == f"{config_name} = {config['value']}"
+            assert f'  {port_name} = 80' in lines
+            assert f'    {x_name} = 1' in lines
+            assert any(line.startswith(f'  {point_name} = ') for line in lines)
+    finally:
+        await session.close()

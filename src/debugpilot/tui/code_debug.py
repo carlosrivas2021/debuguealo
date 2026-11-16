@@ -11,7 +11,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import Button, DataTable, Input, RichLog
+from textual.widgets import Button, DataTable, Input, RichLog, Static
 
 from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.debugger import (
@@ -82,6 +82,7 @@ class VariableRow:
     children: int = 0
     path: tuple = ()
     expanded: bool = False
+    expression: str = ''  # The adapter's evaluateName, when it gives one.
 
     @property
     def prefix(self):
@@ -95,6 +96,37 @@ class VariableRow:
             f'{self.prefix}{self.name} = {_variable_value(self.value)}')
 
 
+# A copied tree stops here, so a huge or cyclic value cannot stall the copy.
+MAX_COPY_LINES = 2000
+
+
+async def copy_text(session, variable, frame_id):
+    """What C copies: the whole value in the program's language, or its fields as a tree."""
+    full_value = getattr(session, 'full_value', None)
+    if full_value is not None:
+        try:
+            text = await full_value(variable.expression, variable.children, frame_id)
+        except DebugError:
+            text = None
+        if text is not None:
+            return text
+    if not variable.children:
+        return variable.value
+    lines = [f'{variable.name} = {variable.value}']
+    await _copy_tree(session, variable.children, 1, lines)
+    return '\n'.join(lines)
+
+
+async def _copy_tree(session, reference, depth, lines):
+    for value in await session.variables(reference):
+        if len(lines) >= MAX_COPY_LINES:
+            return
+        lines.append(f"{'  ' * depth}{value['name']} = {value.get('value', '')}")
+        children = value.get('variablesReference') or 0
+        if children and depth < MAX_VARIABLE_DEPTH:
+            await _copy_tree(session, children, depth + 1, lines)
+
+
 class VariablesTable(DataTable):
     """The paused frame's variables: scope headings and one selectable row per variable."""
 
@@ -102,6 +134,7 @@ class VariablesTable(DataTable):
         Binding('right', 'expand', 'Expand', show=False),
         Binding('left', 'collapse', 'Collapse', show=False),
         Binding('space', 'toggle', 'Expand/collapse', show=False),
+        Binding('c', 'copy_value', 'Copy value', show=False),
     ]
 
     class Toggled(Message):
@@ -137,24 +170,49 @@ class VariablesTable(DataTable):
         if rows:
             self.move_cursor(row=min(row, len(rows) - 1))
 
-    def _current(self):
+    def on_resize(self) -> None:
+        # The value preview below grows and shrinks this table; keep the cursor's row in view.
+        if self.variable_rows:
+            # Read the row when it runs: the cursor may move before the next refresh.
+            self.call_after_refresh(lambda: self.move_cursor(row=self.cursor_row))
+
+    @property
+    def highlighted(self):
+        """The row under the cursor, or None."""
         if 0 <= self.cursor_row < len(self.variable_rows):
             return self.variable_rows[self.cursor_row]
         return None
 
+    class CopyRequested(Message):
+        """C on a variable: copy its whole value."""
+
+        def __init__(self, table, variable):
+            super().__init__()
+            self.table = table
+            self.variable = variable
+
+        @property
+        def control(self):
+            return self.table
+
+    def action_copy_value(self) -> None:
+        variable = self.highlighted
+        if variable is not None and variable.name is not None:
+            self.post_message(self.CopyRequested(self, variable))
+
     def action_expand(self) -> None:
-        variable = self._current()
+        variable = self.highlighted
         if variable is not None and variable.children and not variable.expanded:
             self.post_message(self.Toggled(self, variable, True))
 
     def action_toggle(self) -> None:
         """Space opens or closes a variable's fields, as it does in the file tree."""
-        variable = self._current()
+        variable = self.highlighted
         if variable is not None and variable.children:
             self.post_message(self.Toggled(self, variable, not variable.expanded))
 
     def action_collapse(self) -> None:
-        variable = self._current()
+        variable = self.highlighted
         if variable is None or variable.name is None:
             return
         if variable.expanded:
@@ -349,6 +407,7 @@ class CodeDebug(Vertical):
                 yield DataTable(id='code-watches', cursor_type='row')
             with Vertical(id='code-variables-pane'):
                 yield VariablesTable(id='code-variables')
+                yield Static('', id='variable-preview', markup=False)
                 yield VariableEditor(self._close_variable_editor)
 
     def on_mount(self):
@@ -403,6 +462,7 @@ class CodeDebug(Vertical):
         self.query_one('#code-watches', DataTable).clear()
         self._hide_variable_editor()
         self.query_one('#code-variables', VariablesTable).show(())
+        self._show_preview()
         self.output.clear()
         self.output.border_title = 'Debug output'
         self.browser.clear_execution()
@@ -441,6 +501,7 @@ class CodeDebug(Vertical):
         if refocus:
             table.focus()
         self.query_one('#code-variables', VariablesTable).show(context.variables)
+        self._show_preview()
         self._render_watches(context)
         enabled = (
             context.active and context.session is not None
@@ -852,12 +913,44 @@ class CodeDebug(Vertical):
                 holder.scope, reference, value['name'], str(value.get('value', '')),
                 holder.depth + 1, children, path,
                 bool(children) and path in context.expanded
-                and holder.depth + 1 < MAX_VARIABLE_DEPTH)
+                and holder.depth + 1 < MAX_VARIABLE_DEPTH,
+                value.get('evaluateName') or '')
             values.append(variable)
             if variable.expanded and not await self._variables(
                     context, generation, pause, values, variable):
                 return False
         return True
+
+    @on(DataTable.RowHighlighted, '#code-variables')
+    def _variable_highlighted(self, event):
+        event.stop()
+        self._show_preview()
+
+    def _show_preview(self):
+        """The highlighted variable's whole value, wrapped, under the cut-off rows."""
+        variable = self.query_one('#code-variables', VariablesTable).highlighted
+        preview = self.query_one('#variable-preview', Static)
+        preview.display = variable is not None and variable.name is not None
+        preview.update(f'{variable.name} = {variable.value}' if preview.display else '')
+
+    @on(VariablesTable.CopyRequested, '#code-variables')
+    def copy_variable(self, event):
+        event.stop()
+        context = self.selected
+        if (context is None or not context.active or context.session is None
+                or context.session.state != 'stopped'):
+            return
+        self._spawn(context, self._copy_variable(
+            context, context.generation, context.pause, event.variable))
+
+    async def _copy_variable(self, context, generation, pause, variable):
+        try:
+            text = await copy_text(context.session, variable, context.watch_frame)
+        except DebugError:
+            text = variable.value  # The fields could not be read: copy what the row shows.
+        if self._paused(context, generation, pause):
+            self.app.copy_to_clipboard(text)
+            self.app.notify(f'Copied the value of {variable.name}', timeout=2)
 
     @on(VariablesTable.Toggled, '#code-variables')
     def toggle_variable(self, event):

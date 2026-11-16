@@ -87,6 +87,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `F10` / `F11` / `Shift+F11` | Step over / in / out |
 | `Enter` on a variable | Change its value while paused |
 | `Space` or `Right` / `Left` on a variable | Expand / collapse its fields |
+| `C` on a variable | Copy its whole value |
 | `S` | Stop the selected run |
 | `R` | Restart the running profile, or reload `launch.json` when it is stopped |
 | `P` | Go to the running program's input (**Esc** returns to the profiles) |
