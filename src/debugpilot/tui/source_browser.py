@@ -11,6 +11,7 @@ from rich.style import Style
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.events import Click, MouseUp
 from textual.message import Message
@@ -142,6 +143,29 @@ class SourceText(TextArea):
             event.stop()
 
 
+class FileTree(Tree):
+    """Project files: Right opens a folder, Left closes it or goes to the parent folder."""
+
+    BINDINGS = [
+        Binding("right", "expand", "Expand", show=False),
+        Binding("left", "collapse", "Collapse", show=False),
+    ]
+
+    def action_expand(self) -> None:
+        node = self.cursor_node
+        if node is not None and node.allow_expand and not node.is_expanded:
+            node.expand()
+
+    def action_collapse(self) -> None:
+        node = self.cursor_node
+        if node is None:
+            return
+        if node.allow_expand and node.is_expanded:
+            node.collapse()
+        else:
+            self.action_cursor_parent()
+
+
 class SourceBrowser(Vertical):
     """Expand files lazily; keep source intent independent of adapter verification."""
 
@@ -206,7 +230,7 @@ class SourceBrowser(Vertical):
                 if self._sidebar_header is not None:
                     yield self._sidebar_header
                 yield Static("FILES", id="source-files-title", classes="pane-title")
-                yield Tree("Files", id="source-tree")
+                yield FileTree("Files", id="source-tree")
             with Vertical(id="source-main"):
                 with Horizontal(id="source-editor-row"):
                     with Vertical(id="source-pane"):

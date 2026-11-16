@@ -98,3 +98,27 @@ async def test_lazy_directory_expansion_and_missing_file(tmp_path):
         assert "Unable to open" in str(browser.query_one("#source-status").render())
         assert browser.query_one(TextArea).text == ""
     assert not source.exists()
+
+
+async def test_right_expands_and_left_collapses_a_folder_like_the_variables(tmp_path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "inner.py").write_text("x = 1\n")
+    app = BrowserApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        browser = app.query_one(SourceBrowser)
+        browser.set_project(tmp_path)
+        tree = browser.query_one(Tree)
+        folder = next(child for child in tree.root.children if str(child.label) == "pkg")
+        tree.focus()
+        await pilot.pause()  # The tree lays out its lines before the cursor can move.
+        tree.move_cursor(folder)
+        await pilot.press("right")
+        await pilot.pause()
+        assert folder.is_expanded
+        assert [str(child.label) for child in folder.children] == ["inner.py"]
+        tree.move_cursor(folder.children[0])
+        await pilot.pause()
+        await pilot.press("left")  # On a file: go to its folder.
+        assert tree.cursor_node is folder
+        await pilot.press("left")  # On an open folder: close it.
+        assert not folder.is_expanded
