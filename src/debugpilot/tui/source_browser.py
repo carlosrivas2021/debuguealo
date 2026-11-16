@@ -34,6 +34,8 @@ BREAKPOINT_GLYPHS = {
     "plain": ("●", Style(color="#ef4444", bold=True)),
     "condition": ("◆", Style(color="#ef4444", bold=True)),
     "log": ("◇", Style(color="#38bdf8", bold=True)),
+    # Switched off: kept with its options, but never sent to the debugger.
+    "disabled": ("○", Style(color="#7f8c93", bold=True)),
 }
 MAX_LABEL_TEXT = 40
 
@@ -169,6 +171,9 @@ class FileTree(Tree):
 class SourceBrowser(Vertical):
     """Expand files lazily; keep source intent independent of adapter verification."""
 
+    class MarksChanged(Message):
+        """Any breakpoint was added, removed, edited or switched on or off."""
+
     class BreakpointsChanged(Message):
         def __init__(self, root, path, lines, options=None):
             super().__init__()
@@ -212,9 +217,13 @@ class SourceBrowser(Vertical):
                 key: dict(options)
                 for key, options in self.breakpoint_store.load_options().items()
             }
+            self._disabled: dict[tuple[Path, Path], set[int]] = {
+                key: set(lines) for key, lines in self.breakpoint_store.load_disabled().items()
+            }
         except ConfigurationError as error:
             self._marks = {}
             self._options = {}
+            self._disabled = {}
             self._persistence_error = str(error)
         self._loaded = set()
         # Folders shown in the tree, and the root as stored keys spell it, so moving
@@ -405,23 +414,33 @@ class SourceBrowser(Vertical):
         editor.refresh()
 
     def options_snapshot(self, root):
-        """Detached root-scoped options of marked lines, keyed like breakpoint_snapshot."""
+        """Detached root-scoped options of enabled lines, keyed like breakpoint_snapshot."""
         root = Path(root).resolve()
-        return {
-            str(path): {line: option for line, option in options.items()
-                        if line in self._marks.get((owner, path), set())}
-            for (owner, path), options in self._options.items()
-            if owner == root and options and self._marks.get((owner, path))
-        }
+        snapshot = {}
+        for (owner, path), options in self._options.items():
+            if owner != root:
+                continue
+            enabled = self._enabled((owner, path))
+            line_options = {line: option for line, option in options.items() if line in enabled}
+            if line_options:
+                snapshot[str(path)] = line_options
+        return snapshot
 
     def breakpoint_options(self, root: Path, path: Path) -> dict[int, BreakpointOptions]:
         return dict(self._options.get((root.resolve(), path.resolve()), {}))
 
     def breakpoint_snapshot(self, root):
-        """Detached root-scoped requested intent; adapter responses never modify it."""
+        """Detached root-scoped enabled intent; adapter responses never modify it."""
         root = Path(root).resolve()
-        return {str(path): tuple(sorted(lines)) for (owner, path), lines in self._marks.items()
-                if owner == root and lines}
+        return {str(path): enabled for (owner, path) in self._marks
+                if owner == root and (enabled := self._enabled((owner, path)))}
+
+    def _enabled(self, key) -> tuple[int, ...]:
+        """The marked lines of a file a debugger should stop at (or log from)."""
+        return tuple(sorted(self._marks.get(key, set()) - self._disabled.get(key, set())))
+
+    def disabled_lines(self, root: Path, path: Path) -> tuple[int, ...]:
+        return tuple(sorted(self._disabled.get((root.resolve(), path.resolve()), set())))
 
     def set_verification(self, root, responses, requested=None):
         root = Path(root).resolve()
@@ -429,7 +448,7 @@ class SourceBrowser(Vertical):
                               if key[0] != root}
         for path, entries in responses.items():
             lines = (requested.get(str(path), ()) if requested is not None
-                     else self.breakpoints(root, Path(path)))
+                     else self._enabled((root, Path(path).resolve())))
             for line, response in zip(lines, entries, strict=False):
                 state = "verified" if response.get("verified") else "unverified"
                 actual = response.get("line", line)
@@ -481,7 +500,8 @@ class SourceBrowser(Vertical):
         options = self._options.get((root, key), {})
         node.allow_expand = bool(marks)
         for line in marks:
-            state = self._verification.get((self.root_path, key, line), "pending")
+            state = ("off" if line in self._disabled.get((root, key), ())
+                     else self._verification.get((self.root_path, key, line), "pending"))
             option = options.get(line)
             detail = ""
             if option is not None and option.condition:
@@ -542,6 +562,8 @@ class SourceBrowser(Vertical):
             marks.add(line)
         else:
             marks.discard(line)
+            # Removing a switched-off breakpoint forgets that it was off.
+            self._disabled.get(key, set()).discard(line)
         if present and options is not None:
             line_options[line] = options
         else:
@@ -549,20 +571,75 @@ class SourceBrowser(Vertical):
         if not line_options:
             self._options.pop(key, None)
         self._verification.pop((key[0], key[1], line), None)
-        if self.file_path is not None and self.file_path.resolve() == key[1]:
-            self._show_marks(self._file_node)
+        self._publish({key})
+
+    def remove_breakpoints(self, lines_by_file):
+        """Remove {(root, file): lines} with their options, saving and notifying once."""
+        for key, lines in lines_by_file.items():
+            self._marks.get(key, set()).difference_update(lines)
+            self._disabled.get(key, set()).difference_update(lines)
+            for line in lines:
+                self._options.get(key, {}).pop(line, None)
+                self._verification.pop((key[0], key[1], line), None)
+            if not self._options.get(key, True):
+                self._options.pop(key, None)
+        self._publish(set(lines_by_file))
+
+    def set_enabled(self, lines_by_file, enabled: bool):
+        """Switch {(root, file): lines} on or off, keeping their options."""
+        for key, lines in lines_by_file.items():
+            lines = set(lines) & self._marks.get(key, set())
+            off = self._disabled.setdefault(key, set())
+            if enabled:
+                off.difference_update(lines)
+            else:
+                off.update(lines)
+            for line in lines:
+                self._verification.pop((key[0], key[1], line), None)
+        self._publish(set(lines_by_file))
+
+    def _publish(self, keys):
+        """Show, save and send the changed files' breakpoints; sessions get enabled lines."""
+        for key in keys:
+            if not self._disabled.get(key, True):
+                self._disabled.pop(key, None)
+        open_file = self.file_path.resolve() if self.file_path is not None else None
+        for key in keys:
+            node = (self._file_node if key[1] == open_file and key[0] == self._resolved_root
+                    else self._tree_node(key))
+            if node is not None:
+                self._show_marks(node)
+        if open_file in {key[1] for key in keys}:
             self._refresh_editor_marks()
         try:
-            # Always save marks and options together: saving marks alone drops options.
-            self.breakpoint_store.save(self._marks, self._options)
+            # Always save everything together: saving marks alone drops options.
+            self.breakpoint_store.save(self._marks, self._options, self._disabled)
             self._persistence_error = None
         except ConfigurationError as error:
             self._persistence_error = str(error)
         if self.file_path is not None:
             self._set_status(f"{self.file_path.name} · read-only")
-        self.post_message(self.BreakpointsChanged(
-            key[0], key[1], tuple(sorted(marks)), self._options.get(key, {})
-        ))
+        for key in sorted(keys):
+            enabled = self._enabled(key)
+            self.post_message(self.BreakpointsChanged(
+                key[0], key[1], enabled,
+                {line: option for line, option in self._options.get(key, {}).items()
+                 if line in enabled},
+            ))
+        self.post_message(self.MarksChanged())
+
+    def _tree_node(self, key):
+        """The loaded tree node of a stored file, or None when its folder is not listed."""
+        if self._resolved_root != key[0] or not self.query(Tree):
+            return None
+        node = self.query_one(Tree).root
+        for part in key[1].relative_to(key[0]).parts:
+            node = next((child for child in node.children
+                         if child.data[0] is not None and child.data[0].name == part
+                         and child.data[1] is None), None)
+            if node is None:
+                return None
+        return node
 
     @on(TextArea.SelectionChanged, "#source-text")
     def _cursor_moved(self, _event):
@@ -624,6 +701,8 @@ class SourceBrowser(Vertical):
                 for line, option in self.breakpoint_options(self.root_path, self.file_path).items()
                 if (kind := breakpoint_kind(option)) != "plain"
             }
+            for line in self.disabled_lines(self.root_path, self.file_path):
+                editor.breakpoint_kinds[line] = "disabled"
             editor.breakpoint_hints = {
                 line: hint
                 for line, option in self.breakpoint_options(self.root_path, self.file_path).items()

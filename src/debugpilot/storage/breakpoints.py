@@ -83,12 +83,16 @@ class BreakpointStore:
         """Per-line options of the stored marks; entries without options are absent."""
         return self._read()[1]
 
+    def load_disabled(self) -> dict[tuple[Path, Path], tuple[int, ...]]:
+        """Marked lines switched off: kept with their options, never sent to a debugger."""
+        return self._read()[2]
+
     def _read(self):
         try:
             with self.path.open("rb") as stream:
                 data = stream.read(MAX_BREAKPOINT_BYTES + 1)
         except FileNotFoundError:
-            return {}, {}
+            return {}, {}, {}
         except OSError:
             raise ConfigurationError(
                 "Cannot read Code breakpoints; check the projects directory permissions."
@@ -103,9 +107,9 @@ class BreakpointStore:
             entries = document.get("breakpoints")
             if not isinstance(entries, list) or len(entries) > MAX_BREAKPOINT_FILES:
                 raise ValueError
-            marks, options = {}, {}
+            marks, options, disabled = {}, {}, {}
             for entry in entries:
-                if not isinstance(entry, dict) or set(entry) - {"options"} != {
+                if not isinstance(entry, dict) or set(entry) - {"options", "disabled"} != {
                         "root", "file", "lines"}:
                     raise ValueError
                 if not isinstance(entry["root"], str) or not isinstance(entry["file"], str):
@@ -125,7 +129,14 @@ class BreakpointStore:
                 marks[key] = tuple(lines)
                 if "options" in entry:
                     options[key] = self._parse_options(entry["options"], lines)
-            return marks, options
+                if "disabled" in entry:
+                    off = entry["disabled"]
+                    if (not isinstance(off, list) or not off
+                            or any(type(line) is not int or line not in lines for line in off)
+                            or off != sorted(set(off))):
+                        raise ValueError
+                    disabled[key] = tuple(off)
+            return marks, options, disabled
         except (ValueError, TypeError, KeyError, UnicodeError, RecursionError, OSError,
                 RuntimeError):
             raise ConfigurationError(
@@ -173,6 +184,7 @@ class BreakpointStore:
         self,
         marks: dict[tuple[Path, Path], set[int]],
         options: dict[tuple[Path, Path], dict[int, BreakpointOptions]] | None = None,
+        disabled: dict[tuple[Path, Path], set[int]] | None = None,
     ) -> None:
         # Refuse to replace invalid/unreadable state; an absent file is a valid empty store.
         self.load()
@@ -185,6 +197,13 @@ class BreakpointStore:
                     # Unusable paths can never match a stored mark; their options are dropped.
                     continue
                 canonical_options.setdefault(key, {}).update(line_options)
+            canonical_disabled = {}
+            for (root, path), lines in (disabled or {}).items():
+                try:
+                    key = (self._canonical_path(root), self._canonical_path(path))
+                except ValueError:
+                    continue
+                canonical_disabled.setdefault(key, set()).update(lines)
             entries = []
             for (root, path), lines in marks.items():
                 canonical_root = self._canonical_path(root)
@@ -202,6 +221,11 @@ class BreakpointStore:
                     canonical_options.get((canonical_root, canonical_file), {}), set(ordered))
                 if serialized:
                     entry["options"] = serialized
+                # Only lines that still have a breakpoint can be switched off.
+                off = sorted(canonical_disabled.get((canonical_root, canonical_file), set())
+                             & set(ordered))
+                if off:
+                    entry["disabled"] = off
                 entries.append(entry)
             if len(entries) > MAX_BREAKPOINT_FILES:
                 raise ValueError
