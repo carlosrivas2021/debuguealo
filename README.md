@@ -47,7 +47,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 |---|---|---|
 | 🐳 | **Containers** | Running and stopped containers grouped by Compose project, with live CPU and memory, health, restart policy, mounts and exit codes, and historical and live logs that reconnect when containers change. |
 | 🚀 | **Launch profiles** | Save your Compose setups once in a central `launch.json`, then run **Play / Recreate** or **Build + Recreate** with an inline confirmation. |
-| 🐞 | **Debugging** | Breakpoints, conditional breakpoints, hit counts, logpoints, pausing on exceptions, watch expressions, stepping, stack/variable inspection, nested variables and changing variables while paused for **Python**, **Go** and server-side **Node**. |
+| 🐞 | **Debugging** | Breakpoints, conditional breakpoints, hit counts, logpoints, pausing on exceptions, watch expressions, a debug console, stepping, stack/variable inspection, nested variables and changing variables while paused for **Python**, **Go** and server-side **Node**. |
 | 🔌 | **Attach** | Connect to an existing loopback `debugpy`, Delve or Node Inspector target, for example inside a container, without taking over its lifecycle. |
 | 💻 | **Terminals** | A container shell and a host Bash docked inside the dashboard. |
 | 🛡️ | **Safe by default** | Destructive actions ask first, image downloads need consent, and debug ports listen on `127.0.0.1` only. |
@@ -92,6 +92,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `S` | Stop the selected run |
 | `R` | Restart the running profile, or reload `launch.json` when it is stopped |
 | `P` | Go to the running program's input (**Esc** returns to the profiles) |
+| `:` | While paused, evaluate an expression in the selected frame (**↑**/**↓** history, **Esc** returns) |
 
 The full workflow is in the [keyboard guide](docs/tui.md).
 

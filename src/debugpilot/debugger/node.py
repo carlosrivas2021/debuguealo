@@ -565,8 +565,12 @@ class NodeDebugSession(PythonDebugSession):
                                    value.get('objectId'), frame_id)})
         return values
 
-    async def evaluate(self, expression, frame_id):
-        """Evaluate a watch expression in a paused call frame; exceptions become errors."""
+    async def evaluate(self, expression, frame_id, context='watch'):
+        """Evaluate in a paused call frame; exceptions become errors.
+
+        Inspector evaluates watches and console input alike, assignments included, so the
+        context is accepted for the shared session API and changes nothing.
+        """
         return (await self.inspect(expression, frame_id))['value']
 
     async def inspect(self, expression, frame_id):
