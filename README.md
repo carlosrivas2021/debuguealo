@@ -59,6 +59,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | Key | Action |
 |---|---|
 | `Ctrl+T` | Switch between **Containers** and **Code** |
+| `?` | List the shortcuts of the area on screen, grouped by task (`Tab` shows the other area, `Esc` closes) |
 | `Ctrl+O` | Edit `launch.json` in the built-in editor (`Ctrl+S` saves, `Esc` closes) |
 | `/` | Filter the list: projects and containers, or Code profiles (`Enter` keeps it, `Esc` clears it) |
 | `Ctrl+Left` / `Ctrl+Right` | Move focus between panes (`Alt+Left` / `Alt+Right` too, for macOS) |

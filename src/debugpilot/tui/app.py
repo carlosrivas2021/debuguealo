@@ -38,6 +38,7 @@ from debugpilot.tui.execution_console import ExecutionConsole
 from debugpilot.tui.host_terminal import HostTerminal
 from debugpilot.tui.list_filter import ListFilter
 from debugpilot.tui.log_viewer import LogViewer
+from debugpilot.tui.shortcuts import ShortcutsScreen
 from debugpilot.tui.terminal_view import TerminalPane
 
 ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
@@ -96,6 +97,7 @@ class DebugPilotApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+t", "toggle_area", "Containers/Code"),
+        Binding("question_mark", "show_shortcuts", "Keys"),
         Binding("ctrl+l", "focus_logs", "Logs"),
         Binding("ctrl+r", "retry_logs", "Retry logs"),
         Binding("d", "show_container_details", "Details"),
@@ -246,6 +248,11 @@ class DebugPilotApp(App):
         self.query_one("#area-code", Button).variant = "primary" if code else "default"
         self.query_one("#area-containers", Button).variant = "default" if code else "primary"
         self.query_one("#code-projects" if code else "#launch-profiles", DataTable).focus()
+
+    def action_show_shortcuts(self) -> None:
+        """? lists the keys of the area on screen, grouped by task."""
+        area = "code" if self.query_one(CodeWorkspace).display else "containers"
+        self.push_screen(ShortcutsScreen(area))
 
     def action_toggle_area(self) -> None:
         code = self.query_one(CodeWorkspace).display
@@ -2574,6 +2581,8 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "show_shortcuts" and isinstance(self.screen, ModalScreen):
+            return False  # Never stacked on a dialog (or on itself).
         if action == "clear_containers_filter":
             focused = self.focused
             return bool(
