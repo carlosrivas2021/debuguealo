@@ -130,8 +130,11 @@ async def test_program_input_field_sends_lines_and_end_of_input_from_the_debug_v
         await pilot.press(*'ana', 'enter')
         await until(pilot, lambda: 'HELLO:ana' in output())
         # The terminal's own echo shows the typed line once, like a terminal.
-        assert output().count('ana') == 2 and '[one · stdout] ana' in output()
-        assert '· input]' not in output()
+        assert output().count('ana') == 2 and '[stdout] ana' in output().splitlines()
+        assert '[input]' not in output()
+        # The profile's name is in the pane's title, not on every line.
+        assert 'one' not in output().replace('ana', '')
+        assert app.query_one('#code-debug-output').border_title == 'Debug output · one'
         assert field.value == ''
         await pilot.press('s')  # Typing in the field never triggers Code shortcuts.
         assert field.value == 's'

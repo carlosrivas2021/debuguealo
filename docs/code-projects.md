@@ -323,8 +323,9 @@ for the profile list.
 For Python and Node, the debug output is what the program's terminal shows: prompts written
 straight to the terminal, such as Python's `getpass` prompt, and the terminal's own echo of what
 you type, so a password prompt that turns echo off keeps the password hidden. stdout and stderr
-are merged in order. For Go, Delve reports the output itself, and the typed line shows as
-`[profile · input] text` only while the program's terminal echoes; Windows cannot report that,
+are merged in order. Each line starts with its kind, such as `[stdout]`; the profile's
+name is in the panel's title, `Debug output · <profile>`. For Go, Delve reports the output itself, and the typed line shows as
+`[input] text` only while the program's terminal echoes; Windows cannot report that,
 so there typed lines never show for Go, to keep passwords out of the output.
 Attached processes are not owned by Code, so attach sessions have no program input.
 

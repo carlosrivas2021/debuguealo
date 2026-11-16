@@ -404,6 +404,7 @@ class CodeDebug(Vertical):
         self._hide_variable_editor()
         self.query_one('#code-variables', VariablesTable).show(())
         self.output.clear()
+        self.output.border_title = 'Debug output'
         self.browser.clear_execution()
         for button in self.query(Button):
             button.disabled = True
@@ -413,6 +414,8 @@ class CodeDebug(Vertical):
             return
         log = self.output
         log.clear()
+        # The profile is named once, in the title, instead of on every line.
+        log.border_title = f'Debug output · {context.profile.name}'
         for line in context.output:
             log.write(line)
         self._render_pause(context)
@@ -567,7 +570,7 @@ class CodeDebug(Vertical):
             return
         if echo:
             # Only while the program echoes, as a terminal would; getpass stays hidden.
-            self._append_output(context, f'[{context.profile.name} · input] {text}')
+            self._append_output(context, f'[input] {text}')
 
     def _end_input(self, text):
         context, session = self._input_session()
@@ -670,7 +673,7 @@ class CodeDebug(Vertical):
                 if lines.accept(category, text) and self._current(context, generation):
                     self.call_later(
                         self._deliver_output, context, generation,
-                        f'[{profile.name} · {category}] {text.rstrip()}',
+                        f'[{category}] {text.rstrip()}',
                     )
 
             command_name = Path(profile.command[0]).name.lower() if profile.command else ""
@@ -1049,7 +1052,7 @@ class CodeDebug(Vertical):
                 and self.selected is context and self.output.is_mounted
             ):
                 self._append_output(
-                    context, f'[{context.profile.name} · stderr] Warning: {warning}'
+                    context, f'[stderr] Warning: {warning}'
                 )
             if context.profile is not None and self.selected is context:
                 self.browser.set_verification(context.profile.root, {})
