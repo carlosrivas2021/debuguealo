@@ -123,7 +123,7 @@ async def test_real_shift_f5_breakpoint_inspection_steps_continue_and_attributio
         await until(pilot, lambda: 'Exited: 0' in rendered(app, '#code-run-state'))
         output = '\n'.join(line.text for line in app.query_one('#code-debug-output').lines)
         assert 'RESULT:42' in output
-        assert '[one · stderr]' not in output
+        assert '[stderr]' not in output
         assert 'one' in rendered(app, '#code-run-state')
         assert stack.row_count == 0
         assert 'answer' not in rendered(app, '#code-variables')

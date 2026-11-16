@@ -323,8 +323,9 @@ for the profile list.
 For Python and Node, the debug output is what the program's terminal shows: prompts written
 straight to the terminal, such as Python's `getpass` prompt, and the terminal's own echo of what
 you type, so a password prompt that turns echo off keeps the password hidden. stdout and stderr
-are merged in order. For Go, Delve reports the output itself, and the typed line shows as
-`[profile · input] text` only while the program's terminal echoes; Windows cannot report that,
+are merged in order. Each line starts with its kind, such as `[stdout]`; the profile's
+name is in the panel's title, `Debug output · <profile>`. For Go, Delve reports the output itself, and the typed line shows as
+`[input] text` only while the program's terminal echoes; Windows cannot report that,
 so there typed lines never show for Go, to keep passwords out of the output.
 Attached processes are not owned by Code, so attach sessions have no program input.
 
@@ -336,10 +337,19 @@ program's language, such as `42`, `'text'` or `[1, 2]` in Python, and press **En
 cancels. The program uses the new value from then on, and the variables and watches are read
 again. A value the debugger cannot evaluate or assign shows a warning and changes nothing.
 
-It works for Python, Go and Node, launched or attached, on the variables the pane lists (the
-top level of each scope; fields inside objects cannot be changed yet). Python and Go evaluate the
-value once to check it before setting it, so an expression with side effects runs twice; Delve
+It works for Python, Go and Node, launched or attached, on every variable the pane lists,
+including the fields of an expanded variable. Python and Go evaluate a scope variable's value
+once to check it before setting it, so an expression with side effects runs twice; Delve
 assigns only the value types it supports and reports the others.
+
+## Expand nested variables
+
+A variable with fields (an object, dict, list, struct or map) shows `▸` before its name. With
+the cursor on it, **Right** lists its fields under it, indented, and the marker turns into `▾`;
+**Left** collapses it again. **Space** does either, as in the file tree. On a field, **Left** moves the cursor to the variable that holds
+it. Expanded variables stay expanded when you step, continue to the next pause or change a
+value, as long as the same path exists; a new debug run starts collapsed. Nesting opens at most
+8 levels deep, so a self-referencing object cannot grow without end.
 
 ## Watch expressions
 
