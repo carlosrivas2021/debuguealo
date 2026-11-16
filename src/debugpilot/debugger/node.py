@@ -465,6 +465,20 @@ class NodeDebugSession(PythonDebugSession):
         self._changed[(frame_id, number, name)] = result
         return _display(result)
 
+    async def full_value(self, expression, reference, frame_id):
+        """An object's whole value as indented JSON, or None (primitives, cycles, functions)."""
+        self._stopped()
+        if reference not in self._objects:
+            return None
+        response = await self._client.request('Runtime.callFunctionOn', {
+            'objectId': self._objects[reference][0], 'returnByValue': True,
+            'functionDeclaration': 'function () { return JSON.stringify(this, null, 2); }',
+        })
+        value = response.get('result', {}).get('value')
+        if response.get('exceptionDetails') is not None or not isinstance(value, str):
+            return None
+        return value
+
     async def _set_property(self, reference, name, value):
         """Set a field of an object; objects are live, so no overlay is needed."""
         object_id, frame_id = self._objects[reference]

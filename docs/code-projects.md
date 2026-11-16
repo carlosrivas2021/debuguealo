@@ -351,6 +351,14 @@ it. Expanded variables stay expanded when you step, continue to the next pause o
 value, as long as the same path exists; a new debug run starts collapsed. Nesting opens at most
 8 levels deep, so a self-referencing object cannot grow without end.
 
+A row shows only the first line of a value, cut to fit the pane. The whole value of the
+variable under the cursor shows below the rows, wrapped, up to six lines with its own scroll.
+**C** copies the whole value to the clipboard, which can hold more than the pane: debugpy
+shortens nested values (`[{...}]`), so Python copies the whole value like `repr()`, with objects that have no `__repr__` of their
+own written as `Customer(name='Ana', address={...})` from their attributes (no property runs); Node copies
+objects as indented JSON; Delve cannot run code, so Go copies the value and its fields as an
+indented tree, up to 8 levels and 2000 lines.
+
 ## Watch expressions
 
 The debug panel has three titled sections: **Call stack**, **Watch** and **Variables**. In

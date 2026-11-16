@@ -45,6 +45,8 @@ def _target(profile):
 class GoDebugSession(PythonDebugSession):
     """One Go/Delve session with the same events and inspection API as Python debug."""
 
+    VALUE_REPR = False  # Delve cannot run code to serialize a value.
+
     # Delve reports the program's output over DAP; its terminal holds only Delve's own.
     terminal_output = False
 
