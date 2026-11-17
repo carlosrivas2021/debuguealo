@@ -23,7 +23,12 @@ from debugpilot.terminal.code_session import CodeSession
 from debugpilot.tui import code_debug
 from debugpilot.tui.code_workspace import CodeWorkspace
 
+# Windows has no process groups, SIGHUP or SIGTERM handlers to wait for: its close is forced.
+posix_close = pytest.mark.skipif(
+    os.name == "nt", reason="POSIX process groups and termination signals")
 
+
+@posix_close
 async def test_failed_debug_close_retains_owned_cleanup_for_retry(monkeypatch, tmp_path):
     group_present = True
     calls = []
@@ -162,11 +167,26 @@ async def _gone_soon(pid, wait_seconds=5.0):
 
 
 def _pid_exists(pid):
+    if os.name == "nt":
+        # Windows reads signal 0 as CTRL_C_EVENT; ask for the process's exit code instead.
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     return True
+
 
 
 class FakeNodeDebug(FakeDebug):
@@ -413,12 +433,7 @@ async def test_two_owned_python_runs_keep_output_and_stop_selected_only(monkeypa
         ]
     store.path.write_text(json.dumps(config), encoding="utf-8")
 
-    def alive(pid):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        return True
+    alive = _pid_exists
 
     first_pid = second_pid = None
     async with app.run_test(size=(120, 45)) as pilot:
@@ -484,7 +499,7 @@ async def test_run_and_debug_coexist_but_same_profile_actions_only_select(
         assert len(FakeDebug.instances) == 1, "distinct-profile debug was blocked by a run"
         node_session = FakeDebug.instances[0]
         assert node_session.profile.name == "two"
-        assert os.kill(run_pid, 0) is None
+        assert _pid_exists(run_pid)
 
         app.action_run_code()  # F5 on active debug selects; it doesn't run Node.
         await pilot.pause()
@@ -776,7 +791,7 @@ async def test_retired_debug_cannot_pin_fresh_run_root(monkeypatch, tmp_path):
         pane = app.query_one("#code-terminal")
         await until(pilot, lambda: "FRESH_ROOT_PID:" in pane.render().plain)
         pid = int(re.search(r"FRESH_ROOT_PID:(\d+)", pane.render().plain).group(1))
-        assert os.kill(pid, 0) is None
+        assert _pid_exists(pid)
         assert app.query_one("#source-browser").root_path == roots[1].resolve()
         assert store.path.read_bytes() == unchanged_bytes
         table.move_cursor(row=1)
@@ -784,7 +799,7 @@ async def test_retired_debug_cannot_pin_fresh_run_root(monkeypatch, tmp_path):
         table.move_cursor(row=0)
         await pilot.pause()
         assert app.query_one("#source-browser").root_path == roots[1].resolve()
-        assert os.kill(pid, 0) is None
+        assert _pid_exists(pid)
         assert app.query_one("#code-workspace")._debug.selected is not None
         assert app.query_one("#code-workspace")._debug.selected.session is old_debug
         assert any(
@@ -792,12 +807,7 @@ async def test_retired_debug_cannot_pin_fresh_run_root(monkeypatch, tmp_path):
             for line in app.query_one("#code-debug-output").lines
         )
         await app.query_one("#code-workspace").shutdown()
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            pass
-        else:
-            raise AssertionError("shutdown left fresh owned process alive")
+        assert await _gone_soon(pid), "shutdown left fresh owned process alive"
 
 
 async def test_pending_run_stop_is_profile_local_and_late_exit_is_attributed(
@@ -873,6 +883,7 @@ async def _open_real_target(tmp_path, source):
     pytest.fail("target never reported READY")
 
 
+@posix_close
 async def test_close_lets_target_finish_its_graceful_shutdown(tmp_path):
     marker = tmp_path / "clean"
     session, _output = await _open_real_target(tmp_path, (
@@ -891,6 +902,7 @@ async def test_close_lets_target_finish_its_graceful_shutdown(tmp_path):
     assert session.process is None
 
 
+@posix_close
 async def test_close_forces_target_that_ignores_termination(tmp_path):
     session, output = await _open_real_target(tmp_path, (
         "import os, signal, time\n"
