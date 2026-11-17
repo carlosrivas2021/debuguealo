@@ -246,6 +246,7 @@ async def test_startup_cancel_does_not_issue_target_termination(tmp_path):
         await server.wait_closed()
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 async def test_real_headless_delve_breakpoint_disconnect_and_reconnect(tmp_path):
     from debugpilot.debugger import GoAttachSession
 

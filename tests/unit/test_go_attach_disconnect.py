@@ -13,6 +13,7 @@ from debugpilot.debugger import GoAttachSession
 from debugpilot.storage.code_projects import CodeProject, GoAttach
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 @pytest.mark.parametrize('disconnect_while_stopped', [True, False], ids=['stopped', 'running'])
 async def test_disconnect_resumes_external_http_target_and_reconnects_breakpoint(
         tmp_path, disconnect_while_stopped):

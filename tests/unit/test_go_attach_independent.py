@@ -40,6 +40,7 @@ def _delve_executable() -> str | None:
     return None
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 @pytest.mark.asyncio
 async def test_owned_real_api_and_ui(monkeypatch, tmp_path):
     delve = _delve_executable()
