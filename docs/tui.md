@@ -4,6 +4,11 @@ Run `uv run debugealo` or `uv run debugealo tui` to open the local Docker dashbo
 Use `uv run debugealo tui --config path/to/config.toml` for explicit settings. Docker
 connection status is shown separately from saved launch configuration state.
 
+Press **?** anywhere outside a text field for a list of the shortcuts of the area on screen,
+Containers or Code, grouped by task (for example Logs, Stepping, Breakpoints) and followed by
+the keys that work everywhere. **Tab** shows the other area's list; **Esc**, **?** or **Q**
+closes it. **Keys** in the command palette (**Ctrl+P**) opens the same list.
+
 The dashboard presents saved profiles, their containers, and unowned Docker inventory
 in one scrollable project tree on the left, with logs and selected-container details in the main pane,
 and Compose execution output in a separate docked console. The same persistent dock
