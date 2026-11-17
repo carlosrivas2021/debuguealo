@@ -10,6 +10,16 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
+keywords = ["docker", "debugger", "tui", "debugpy", "delve", "compose"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Debuggers",
+]
 dependencies = [
   "debugpy>=1.8,<2",
   "docker>=7.1,<8",
@@ -21,6 +31,12 @@ dependencies = [
   "textual>=1,<7",
   "typer>=0.15,<1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/carlosrivas2021/debuguealo"
+Repository = "https://github.com/carlosrivas2021/debuguealo"
+Issues = "https://github.com/carlosrivas2021/debuguealo/issues"
+Changelog = "https://github.com/carlosrivas2021/debuguealo/blob/main/CHANGELOG.md"
 
 [project.scripts]
 debugealo = "debugpilot.cli:app"
