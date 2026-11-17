@@ -74,12 +74,5 @@ async def test_native_inventory_scales_scrolls_and_shows_only_published_port_lab
         assert "9001->8000/tcp" in second_ports
         assert "53/udp" not in first_ports
         await until(pilot, lambda: table.max_scroll_y > 0)
-
-        def scrolled():
-            # A first refresh that still changes the rows redraws the table at the top,
-            # so ask again until the end is reached.
-            if table.scroll_y == 0:
-                table.scroll_end(animate=False)
-            return table.scroll_y > 0
-
-        await until(pilot, scrolled)
+        table.scroll_end(animate=False)
+        await until(pilot, lambda: table.scroll_y > 0)

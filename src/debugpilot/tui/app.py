@@ -673,10 +673,15 @@ class DebugPilotApp(App):
             self._launch_rows = {k: v for k, v in self._launch_rows.items() if k in shown}
             self._launch_child_rows = {
                 k: v for k, v in self._launch_child_rows.items() if k in shown}
+        scroll_y = table.scroll_y
         redrawn = self._render_inventory(table, rows)
         selected_row_key = self._selection_key or self._selected_profile_key
         if redrawn and selected_row_key in table.rows:
-            table.move_cursor(row=table.get_row_index(selected_row_key))
+            # A redraw (new rows, or columns refitted once the table got its real width)
+            # keeps the view where the user left it instead of jumping to the cursor.
+            table.move_cursor(row=table.get_row_index(selected_row_key), scroll=False)
+            if scroll_y:
+                table.call_after_refresh(table.scroll_to, y=scroll_y, animate=False)
         # A filter that matches nothing is not an empty inventory.
         empty = self._launch_loaded and not unfiltered and not self._launch_error
         self.query_one("#empty-welcome").display = empty

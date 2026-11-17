@@ -89,7 +89,8 @@ async def test_choosing_a_branch_switches_the_repo_and_reloads_the_open_file(
         await until(pilot, lambda: _branch(app) == "⎇ feature/login")
         assert current_branch(repo) == "feature/login"
         await until(pilot, lambda: app.query_one("#source-text", TextArea).text == "feature\n")
-        assert "Switched to feature/login." in _messages(app)
+        # The notice can land a moment after the file reloads.
+        await until(pilot, lambda: "Switched to feature/login." in _messages(app))
 
 
 async def test_escape_closes_the_list_without_switching(monkeypatch, tmp_path):
