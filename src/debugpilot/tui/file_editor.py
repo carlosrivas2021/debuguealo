@@ -35,15 +35,15 @@ class FileEditorScreen(Screen[bool]):
         Binding("escape", "close", "Close", priority=True),
     ]
     DEFAULT_CSS = """
-    FileEditorScreen { background: #080b0e; }
+    FileEditorScreen { background: $background; }
     FileEditorScreen #editor-panes { height: 1fr; }
     FileEditorScreen .editor-pane { width: 1fr; height: 1fr; }
-    FileEditorScreen .editor-pane.-later { border-left: solid #2b3439; }
+    FileEditorScreen .editor-pane.-later { border-left: solid $border-blurred; }
     FileEditorScreen .editor-title {
-        height: 1; padding: 0 1; background: #171c20; color: #a9c2cc; text-style: bold;
+        height: 1; padding: 0 1; background: $panel; color: $text-secondary; text-style: bold;
     }
-    FileEditorScreen TextArea { height: 1fr; border: none; background: #080b0e; }
-    FileEditorScreen #editor-status { height: 1; padding: 0 1; color: #9db5bf; }
+    FileEditorScreen TextArea { height: 1fr; border: none; background: $background; }
+    FileEditorScreen #editor-status { height: 1; padding: 0 1; color: $text-muted; }
     """
 
     def __init__(self, files: list[EditableFile]):

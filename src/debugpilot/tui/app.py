@@ -23,6 +23,7 @@ from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject,
 from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.storage.compose_projects import ComposeProjectStore
 from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore, profile_services
+from debugpilot.storage.ui_theme import ThemeStore
 from debugpilot.tui.code_workspace import CodeWorkspace
 from debugpilot.tui.compose_output import ProjectOutputBuffers
 from debugpilot.tui.container_details import ContainerDetails, ProjectOverview, published_ports
@@ -40,6 +41,7 @@ from debugpilot.tui.list_filter import ListFilter
 from debugpilot.tui.log_viewer import LogViewer
 from debugpilot.tui.shortcuts import ShortcutsScreen
 from debugpilot.tui.terminal_view import TerminalPane
+from debugpilot.tui.theme import DEBUGEALO_THEME, DEFAULT_THEME, theme_style
 
 ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
 
@@ -140,7 +142,17 @@ class DebugPilotApp(App):
     ):
         super().__init__()
         self.engine = engine
-        self.theme = "textual-dark"
+        self.register_theme(DEBUGEALO_THEME)
+        self._theme_store = ThemeStore()
+        self._theme_error: str | None = None
+        try:
+            saved = self._theme_store.load()
+        except ConfigurationError as error:
+            saved, self._theme_error = None, str(error)
+        if saved is not None and saved not in self.available_themes:
+            self._theme_error = f"Unknown saved theme {saved!r}; using {DEFAULT_THEME}."
+            saved = None
+        self.theme = saved or DEFAULT_THEME
         self.refresh_interval = max(0.05, refresh_interval)
         self.selected_container: ContainerInfo | None = None
         self.selected_project: str | None = None
@@ -252,6 +264,28 @@ class DebugPilotApp(App):
         self.query_one("#area-containers", Button).variant = "default" if code else "primary"
         self.query_one("#code-projects" if code else "#launch-profiles", DataTable).focus()
 
+    def _recolor(self, _theme) -> None:
+        """Stylesheet colors follow the theme by themselves; text drawn from Python
+        carries the colors it was drawn with, so it is drawn again."""
+        if self._closing:
+            return
+        self._inventory_content.clear()
+        if self._inventory_loaded:
+            self._show_inventory(list(self._inventory.values()), force=True)
+        self._render_launch_profiles()
+        self._show_selection_panel()
+        self.query_one(CodeWorkspace).recolor()
+
+    def _remember_theme(self, theme) -> None:
+        """The theme picked in Ctrl+P → Theme is the one the next session starts with."""
+        try:
+            saved = self._theme_store.load()
+            # Nothing is written until someone picks a theme other than the default.
+            if saved != theme.name and (saved is not None or theme.name != DEFAULT_THEME):
+                self._theme_store.save(theme.name)
+        except ConfigurationError as error:
+            self.notify(str(error), severity="warning")
+
     def get_system_commands(self, screen):
         """Ctrl+P's Keys opens the grouped shortcuts, not Textual's raw list of bindings."""
         for command in super().get_system_commands(screen):
@@ -347,6 +381,10 @@ class DebugPilotApp(App):
     async def on_mount(self) -> None:
         if self._compose_config_error:
             self.notify(self._compose_config_error, severity="warning")
+        if self._theme_error:
+            self.notify(self._theme_error, severity="warning")
+        self.theme_changed_signal.subscribe(self, self._remember_theme)
+        self.theme_changed_signal.subscribe(self, self._recolor)
         table = self.query_one("#launch-profiles", DataTable)
         table.focus()
         await self.engine.start()
@@ -443,7 +481,7 @@ class DebugPilotApp(App):
             table.clear()
         for row in rows:
             if row.container is None:
-                label_style = "bold #a9c2cc"
+                label_style = theme_style(self, "text-secondary", bold=True)
                 running, _, total = row.state.partition("/")
                 state = Text(
                     row.state,

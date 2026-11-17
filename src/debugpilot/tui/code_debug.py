@@ -30,6 +30,7 @@ from debugpilot.storage.exception_modes import (
     ExceptionModeStore,
 )
 from debugpilot.storage.watches import MAX_WATCHES_PER_ROOT, WatchStore, watch_expression
+from debugpilot.tui.theme import theme_style
 
 MAX_WATCH_VALUE = 200
 
@@ -188,6 +189,11 @@ class ValueTable(DataTable):
         if rows:
             self.move_cursor(row=min(row, len(rows) - 1))
 
+    def recolor(self):
+        """Draw the same rows again, in the active theme's colors."""
+        rows, self.variable_rows = self.variable_rows, ()
+        self.show(rows)
+
     def _cells(self, variable):
         raise NotImplementedError
 
@@ -259,7 +265,7 @@ class VariablesTable(ValueTable):
         self.add_column('Variable')
 
     def _cells(self, variable):
-        style = 'bold #a9c2cc' if variable.name is None else ''
+        style = theme_style(self.app, 'text-secondary', bold=True) if variable.name is None else ''
         return (Text(variable.line, style=style, no_wrap=True),)
 
     @property
@@ -602,6 +608,11 @@ class CodeDebug(Vertical):
         self.browser.clear_execution()
         for button in self.query(Button):
             button.disabled = True
+
+    def recolor(self):
+        """After a theme change, draw again the rows that carry theme colors."""
+        for table in self.query(ValueTable):
+            table.recolor()
 
     def _render_context(self, context):
         if self.selected is not context or not self.query(DataTable):

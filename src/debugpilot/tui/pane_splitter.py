@@ -12,8 +12,8 @@ class PaneSplitter(Static):
     # Dragging must move the boundary, not select the handle's characters.
     ALLOW_SELECT = False
     DEFAULT_CSS = """
-    PaneSplitter { height: 1; color: #3a454c; }
-    PaneSplitter:hover { color: #7f8c93; }
+    PaneSplitter { height: 1; color: $border-blurred; }
+    PaneSplitter:hover { color: $text-muted; }
     """
 
     class Moved(Message):

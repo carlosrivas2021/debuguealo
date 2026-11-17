@@ -7,6 +7,7 @@ from textual.widgets import DataTable, Static
 
 from debugpilot.core.models import ContainerInfo, ContainerRuntime, ContainerStats, PortMapping
 from debugpilot.tui.container_list import group_style, state_glyph
+from debugpilot.tui.theme import theme_style
 
 
 def format_published_port(port: PortMapping) -> str | None:
@@ -129,7 +130,10 @@ class ContainerDetails(Vertical):
             self._runtime_lines(container),
         )
         for card, lines in zip(self.cards(), values, strict=True):
-            card.update(_card_text(lines, state_color=color))
+            card.update(_card_text(
+                lines, state_color=color, key_style=theme_style(self.app, "text-muted"),
+                value_style=theme_style(self.app, "foreground"),
+            ))
             card.set_class(card.border_title == "Status", f"state-{_state_class(container)}")
 
 
@@ -168,18 +172,18 @@ class ContainerDetails(Vertical):
         return tuple(lines)
 
 
-def _card_text(lines, *, state_color: str) -> Text:
+def _card_text(lines, *, state_color: str, key_style, value_style) -> Text:
     """Render `Key: value` lines with muted keys so the values carry the weight."""
     text = Text()
     for index, (key, value) in enumerate(lines):
         if index:
             text.append("\n")
         if key is not None:
-            text.append(f"{key}:", style="#7f8c93")
+            text.append(f"{key}:", style=key_style)
             if value:
                 text.append(" ")
         empty = value in {"—", "None published", "None"}
-        style = state_color if key == "State" else ("bright_black" if empty else "#e3e7ea")
+        style = state_color if key == "State" else ("bright_black" if empty else value_style)
         text.append(value, style=style)
     return text
 

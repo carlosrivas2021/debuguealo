@@ -11,11 +11,12 @@ from textual.events import Click
 from textual.message import Message
 from textual.widgets import DataTable, Static
 
+from debugpilot.tui.theme import theme_style
+
 # A row's location: the stored (root, file) key and the line.
 Location = tuple[tuple[Path, Path], int]
+# The paused line's yellow, fixed in every theme like the source's ▶.
 EXECUTION_STYLE = Style(color="#facc15", bold=True)
-MUTED_STYLE = Style(color="#7f8c93")
-WARNING_STYLE = Style(color="#e5c07b")
 
 
 class BreakpointsTitle(Horizontal, can_focus=True):
@@ -94,19 +95,21 @@ class BreakpointList(DataTable):
         The note is the debugger's answer worth a look: unverified, or moved to another line.
         """
         current = self.location
+        muted = theme_style(self.app, "text-muted")
+        warning = theme_style(self.app, "text-warning")
         self.clear()
         self._locations = []
         for location, glyph, style, label, detail, note, off, executing in rows:
             text = Text(no_wrap=True, overflow="crop")
             text.append("▶" if executing else " ", EXECUTION_STYLE)
             text.append(glyph, style)
-            text.append(f" {label}", MUTED_STYLE if off else Style())
+            text.append(f" {label}", muted if off else Style())
             if detail:
-                text.append(f" {detail}", MUTED_STYLE)
+                text.append(f" {detail}", muted)
             if off:
-                text.append(" (off)", MUTED_STYLE)
+                text.append(" (off)", muted)
             elif note:
-                text.append(f" {note}", WARNING_STYLE)
+                text.append(f" {note}", warning)
             self.add_row(text)
             self._locations.append(location)
         if current in self._locations:

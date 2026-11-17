@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -9,10 +10,10 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
+from debugpilot.tui.theme import theme_style
+
 AREAS = ("containers", "code")
 AREA_TITLES = {"containers": "Containers", "code": "Code"}
-KEY_STYLE = "bold #e5c07b"
-GROUP_STYLE = "bold #a9c2cc"
 KEY_WIDTH = 22
 
 
@@ -110,15 +111,16 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
 }
 
 
-def shortcut_text(area: str) -> Text:
+def shortcut_text(area: str, *, key_style: Style | str = "bold",
+                  group_style: Style | str = "bold") -> Text:
     """The area's shortcuts, then the ones that work everywhere."""
     text = Text()
     for index, (group, shortcuts) in enumerate((*SECTIONS[area], EVERYWHERE)):
         if index:
             text.append("\n")
-        text.append(f"{group}\n", GROUP_STYLE)
+        text.append(f"{group}\n", group_style)
         for shortcut in shortcuts:
-            text.append(f"  {shortcut.keys:<{KEY_WIDTH}}", KEY_STYLE)
+            text.append(f"  {shortcut.keys:<{KEY_WIDTH}}", key_style)
             text.append(f"{shortcut.action}\n")
     text.rstrip()
     return text
@@ -134,7 +136,7 @@ class ShortcutsScreen(ModalScreen):
         border: round $accent; background: $surface; padding: 0 1;
     }
     ShortcutsScreen #shortcuts-body { height: auto; max-height: 100%; }
-    ShortcutsScreen #shortcuts-hint { color: #7f8c93; height: 1; }
+    ShortcutsScreen #shortcuts-hint { color: $text-muted; height: 1; }
     """
 
     BINDINGS = [
@@ -156,10 +158,15 @@ class ShortcutsScreen(ModalScreen):
 
     def on_mount(self) -> None:
         self._show()
+        # Its text is drawn in theme colors: a theme picked meanwhile redraws it.
+        self.app.theme_changed_signal.subscribe(self, lambda _theme: self._show())
 
     def _show(self) -> None:
         self.query_one("#shortcuts").border_title = f"{AREA_TITLES[self.area]} · shortcuts"
-        self.query_one("#shortcuts-list", Static).update(shortcut_text(self.area))
+        self.query_one("#shortcuts-list", Static).update(shortcut_text(
+            self.area, key_style=theme_style(self.app, "text-warning", bold=True),
+            group_style=theme_style(self.app, "text-secondary", bold=True),
+        ))
         self.query_one("#shortcuts-body").scroll_home(animate=False)
 
     def action_switch_area(self) -> None:

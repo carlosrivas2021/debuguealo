@@ -14,8 +14,15 @@ in one scrollable project tree on the left, with logs and selected-container det
 and Compose execution output in a separate docked console. The same persistent dock
 contains the Host Bash PTY pane; the container shell occupies the right-hand logs area.
 Mounting either pane never starts a shell. Native Textual
-widgets use the existing near-black palette, muted separators, compact controls, and
-visible keyboard focus. Sidebar, logs, Compose output, and terminal remain separate.
+widgets use the active theme, muted separators, compact controls, and visible keyboard focus.
+
+**Ctrl+P → Theme** recolors the whole app: backgrounds, text, borders, the selected row and
+the state colors all come from the theme. The default **debugealo** theme is the near-black
+palette. The theme you pick is remembered in `theme.json`, beside `config.toml`, and the
+next session starts with it; nothing is written while you keep the default. If that file
+names a theme that no longer exists, or cannot be read, debugealo starts with **debugealo**
+and says why. Breakpoint marks (red ●, blue ◇), the paused line's yellow and the colors a
+program writes to its terminal stay the same in every theme, so they always mean the same. Sidebar, logs, Compose output, and terminal remain separate.
 Unchanged inventory refreshes preserve the tree's scroll position and selection;
 changes to displayed ports, state, or rows still update the inventory.
 Column widths account for cell padding and vertical-scrollbar space, including after resize.

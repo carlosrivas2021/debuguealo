@@ -10,7 +10,7 @@ from debugpilot.core.models import LogEntry
 class ExecutionConsole(Vertical):
     DEFAULT_CSS = """
     ExecutionConsole { height: 12; min-height: 7; }
-    ExecutionConsole #compose-output-heading { height: 1; color: #a9c2cc; }
+    ExecutionConsole #compose-output-heading { height: 1; color: $text-secondary; }
     ExecutionConsole #console-controls { height: 1; align-horizontal: right; }
     ExecutionConsole #compose-output-toggle { width: 5; min-width: 5; height: 1; }
     ExecutionConsole #compose-output-viewer { height: 1fr; }

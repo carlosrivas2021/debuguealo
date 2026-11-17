@@ -22,15 +22,17 @@ from debugpilot.core.exceptions import ConfigurationError
 from debugpilot.storage.breakpoints import BreakpointOptions, BreakpointStore
 from debugpilot.tui.breakpoint_dialog import DIALOG_ROWS, BreakpointDialog
 from debugpilot.tui.breakpoint_list import BreakpointList, BreakpointsTitle
+from debugpilot.tui.theme import theme_style
 
 # Dark yellow keeps syntax colors readable while marking the paused line.
 EXECUTION_LINE_STYLE = Style(bgcolor="#6b5d00")
-HINT_STYLE = Style(color="#6b7780", italic=True)
 HINT_GAP = 4
 SOURCE_HINT = (
     "Select a file. F9 or click the gutter to toggle a breakpoint; "
     "Shift+F9 adds a condition or log message."
 )
+# Breakpoint marks and the paused line keep these colors in every theme, on purpose:
+# they mean the same everywhere, and changing them with the theme would confuse.
 BREAKPOINT_GLYPHS = {
     "plain": ("●", Style(color="#ef4444", bold=True)),
     "condition": ("◆", Style(color="#ef4444", bold=True)),
@@ -114,7 +116,8 @@ class SourceText(TextArea):
         base = background.style if background is not None and background.style else Style()
         return Strip.join([
             strip.crop(0, start),
-            Strip([Segment(hint, base + HINT_STYLE)], cell_len(hint)),
+            Strip([Segment(hint, base + theme_style(self.app, "text-muted", italic=True))],
+                  cell_len(hint)),
             strip.crop(start + cell_len(hint)),
         ])
 
@@ -414,6 +417,12 @@ class SourceBrowser(Vertical):
             self._execution = None
             self._refresh_list()
 
+    def recolor(self):
+        """After a theme change, draw again what carries the theme's colors."""
+        self._refresh_list()
+        self._refresh_breakpoint_info()
+        self.query_one(SourceText).refresh()
+
     def _refresh_list(self):
         """List the shown project's breakpoints by file, then line."""
         if not self.query(BreakpointList):
@@ -663,7 +672,7 @@ class SourceBrowser(Vertical):
         if breakpoint_kind(option) == "plain":
             panel.display = False
             return
-        muted = "#7f8c93"
+        muted = theme_style(self.app, "text-muted")
         text = Text()
         if option.condition:
             # A logpoint never stops, so its condition only decides whether it prints.
