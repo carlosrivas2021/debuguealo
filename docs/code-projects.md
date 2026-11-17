@@ -365,7 +365,7 @@ program's standard input, as pressing Enter in a terminal would, so `input()`,
 `bufio.Reader.ReadString` or `readline` receive it. **Ctrl+D** sends what is in the field, if
 anything, and then ends the input, so a program reading until end of input (such as
 `sys.stdin.read()` or `io.ReadAll(os.Stdin)`) stops reading; on Windows it types the console's
-end of input, Ctrl+Z then Enter. Starting never moves the focus: press **P** to go to the field (or to the Code terminal of a
+end of input, Ctrl+Z then Enter. One known gap: a Node program reading with `readline` on Windows does not see that end of input, because `readline` reads the terminal in raw mode there. Starting never moves the focus: press **P** to go to the field (or to the Code terminal of a
 program run with **F5**). Typing in the field never triggers Code shortcuts; **Esc** leaves it
 for the profile list.
 

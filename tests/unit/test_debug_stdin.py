@@ -50,7 +50,10 @@ async def wait_running(session):
     await poll(lambda: session.state == 'running')
 
 
-@pytest.mark.parametrize('language', ['python', 'go', 'node'])
+@pytest.mark.parametrize('language', ['python', 'go', pytest.param('node', marks=pytest.mark.xfail(
+    os.name == 'nt', strict=True,
+    reason="Node's readline reads a Windows terminal in raw mode, where Ctrl+Z is not end of "
+           "input"))])
 async def test_input_lines_and_end_of_input_reach_the_debugged_program(tmp_path, language):
     name, command, text = PROGRAMS[language]
     (tmp_path / name).write_text(text)
