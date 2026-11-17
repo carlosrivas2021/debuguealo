@@ -27,6 +27,7 @@ from debugpilot.tui.list_filter import ListFilter, matches
 from debugpilot.tui.pane_splitter import PaneSplitter
 from debugpilot.tui.source_browser import SourceBrowser
 from debugpilot.tui.terminal_view import TerminalPane
+from debugpilot.tui.theme import theme_style
 
 # Left to right on screen; Ctrl+Left/Right (or Alt+Left/Right) move between them.
 # The debug panel's tables join while a debug session shows it; its text fields are left
@@ -54,7 +55,7 @@ class BranchLabel(Static):
 
 
 # A profile row's icon: running, debugging, or none when stopped.
-STATUS_ICONS = {"run": ("▶", "bold #7fc8a9"), "debug": ("◉", "bold #e5c07b")}
+STATUS_ICONS = {"run": ("▶", "text-success"), "debug": ("◉", "text-warning")}
 # Sessions report state only for the selected profile; this also catches the others.
 STATUS_REFRESH_SECONDS = 0.5
 
@@ -398,10 +399,10 @@ class CodeWorkspace(Vertical):
         status = self._profile_status(profile)
         if status is None:
             return profile.name
-        icon, style = STATUS_ICONS[status]
-        return Text.assemble((icon, style), f" {profile.name}")
+        icon, color = STATUS_ICONS[status]
+        return Text.assemble((icon, theme_style(self.app, color, bold=True)), f" {profile.name}")
 
-    def _refresh_status_icons(self):
+    def _refresh_status_icons(self, force=False):
         tables = self.query("#code-projects")
         if not tables:
             return
@@ -411,7 +412,7 @@ class CodeWorkspace(Vertical):
             if profile is None:
                 continue
             label = self._profile_label(profile)
-            if str(table.get_cell(row_key, self._profile_column)) != str(label):
+            if force or str(table.get_cell(row_key, self._profile_column)) != str(label):
                 table.update_cell(row_key, self._profile_column, label)
 
     def _highlighted_profile(self):
@@ -678,6 +679,12 @@ class CodeWorkspace(Vertical):
             return
         # Past either end, wrap around to the other one.
         panes[(current + step) % len(panes)].focus()
+
+    def recolor(self):
+        """After a theme change, draw the profile icons and both panels again."""
+        self._refresh_status_icons(force=True)
+        self._debug.recolor()
+        self.query_one(SourceBrowser).recolor()
 
     def toggle_breakpoint(self):
         browser = self.query_one(SourceBrowser)

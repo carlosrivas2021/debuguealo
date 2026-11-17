@@ -26,6 +26,9 @@ On Linux, the default is `unix:///var/run/docker.sock`. For rootless Docker set 
 socket such as `unix:///run/user/1000/docker.sock`. On macOS Docker Desktop may require
 `unix:///Users/YOUR_USER/.docker/run/docker.sock`. Set your actual path explicitly.
 
+The color theme picked in the app (**Ctrl+P → Theme**) is saved in `theme.json` in the
+same folder, as `{"version": 1, "theme": "nord"}`; delete it to go back to **debugealo**.
+
 Use `uv run debugealo doctor --config /path/to/config.toml` to select a different file.
 Unknown keys, invalid types, remote endpoints, files over 64 KiB, and limits outside their
 ranges are errors. Config errors do not print rejected values. Limits: queue 1–10000;

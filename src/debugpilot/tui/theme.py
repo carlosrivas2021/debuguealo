@@ -5,6 +5,8 @@ Only a few marks stay fixed on purpose (breakpoint glyphs, the yellow paused lin
 colors a program writes to its terminal): changing them with the theme would confuse.
 """
 
+from rich.style import Style
+from textual.color import Color
 from textual.theme import Theme
 
 DEFAULT_THEME = "debugealo"
@@ -50,3 +52,44 @@ DEBUGEALO_THEME = Theme(
         "footer-description-foreground": "#9ba5aa",
     },
 )
+
+
+_STYLES: dict[tuple, Style] = {}
+
+
+def _rich_color(variables: dict[str, str], name: str):
+    """A theme variable as an opaque Rich color, or None (the terminal default).
+
+    Values may be "auto 60%" (the background's contrasting text at that strength) or carry
+    transparency; both are blended over the theme's background, as Textual draws them.
+    """
+    try:
+        value = variables[name]
+        background = Color.parse(variables["background"])
+        if value.startswith("auto"):
+            _, _, strength = value.partition(" ")
+            alpha = float(strength.rstrip("%")) / 100 if strength else 1.0
+            color = background.get_contrast_text(alpha)
+        else:
+            color = Color.parse(value)
+        if color.a < 1:
+            color = background + color
+        return color.rich_color
+    except (KeyError, ValueError):
+        return None
+
+
+def theme_style(app, variable: str, *, bold: bool = False, italic: bool = False) -> Style:
+    """A Rich style in the active theme's color for text drawn from Python.
+
+    Widgets that keep such text must draw it again when the theme changes.
+    """
+    key = (app.theme, variable, bold, italic)
+    style = _STYLES.get(key)
+    if style is None:
+        color = _rich_color(app.get_css_variables(), variable)
+        style = Style(color=color, bold=bold or None, italic=italic or None)
+        if len(_STYLES) > 512:
+            _STYLES.clear()
+        _STYLES[key] = style
+    return style

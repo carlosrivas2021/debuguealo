@@ -50,6 +50,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | 🐞 | **Debugging** | Breakpoints, conditional breakpoints, hit counts, logpoints, a breakpoints list to switch them off without removing them, pausing on exceptions, watch expressions, a debug console, stepping, stack/variable inspection, nested variables and changing variables while paused for **Python**, **Go** and server-side **Node**. |
 | 🔌 | **Attach** | Connect to an existing loopback `debugpy`, Delve or Node Inspector target, for example inside a container, without taking over its lifecycle. |
 | 💻 | **Terminals** | A container shell and a host Bash docked inside the dashboard. |
+| 🎨 | **Themes** | **Ctrl+P → Theme** recolors the whole app; the near-black **debugealo** theme is the default and your pick is remembered. |
 | 🛡️ | **Safe by default** | Destructive actions ask first, image downloads need consent, and debug ports listen on `127.0.0.1` only. |
 
 ## Keyboard cheat sheet

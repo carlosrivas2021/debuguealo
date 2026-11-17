@@ -101,3 +101,60 @@ async def test_every_theme_loads_and_recolors_the_app(monkeypatch, tmp_path):
         await pilot.pause()
         assert (sidebar.styles.background.hex, title.styles.color.hex) != dark
         assert app.screen.styles.background.hex == app.get_css_variables()["background"].upper()
+
+
+async def test_text_drawn_from_python_follows_the_theme(monkeypatch, tmp_path):
+    from test_code_debug_ui import debug_app, mark
+    from test_tui_grouping import select_key
+
+    from debugpilot.storage.breakpoints import BreakpointOptions
+    from debugpilot.tui.code_debug import CodeDebug
+    from debugpilot.tui.container_details import ContainerDetails
+    from debugpilot.tui.theme import _rich_color
+
+    def color(name):
+        return tuple(_rich_color(app.get_css_variables(), name).get_truecolor())
+
+    def span_colors(text):
+        """RGB of each span, whether Rich Text or Textual Content drew it."""
+        colors = set()
+        for span in text.spans:
+            style = span.style
+            if getattr(style, "color", None) is not None:
+                colors.add(tuple(style.color.get_truecolor()))
+            elif getattr(style, "foreground", None) is not None:
+                colors.add(style.foreground.rgb)
+        return colors
+
+    app, roots, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await pilot.click("#area-code")
+        browser = await mark(pilot, app, 4)
+        source = (roots[0] / "main.py").resolve()
+        browser._apply_breakpoint((roots[0].resolve(), source), 4, True,
+                                  BreakpointOptions(condition="answer > 1"))
+        await pilot.press("shift+f5")
+        debug = app.query_one(CodeDebug)
+        await until(pilot, lambda: debug.selected is not None
+                    and debug.selected.execution is not None)
+        await until(pilot, lambda: app.query_one("#code-variables").row_count > 0)
+
+        app.theme = "textual-light"
+        await pilot.pause(0.3)
+        variables = app.query_one("#code-variables")
+        heading = variables.get_row_at(0)[0]
+        assert tuple(heading.style.color.get_truecolor()) == color("text-secondary")
+        profiles = app.query_one("#code-projects")
+        label = profiles.get_row_at(0)[0]
+        assert color("text-warning") in span_colors(label)  # The ◉ of a debugging profile.
+        listed = app.query_one("#source-breakpoints").get_row_at(0)[0]
+        assert color("text-muted") in span_colors(listed)  # "if answer > 1".
+        await pilot.press("f5")
+
+        await pilot.click("#area-containers")
+        select_key(app, next(key for key in app._rows if key.startswith("container:")))
+        await pilot.pause(0.3)
+        app.theme = "nord"
+        await pilot.pause(0.3)
+        card = app.query_one(ContainerDetails).cards()[0].render()
+        assert color("text-muted") in span_colors(card)  # The "State:" labels.

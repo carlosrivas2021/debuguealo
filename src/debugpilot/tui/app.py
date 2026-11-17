@@ -40,7 +40,7 @@ from debugpilot.tui.host_terminal import HostTerminal
 from debugpilot.tui.list_filter import ListFilter
 from debugpilot.tui.log_viewer import LogViewer
 from debugpilot.tui.terminal_view import TerminalPane
-from debugpilot.tui.theme import DEBUGEALO_THEME, DEFAULT_THEME
+from debugpilot.tui.theme import DEBUGEALO_THEME, DEFAULT_THEME, theme_style
 
 ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
 
@@ -259,6 +259,18 @@ class DebugPilotApp(App):
         self.query_one("#area-containers", Button).variant = "default" if code else "primary"
         self.query_one("#code-projects" if code else "#launch-profiles", DataTable).focus()
 
+    def _recolor(self, _theme) -> None:
+        """Stylesheet colors follow the theme by themselves; text drawn from Python
+        carries the colors it was drawn with, so it is drawn again."""
+        if self._closing:
+            return
+        self._inventory_content.clear()
+        if self._inventory_loaded:
+            self._show_inventory(list(self._inventory.values()), force=True)
+        self._render_launch_profiles()
+        self._show_selection_panel()
+        self.query_one(CodeWorkspace).recolor()
+
     def _remember_theme(self, theme) -> None:
         """The theme picked in Ctrl+P → Theme is the one the next session starts with."""
         try:
@@ -351,6 +363,7 @@ class DebugPilotApp(App):
         if self._theme_error:
             self.notify(self._theme_error, severity="warning")
         self.theme_changed_signal.subscribe(self, self._remember_theme)
+        self.theme_changed_signal.subscribe(self, self._recolor)
         table = self.query_one("#launch-profiles", DataTable)
         table.focus()
         await self.engine.start()
@@ -447,7 +460,7 @@ class DebugPilotApp(App):
             table.clear()
         for row in rows:
             if row.container is None:
-                label_style = "bold #a9c2cc"
+                label_style = theme_style(self, "text-secondary", bold=True)
                 running, _, total = row.state.partition("/")
                 state = Text(
                     row.state,
