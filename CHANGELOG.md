@@ -9,17 +9,12 @@
 * **code:** breakpoints list with on/off, collapsible, and a faster profile switch ([7737ad5](https://github.com/carlosrivas2021/debuguealo/commit/7737ad56d7fba28be65684e96653acc8f60949df))
 * **code:** collapsible breakpoints list, no breakpoints in the file tree ([b3784c3](https://github.com/carlosrivas2021/debuguealo/commit/b3784c31c5c3af6ca55a716df67f89d04d7c7842))
 * **code:** Ctrl+F10 runs to the line under the source cursor ([a5620ed](https://github.com/carlosrivas2021/debuguealo/commit/a5620edb17b16dfa2d1488dd4d5c1505eb50dc12))
-* **code:** Ctrl+F10 runs to the line under the source cursor ([d187f0d](https://github.com/carlosrivas2021/debuguealo/commit/d187f0d9947d6e988298df3686de7812739c12e1))
 * **code:** debug console to evaluate expressions while paused ([e3d086c](https://github.com/carlosrivas2021/debuguealo/commit/e3d086c1498f93decbb88188d7ad9ef148befa8a))
-* **code:** debug console to evaluate expressions while paused ([0e0b79b](https://github.com/carlosrivas2021/debuguealo/commit/0e0b79bfcaa473cb25ae82bc6c6a76b5f0183dd8))
 * **code:** exception pauses select the project's own stack frame ([438bcec](https://github.com/carlosrivas2021/debuguealo/commit/438bcec39b84dcfc22684dc4fa4debe81e35a047))
-* **code:** exception pauses select the project's own stack frame ([30f2a63](https://github.com/carlosrivas2021/debuguealo/commit/30f2a635fd1f4b1272105b7cf4792522a885b36a))
 * **code:** one line under the debug output, Program input or Evaluate ([08d93e9](https://github.com/carlosrivas2021/debuguealo/commit/08d93e9943c03b87687128cc96f9c16c0b07f72e))
 * **code:** pause on exceptions, toggled per project with E ([bc30a84](https://github.com/carlosrivas2021/debuguealo/commit/bc30a84f170f134057fbaeab48d7f749093b3fed))
-* **code:** pause on exceptions, toggled per project with E ([af21812](https://github.com/carlosrivas2021/debuguealo/commit/af218128c025f72185d6f057a26b70899a86b051))
 * **code:** switch breakpoints off without removing them ([a7ad222](https://github.com/carlosrivas2021/debuguealo/commit/a7ad2225bb38e4bf72dcb8364d4b2e02bc7edb68))
 * **tui:** ? lists the area's shortcuts, grouped by task ([e6d0003](https://github.com/carlosrivas2021/debuguealo/commit/e6d0003a754de6604a2e700e7473131fc6cef75f))
-* **tui:** ? lists the area's shortcuts, grouped by task ([59a4935](https://github.com/carlosrivas2021/debuguealo/commit/59a4935313f98fb935c0641ed4d25096ac916585))
 * **tui:** colors follow the theme; debugealo theme by default ([af5ff85](https://github.com/carlosrivas2021/debuguealo/commit/af5ff858947153e95cd5a07036cc12a6fabcbe9c))
 * **tui:** colors follow the theme; debugealo theme by default, pick remembered ([2b432d6](https://github.com/carlosrivas2021/debuguealo/commit/2b432d65f095d076ce10d5c709f069e5634c597e))
 * **tui:** Ctrl+P Keys opens the grouped shortcuts ([f5e2f04](https://github.com/carlosrivas2021/debuguealo/commit/f5e2f046dae81315838e754eab4f8f5d2a5de4d5))
@@ -32,7 +27,6 @@
 * **code:** Run to cursor keeps hit counts, stops on conditional lines, survives edits ([56a9aaa](https://github.com/carlosrivas2021/debuguealo/commit/56a9aaa3b6476705718e929755966758c10fe9c6))
 * **code:** show the exception mode in the Debug output title ([07d988c](https://github.com/carlosrivas2021/debuguealo/commit/07d988ce9a410a7be4ade5df17c09d06ed0ce848))
 * **tui:** read launch profiles off the UI thread during refresh ([141ae81](https://github.com/carlosrivas2021/debuguealo/commit/141ae81d73f9d0b8ee2940c838f54576dc6a465e))
-* **tui:** read launch profiles off the UI thread during refresh ([ed76270](https://github.com/carlosrivas2021/debuguealo/commit/ed76270fea27435bc997d67ad69dee6ca495672b))
 
 
 ### Performance Improvements
