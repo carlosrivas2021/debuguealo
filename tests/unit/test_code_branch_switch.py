@@ -10,7 +10,7 @@ import pytest
 from test_code_project_store import configure
 from test_git_switch import git, make_repo
 from test_tui_grouping import Docker, until
-from textual.widgets import DataTable, OptionList, TextArea, Tree
+from textual.widgets import DataTable, Input, OptionList, TextArea, Tree
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
@@ -47,12 +47,15 @@ def _messages(app):
     return [item.message for item in app._notifications]
 
 
-async def _open_picker(pilot, app):
-    await pilot.click("#code-branch")
-    # Ready once the list has the focus, with the current branch picked.
+async def _open_picker(pilot, app, *, key=None):
+    if key:
+        await pilot.press(key)
+    else:
+        await pilot.click("#code-branch")
+    # Ready once the filter has the focus, with the current branch picked in the list.
     await until(pilot, lambda: isinstance(app.screen, BranchPicker)
-                and isinstance(app.focused, OptionList))
-    return app.focused
+                and isinstance(app.focused, Input) and app.focused.id == "branch-filter")
+    return app.screen.query_one(OptionList)
 
 
 async def _choose(pilot, options, name):
@@ -175,3 +178,44 @@ async def test_a_profile_started_while_the_list_is_open_blocks_the_switch(monkey
         await until(pilot, lambda: "Stop web before switching branches; it runs from this "
                                    "repository." in _messages(app))
         assert current_branch(repo) == "main"
+
+
+def test_branches_match_by_prefix_then_substring_then_letters_in_order():
+    from debugpilot.tui.branch_picker import matching_branches
+
+    branches = ["feature/login", "fix/logging", "main", "release/1.0", "LOGIN-hotfix"]
+    assert matching_branches("", branches) == branches
+    # "LOGIN-hotfix" starts with it (any case); the other two contain it.
+    assert matching_branches("log", branches) == ["LOGIN-hotfix", "feature/login",
+                                                  "fix/logging"]
+    # Both hold f-l-o-g in order: the list order breaks the tie.
+    assert matching_branches("flog", branches) == ["feature/login", "fix/logging"]
+    assert matching_branches("zzz", branches) == []
+
+
+async def test_b_opens_the_list_over_the_workspace_and_typing_filters_it(monkeypatch, tmp_path):
+    app, repo = _app(monkeypatch, tmp_path)
+    git(repo, "branch", "fix/logging")
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.click("#area-code")
+        await until(pilot, lambda: _branch(app) == "⎇ main")
+        app.query_one("#code-projects").focus()
+        options = await _open_picker(pilot, app, key="b")
+        # See-through: the workspace stays in view behind the list.
+        assert app.screen.styles.background.a == 0
+
+        def listed():
+            return [options.get_option_at_index(i).id for i in range(options.option_count)]
+
+        assert listed() == ["feature/login", "fix/logging", "main"]
+        await pilot.press(*"zz")
+        await until(pilot, lambda: str(options.get_option_at_index(0).prompt)
+                    == "No branch matches")
+        await pilot.press("enter")  # Nothing to switch to: the list stays open.
+        assert isinstance(app.screen, BranchPicker)
+        await pilot.press("backspace", "backspace", *"flog")
+        await until(pilot, lambda: listed() == ["feature/login", "fix/logging"])
+        assert options.highlighted == 0  # The best match.
+        await pilot.press("down", "enter")  # Down moves through the list from the filter.
+        await until(pilot, lambda: _branch(app) == "⎇ fix/logging")
+        assert current_branch(repo) == "fix/logging"

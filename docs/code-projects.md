@@ -64,8 +64,12 @@ the branch it was launched from, even if you check out another branch meanwhile;
 launch again to pick up the new one. An idle profile shows the current branch each time you
 select it.
 
-Click the branch to switch to another local branch: a list opens with the current one marked
-**●**; pick one with **Enter**, or close it with **Escape**. This runs `git switch`, so it needs
+Press **B**, or click the branch, to switch to another local branch: a list drops down under
+the branch, with the rest of Code still in view and the current branch marked **●**. Type to
+filter it: branches that start with the text come first, then those that contain it, then
+those that have its letters in order (`flog` finds `feature/login`). **↑**/**↓** move through
+the list while you type, **Enter** switches, and **Escape** closes it. This runs `git switch`,
+so it needs
 Git installed. Uncommitted changes follow Git's own rules: changes that do not conflict with the
 other branch are carried over, and a conflicting change makes Git refuse the switch, which then
 shows Git's message and leaves everything as it was. Switching is refused while any profile from
