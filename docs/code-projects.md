@@ -308,6 +308,14 @@ The preview is not an operating-system sandbox; browse trusted local projects.
 4. Use **F10** (Over), **F11** (In), **Shift+F11** (Out), or **F5** (**▶ Continue**). **F5** continues only
    when the profile under the cursor is paused; otherwise it keeps its run-without-debug
    meaning and never starts a second session for that profile.
+
+   **Ctrl+F10** (Run to cursor) runs to the line under the source cursor and pauses there,
+   without leaving a breakpoint: the line gets a one-shot breakpoint that is removed at the
+   next pause, whatever caused it. A breakpoint met on the way pauses first, as with
+   Continue, and the one-shot line is dropped too. It works in the debugged profile's files,
+   only while paused. On a line without code (a blank line or a comment) the debugger may
+   move the stop to the next line with code, or not stop at all. Windows Terminal takes
+   **F11** for full screen; use the **In** button there, or unbind F11 in its settings.
 5. **Stop** ends the owned adapter and target tree, including pending startup.
    Quitting also cancels startup and closes the owned session.
 

@@ -704,6 +704,18 @@ class CodeWorkspace(Vertical):
     def debug_control(self, command):
         self._debug.resume(command)
 
+    def run_to_cursor(self):
+        """Ctrl+F10: continue to the source cursor's line, then pause there."""
+        browser = self.query_one(SourceBrowser)
+        if browser.file_path is None:
+            self.app.notify("Open a source file and place the cursor on a line.",
+                            severity="warning")
+            return
+        line = browser.query_one("#source-text").cursor_location[0] + 1
+        problem = self._debug.run_to_cursor(browser.file_path, line)
+        if problem:
+            self.app.notify(problem, severity="warning")
+
     async def _start(self, profile):
         context = self._pane.contexts.get(profile.name)
         if context is not None:
