@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Actions → ci → Run workflow: run Windows on any branch before merging something delicate.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,7 +28,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Pull requests run Linux only; main and manual runs add Windows (informational).
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     # Windows is informational until its run is green; Linux is the required check.
     continue-on-error: ${{ matrix.os == 'windows-latest' }}
