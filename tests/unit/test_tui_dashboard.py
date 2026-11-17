@@ -73,6 +73,10 @@ async def test_native_inventory_scales_scrolls_and_shows_only_published_port_lab
         assert "[::1]:9000->8000/tcp" in first_ports
         assert "9001->8000/tcp" in second_ports
         assert "53/udp" not in first_ports
-        await until(pilot, lambda: table.max_scroll_y > 0)
+        # Scroll once the columns are fitted to the real width (right after the first
+        # layout); a person cannot scroll before that, but a test can.
+        await until(pilot, lambda: table.max_scroll_y > 0
+                    and not app._inventory_refit_pending)
+        await pilot.pause()
         table.scroll_end(animate=False)
         await until(pilot, lambda: table.scroll_y > 0)

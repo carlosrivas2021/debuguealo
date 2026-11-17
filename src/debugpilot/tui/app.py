@@ -166,6 +166,8 @@ class DebugPilotApp(App):
         self._collapsed_projects: set[str] = set()
         self._inventory_widths: dict[str, tuple[int, int, int]] = {}
         self._inventory_content: dict[str, tuple[tuple[str, str, str, str], ...]] = {}
+        # A redraw at the real width is scheduled after the first layout.
+        self._inventory_refit_pending = False
         self._selection_changed = asyncio.Event()
         # Logs stream only on request and close again when the selected row changes.
         self._logs_requested = False
@@ -450,6 +452,11 @@ class DebugPilotApp(App):
         viewport = (
             table.content_region.width or self.query_one("#launch-profiles").content_region.width
         )
+        if not viewport and not self._inventory_refit_pending:
+            # Drawn before the first layout: fit the columns to the real width right after
+            # it, before anyone scrolls, rather than on a later refresh.
+            self._inventory_refit_pending = True
+            self.call_after_refresh(self._refit_inventory)
         # Three columns each have left/right cell padding; reserve scrollbar space
         # even while hidden so it can appear without overflowing the same columns.
         available = max(
@@ -516,6 +523,11 @@ class DebugPilotApp(App):
             )
         self._inventory_content[table.id] = content
         return True
+
+    def _refit_inventory(self) -> None:
+        self._inventory_refit_pending = False
+        if not self._closing and self.query_one("#launch-profiles").content_region.width:
+            self._render_launch_profiles()
 
     async def _refresh_loop(self) -> None:
         while not self._closing:
