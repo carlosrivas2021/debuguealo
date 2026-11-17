@@ -1,7 +1,7 @@
 """Best-effort check for a newer debugealo release.
 
-Release tags are read with ``git ls-remote``, which reuses the same git credentials
-that ``uv tool install git+https://...`` needed, so it works for a private repository.
+Release tags are read with ``git ls-remote`` from the public repository; every release is
+also published to PyPI, where ``uv tool upgrade debugealo`` takes it.
 debugealo must keep working offline, so every failure here is silent: the check runs
 at most once per CHECK_INTERVAL (failures included), never prompts for credentials,
 uses a short timeout, and can be disabled with DEBUGEALO_NO_UPDATE_CHECK=1.
@@ -21,7 +21,7 @@ from platformdirs import user_cache_path
 from debugpilot import __version__
 
 REPOSITORY_URL = "https://github.com/carlosrivas2021/debuguealo.git"
-UPDATE_COMMAND = f"uv tool install --reinstall git+{REPOSITORY_URL}"
+UPDATE_COMMAND = "uv tool upgrade debugealo"
 OPT_OUT_ENV = "DEBUGEALO_NO_UPDATE_CHECK"
 CHECK_INTERVAL = timedelta(hours=24)
 TIMEOUT_SECONDS = 5.0

@@ -16,29 +16,32 @@
 ---
 
 <p align="center">
-  <img alt="Containers dashboard: launch profiles, live container details, streaming logs and a confirmed recreate" src="docs/assets/containers.gif" width="900">
+  <img alt="Containers dashboard: launch profiles, live container details, streaming logs and a confirmed recreate" src="https://raw.githubusercontent.com/carlosrivas2021/debuguealo/main/docs/assets/containers.gif" width="900">
 </p>
 
 <p align="center">
-  <img alt="Code area: setting a breakpoint, debugging a Python profile, stepping and reading variables" src="docs/assets/code.gif" width="900">
+  <img alt="Code area: setting a breakpoint, debugging a Python profile, stepping and reading variables" src="https://raw.githubusercontent.com/carlosrivas2021/debuguealo/main/docs/assets/code.gif" width="900">
 </p>
 
 ## Quick start
 
 ```console
-curl -LsSf https://astral.sh/uv/install.sh | sh                        # 1. install uv (once)
-uv tool install git+https://github.com/carlosrivas2021/debuguealo.git   # 2. install debugealo
-debugealo doctor                                                        # 3. check Docker access
-debugealo                                                               # 4. open the dashboard
+curl -LsSf https://astral.sh/uv/install.sh | sh   # 1. install uv (once)
+uv tool install debugealo                          # 2. install debugealo (or: pipx install debugealo)
+debugealo doctor                                   # 3. check Docker access
+debugealo                                          # 4. open the dashboard
 ```
 
-To update, rerun the install command with `--reinstall`. The dashboard tells you when a newer
-release exists: at most once a day it reads the repository's release tags with
-`git ls-remote`, using your existing git credentials and never prompting for them. Offline or
-without access it stays silent; set `DEBUGEALO_NO_UPDATE_CHECK=1` to turn the check off.
+To update, run `uv tool upgrade debugealo` (or `pipx upgrade debugealo`). The dashboard tells
+you when a newer release exists: at most once a day it reads the repository's release tags with
+`git ls-remote`, never prompting for credentials. Offline it stays silent; set
+`DEBUGEALO_NO_UPDATE_CHECK=1` to turn the check off.
+
+To try the latest unreleased code instead:
+`uv tool install git+https://github.com/carlosrivas2021/debuguealo`.
 
 uv downloads a suitable Python if you don't have one. Docker is the only other requirement.
-Debugging Go also needs [Delve](docs/go-debugging.md):
+Debugging Go also needs [Delve](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/go-debugging.md):
 `go install github.com/go-delve/delve/cmd/dlv@latest`.
 
 ## What you get
@@ -99,7 +102,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `P` | Go to the running program's input (**Esc** returns to the profiles) |
 | `:` | While paused, evaluate an expression in the selected frame (**↑**/**↓** history, **Esc** returns) |
 
-The full workflow is in the [keyboard guide](docs/tui.md).
+The full workflow is in the [keyboard guide](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/tui.md).
 
 ## Command line
 
@@ -125,11 +128,11 @@ denied, and `2` for invalid configuration. A missing Delve is only a warning.
 
 | Start here | Go deeper |
 |---|---|
-| [Keyboard workflow](docs/tui.md) | [Architecture](docs/architecture.md) |
-| [Launch profiles](docs/launch-profiles.md) | [Docker integration and limits](docs/docker.md) |
-| [Code projects and debugging](docs/code-projects.md) | [Configuration](docs/configuration.md) |
-| [Compose safety and limits](docs/compose.md) | [Python](docs/python-debugging.md) · [Go](docs/go-debugging.md) debugging |
-| [Container controls](docs/container-controls.md) | [Multi-project setups](docs/multi-project.md) · [Terminal](docs/terminal.md) |
+| [Keyboard workflow](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/tui.md) | [Architecture](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/architecture.md) |
+| [Launch profiles](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/launch-profiles.md) | [Docker integration and limits](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/docker.md) |
+| [Code projects and debugging](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/code-projects.md) | [Configuration](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/configuration.md) |
+| [Compose safety and limits](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/compose.md) | [Python](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/python-debugging.md) · [Go](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/go-debugging.md) debugging |
+| [Container controls](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/container-controls.md) | [Multi-project setups](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/multi-project.md) · [Terminal](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/terminal.md) |
 
 ## Platform notes
 
@@ -184,4 +187,4 @@ uv sync --inexact --frozen --reinstall-package debugealo
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/carlosrivas2021/debuguealo/blob/main/LICENSE)
