@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/carlosrivas2021/debuguealo/compare/v1.0.1...v1.1.0) (2026-11-17)
+
+
+### Features
+
+* **code:** B opens a see-through, filterable branch list ([#105](https://github.com/carlosrivas2021/debuguealo/issues/105)) ([defbfcb](https://github.com/carlosrivas2021/debuguealo/commit/defbfcb3c06dd51d6e1b969f97c6d10f478b96d8))
+* **tui:** scroll back through terminal output ([#101](https://github.com/carlosrivas2021/debuguealo/issues/101)) ([7cc2131](https://github.com/carlosrivas2021/debuguealo/commit/7cc213160cfdcace8dbe4bd8077466b5e4b7d89e))
+
+
+### Bug Fixes
+
+* Windows debugging, branch picker and launch.json fixes; suite ported to Windows ([#100](https://github.com/carlosrivas2021/debuguealo/issues/100)) ([6d797ce](https://github.com/carlosrivas2021/debuguealo/commit/6d797ce4c89bf42abcf5d61f2ef0741577b0f7ac))
+
 ## [1.0.1](https://github.com/carlosrivas2021/debuguealo/compare/v1.0.0...v1.0.1) (2026-11-17)
 
 
