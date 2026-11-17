@@ -22,7 +22,7 @@ class Shortcut:
     keys: str
     action: str
     # Key names that must be bound somewhere, so the list cannot silently go stale;
-    # empty for mouse gestures.
+    # empty for mouse gestures and keys a widget reads itself (a terminal's scroll keys).
     bindings: tuple[str, ...] = ()
 
 
@@ -63,6 +63,8 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
             Shortcut("H", "Open host Bash", ("h",)),
             Shortcut("O", "Show or hide the output console", ("o",)),
             Shortcut("Esc", "Leave a terminal, back to the list", ("escape",)),
+            # Handled by the terminal itself, which gets every key while it has the focus.
+            Shortcut("Shift+PgUp / PgDn", "Scroll back / forward (or the mouse wheel)"),
         )),
         ("AWS", (
             Shortcut("A", "Refresh the AWS credentials", ("a",)),
@@ -78,6 +80,7 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
             Shortcut("E", "Pause on uncaught exceptions → all → none", ("e",)),
             Shortcut("O", "Show or hide the terminal or debug output", ("o",)),
             Shortcut("P", "Go to the running program's input (Esc returns)", ("p",)),
+            Shortcut("Shift+PgUp / PgDn", "Scroll the terminal back / forward (or the wheel)"),
         )),
         ("Stepping", (
             Shortcut("F10", "Step over", ("f10",)),

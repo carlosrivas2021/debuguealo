@@ -76,6 +76,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `Shift+A` | Edit the AWS config and credentials files side by side |
 | `Ctrl+L` | Open logs (`D` or `Esc` closes them, `Ctrl+R` reconnects) |
 | `C` / `H` | Open the container shell / host Bash |
+| `Shift+PgUp` / `Shift+PgDn` or the mouse wheel | Scroll back through a terminal's output (any key returns) |
 | `O` | Show or hide the output console |
 | `Space` | Collapse or expand a group |
 
