@@ -5,7 +5,7 @@
 Security fixes go into the latest release. Upgrade with:
 
 ```sh
-uv tool install --reinstall git+https://github.com/carlosrivas2021/debuguealo
+uv tool upgrade debugealo
 ```
 
 ## Reporting a vulnerability
