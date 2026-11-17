@@ -67,7 +67,7 @@ adds a condition, a log message (logpoint) or a hit count to the line; see
 [conditional breakpoints and logpoints](code-projects.md#conditional-breakpoints-and-logpoints). The debug panel's **Watch** section re-evaluates
 expressions on every pause; see [watch expressions](code-projects.md#watch-expressions). An uncaught exception pauses where it is raised, and **E** switches between uncaught, all and no exceptions for the project; see [pause on exceptions](code-projects.md#pause-on-exceptions). While paused, **:** goes to the **Evaluate** field under the debug output, which runs an expression in the selected frame; see [debug console](code-projects.md#debug-console). At a pause, inspect the stack/variables and the
 yellow-shaded execution line, then use **F5** or **▶ Continue**, **F10** (over), **F11** (in), or
-**Shift+F11** (out). F5 continues only the paused profile under the cursor. Stop cancels startup or ends the
+**Shift+F11** (out), or **Ctrl+F10** to run to the line under the source cursor. F5 continues only the paused profile under the cursor. Stop cancels startup or ends the
 active Code run/debug tree. While a launched debug session runs, the **Program input** field below
 the debug output sends lines to the program (**Enter**) and ends its input (**Ctrl+D**); **P** goes to the field (or to the terminal of a run) and **Esc** leaves it; see
 [program input](code-projects.md#program-input).

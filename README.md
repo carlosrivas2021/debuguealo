@@ -87,6 +87,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `F9` / `Shift+F9` | Toggle a breakpoint / add a condition, logpoint or hit count |
 | `Space` / `Delete` / `A` in **BREAKPOINTS** | Switch the breakpoint off or on / remove it / switch all off or on (**Enter** opens its line) |
 | `F10` / `F11` / `Shift+F11` | Step over / in / out |
+| `Ctrl+F10` | While paused, run to the line under the source cursor |
 | `Enter` on a variable | Change its value while paused |
 | `Space` or `Right` / `Left` on a variable or watch | Expand / collapse its fields |
 | `C` on a variable or watch | Copy its whole value |

@@ -122,6 +122,7 @@ class DebugPilotApp(App):
         Binding("f10", "code_step_over", "Step over"),
         Binding("f11", "code_step_in", "Step in"),
         Binding("shift+f11", "code_step_out", "Step out"),
+        Binding("ctrl+f10", "code_run_to_cursor", "Run to cursor"),
         # Containers only; Code has its own pane order. Text fields keep word movement.
         Binding("ctrl+left", "container_pane(-1)", "Pane ←"),
         Binding("ctrl+right", "container_pane(1)", "Pane →"),
@@ -1596,6 +1597,9 @@ class DebugPilotApp(App):
     def action_code_step_out(self) -> None:
         self.query_one(CodeWorkspace).debug_control("step_out")
 
+    def action_code_run_to_cursor(self) -> None:
+        self.query_one(CodeWorkspace).run_to_cursor()
+
     def action_debugger_unavailable(self) -> None:
         self.notify("Debugger controls are available in the Code area.")
 
@@ -2664,7 +2668,7 @@ class DebugPilotApp(App):
         }:
             return False
         if action in {
-            "debug_code", "code_step_over", "code_step_in", "code_step_out",
+            "debug_code", "code_step_over", "code_step_in", "code_step_out", "code_run_to_cursor",
             "toggle_code_terminal",
         } and (
             not self.is_mounted or not self.query_one(CodeWorkspace).display
