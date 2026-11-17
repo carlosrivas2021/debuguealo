@@ -411,6 +411,12 @@ def _console_placeholder(frame):
     return f'Evaluate · Enter runs in {where}:{frame.get("line", "?")} · ↑↓ history'
 
 
+def _with_run_to(lines, options, line):
+    """The file's breakpoints plus a plain one on the Run to cursor line."""
+    return (tuple(sorted({*lines, line})),
+            {number: option for number, option in options.items() if number != line})
+
+
 @dataclass
 class DebugContext:
     profile: object
@@ -437,8 +443,8 @@ class DebugContext:
     update_lock: object = field(default_factory=asyncio.Lock)
     stopping: bool = False
     close_task: object = None
-    # The file whose breakpoints carry a one-shot Run to cursor line until the next pause.
-    run_to: str | None = None
+    # (file, line) of a one-shot Run to cursor breakpoint, kept until the next pause.
+    run_to: tuple | None = None
 
 
 class CodeDebug(Vertical):
@@ -1057,7 +1063,7 @@ class CodeDebug(Vertical):
             context.pause += 1
             if context.run_to is not None:
                 # Any pause ends Run to cursor: the file gets its own breakpoints back.
-                path, context.run_to = context.run_to, None
+                (path, _line), context.run_to = context.run_to, None
                 self._spawn(context, self._restore_breakpoints(context, generation, path))
             # Controls never wait for inspection, which may be slow or fail.
             self._render_inspection(context)
@@ -1362,6 +1368,11 @@ class CodeDebug(Vertical):
         root = context.profile.root
         if not Path(path).resolve().is_relative_to(Path(root).resolve()):
             return "Run to cursor works in the debugged profile's files."
+        options = self.browser.options_snapshot(root).get(str(path), {})
+        if any(option.hit_condition for option in options.values()):
+            # Sending this file's breakpoints again would restart their hit counts.
+            return ('Run to cursor is not available in a file with hit-count breakpoints: '
+                    'it would restart their counts.')
         self._invalidate(context)
         self._spawn(context, self._run_to(context, context.generation, str(path), line))
         return None
@@ -1373,11 +1384,14 @@ class CodeDebug(Vertical):
                 if not self._current(context, generation):
                     return
                 lines = self.browser.breakpoint_snapshot(root).get(path, ())
-                if line not in lines:
-                    options = self.browser.options_snapshot(root).get(path)
+                options = self.browser.options_snapshot(root).get(path) or {}
+                if line not in lines or line in options:
+                    # A plain stop on the line: its own condition or log message would let
+                    # the program go past it.
+                    context.run_to = (path, line)
+                    lines, options = _with_run_to(lines, options, line)
                     await context.session.set_breakpoints(
-                        path, tuple(sorted({*lines, line})), *((options,) if options else ()))
-                    context.run_to = path
+                        path, lines, *((options,) if options else ()))
             if self._current(context, generation):
                 await context.session.continue_execution()
         except DebugError as error:
@@ -1416,6 +1430,9 @@ class CodeDebug(Vertical):
                 if context.start_task is not None and not context.start_task.done():
                     await asyncio.shield(context.start_task)
                 if self._current(context, generation):
+                    if context.run_to is not None and context.run_to[0] == str(path):
+                        # Editing marks while running to the cursor keeps the target line.
+                        lines, options = _with_run_to(lines, options or {}, context.run_to[1])
                     await context.session.set_breakpoints(
                         str(path), lines, *((options,) if options else ()))
                     if self._current(context, generation) and self.selected is context:
@@ -1426,6 +1443,7 @@ class CodeDebug(Vertical):
 
     async def close_context(self, context):
         if context.close_task is None:
+            context.run_to = None  # A one-shot target never outlives its session.
             context.stopping = True
             context.generation += 1
             context.active = False

@@ -312,8 +312,11 @@ The preview is not an operating-system sandbox; browse trusted local projects.
    **Ctrl+F10** (Run to cursor) runs to the line under the source cursor and pauses there,
    without leaving a breakpoint: the line gets a one-shot breakpoint that is removed at the
    next pause, whatever caused it. A breakpoint met on the way pauses first, as with
-   Continue, and the one-shot line is dropped too. It works in the debugged profile's files,
-   only while paused. On a line without code (a blank line or a comment) the debugger may
+   Continue, and the one-shot line is dropped too. A condition or log message on the cursor's
+   line is set aside until it pauses there, and editing breakpoints on the way keeps the
+   target. It works in the debugged profile's files, only while paused, and not in a file with
+   hit-count breakpoints: setting that file's breakpoints again would restart their counts,
+   so it says so instead of running. On a line without code (a blank line or a comment) the debugger may
    move the stop to the next line with code, or not stop at all. Windows Terminal takes
    **F11** for full screen; use the **In** button there, or unbind F11 in its settings.
 5. **Stop** ends the owned adapter and target tree, including pending startup.
