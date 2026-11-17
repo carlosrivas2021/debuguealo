@@ -60,6 +60,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | Key | Action |
 |---|---|
 | `Ctrl+T` | Switch between **Containers** and **Code** |
+| `?` | List the shortcuts of the area on screen, grouped by task (`Tab` shows the other area, `Esc` closes) |
 | `Ctrl+O` | Edit `launch.json` in the built-in editor (`Ctrl+S` saves, `Esc` closes) |
 | `/` | Filter the list: projects and containers, or Code profiles (`Enter` keeps it, `Esc` clears it) |
 | `Ctrl+Left` / `Ctrl+Right` | Move focus between panes (`Alt+Left` / `Alt+Right` too, for macOS) |
@@ -87,6 +88,7 @@ Debugging Go also needs [Delve](docs/go-debugging.md):
 | `F9` / `Shift+F9` | Toggle a breakpoint / add a condition, logpoint or hit count |
 | `Space` / `Delete` / `A` in **BREAKPOINTS** | Switch the breakpoint off or on / remove it / switch all off or on (**Enter** opens its line) |
 | `F10` / `F11` / `Shift+F11` | Step over / in / out |
+| `Ctrl+F10` | While paused, run to the line under the source cursor |
 | `Enter` on a variable | Change its value while paused |
 | `Space` or `Right` / `Left` on a variable or watch | Expand / collapse its fields |
 | `C` on a variable or watch | Copy its whole value |

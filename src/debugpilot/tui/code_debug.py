@@ -417,6 +417,12 @@ def _console_placeholder(frame):
     return f'Evaluate · Enter runs in {where}:{frame.get("line", "?")} · ↑↓ history'
 
 
+def _with_run_to(lines, options, line):
+    """The file's breakpoints plus a plain one on the Run to cursor line."""
+    return (tuple(sorted({*lines, line})),
+            {number: option for number, option in options.items() if number != line})
+
+
 @dataclass
 class DebugContext:
     profile: object
@@ -443,6 +449,8 @@ class DebugContext:
     update_lock: object = field(default_factory=asyncio.Lock)
     stopping: bool = False
     close_task: object = None
+    # (file, line) of a one-shot Run to cursor breakpoint, kept until the next pause.
+    run_to: tuple | None = None
 
 
 class CodeDebug(Vertical):
@@ -1064,6 +1072,10 @@ class CodeDebug(Vertical):
                     self.finished(context.unexpected_disconnect)
         elif name == 'stopped':
             context.pause += 1
+            if context.run_to is not None:
+                # Any pause ends Run to cursor: the file gets its own breakpoints back.
+                (path, _line), context.run_to = context.run_to, None
+                self._spawn(context, self._restore_breakpoints(context, generation, path))
             # Controls never wait for inspection, which may be slow or fail.
             self._render_inspection(context)
             exception = body.get('reason') == 'exception'
@@ -1355,6 +1367,65 @@ class CodeDebug(Vertical):
             if self._current(context, generation):
                 self.app.notify(str(error), severity='warning')
 
+    def run_to_cursor(self, path, line):
+        """Continue to a source line through a breakpoint that lasts until the next pause.
+
+        Returns why it cannot run, or None. A breakpoint met first stops there instead.
+        """
+        context = self.selected
+        if (context is None or not context.active or context.session is None
+                or context.session.state != 'stopped'):
+            return 'Run to cursor works while the program is paused.'
+        root = context.profile.root
+        if not Path(path).resolve().is_relative_to(Path(root).resolve()):
+            return "Run to cursor works in the debugged profile's files."
+        options = self.browser.options_snapshot(root).get(str(path), {})
+        if any(option.hit_condition for option in options.values()):
+            # Sending this file's breakpoints again would restart their hit counts.
+            return ('Run to cursor is not available in a file with hit-count breakpoints: '
+                    'it would restart their counts.')
+        self._invalidate(context)
+        self._spawn(context, self._run_to(context, context.generation, str(path), line))
+        return None
+
+    async def _run_to(self, context, generation, path, line):
+        root = context.profile.root
+        try:
+            async with context.update_lock:
+                if not self._current(context, generation):
+                    return
+                lines = self.browser.breakpoint_snapshot(root).get(path, ())
+                options = self.browser.options_snapshot(root).get(path) or {}
+                if line not in lines or line in options:
+                    # A plain stop on the line: its own condition or log message would let
+                    # the program go past it.
+                    context.run_to = (path, line)
+                    lines, options = _with_run_to(lines, options, line)
+                    await context.session.set_breakpoints(
+                        path, lines, *((options,) if options else ()))
+            if self._current(context, generation):
+                await context.session.continue_execution()
+        except DebugError as error:
+            if self._current(context, generation):
+                self.app.notify(str(error), severity='warning')
+
+    async def _restore_breakpoints(self, context, generation, path):
+        root = context.profile.root
+        async with context.update_lock:
+            if not self._current(context, generation):
+                return
+            lines = self.browser.breakpoint_snapshot(root).get(path, ())
+            options = self.browser.options_snapshot(root).get(path)
+            try:
+                await context.session.set_breakpoints(
+                    path, lines, *((options,) if options else ()))
+            except DebugError as error:
+                if self._current(context, generation):
+                    self.app.notify(str(error), severity='warning')
+                return
+            if self._current(context, generation) and self.selected is context:
+                self._verification(context)
+
     def breakpoints_changed(self, event):
         for context in self.contexts.values():
             if context.active and event.root == context.profile.root.resolve():
@@ -1370,6 +1441,9 @@ class CodeDebug(Vertical):
                 if context.start_task is not None and not context.start_task.done():
                     await asyncio.shield(context.start_task)
                 if self._current(context, generation):
+                    if context.run_to is not None and context.run_to[0] == str(path):
+                        # Editing marks while running to the cursor keeps the target line.
+                        lines, options = _with_run_to(lines, options or {}, context.run_to[1])
                     await context.session.set_breakpoints(
                         str(path), lines, *((options,) if options else ()))
                     if self._current(context, generation) and self.selected is context:
@@ -1380,6 +1454,7 @@ class CodeDebug(Vertical):
 
     async def close_context(self, context):
         if context.close_task is None:
+            context.run_to = None  # A one-shot target never outlives its session.
             context.stopping = True
             context.generation += 1
             context.active = False

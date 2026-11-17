@@ -9,7 +9,7 @@ from pathlib import Path
 
 from rich.text import Text
 from textual import events, on
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import var
@@ -39,6 +39,7 @@ from debugpilot.tui.execution_console import ExecutionConsole
 from debugpilot.tui.host_terminal import HostTerminal
 from debugpilot.tui.list_filter import ListFilter
 from debugpilot.tui.log_viewer import LogViewer
+from debugpilot.tui.shortcuts import ShortcutsScreen
 from debugpilot.tui.terminal_view import TerminalPane
 from debugpilot.tui.theme import DEBUGEALO_THEME, DEFAULT_THEME, theme_style
 
@@ -98,6 +99,7 @@ class DebugPilotApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+t", "toggle_area", "Containers/Code"),
+        Binding("question_mark", "show_shortcuts", "Keys"),
         Binding("ctrl+l", "focus_logs", "Logs"),
         Binding("ctrl+r", "retry_logs", "Retry logs"),
         Binding("d", "show_container_details", "Details"),
@@ -122,6 +124,7 @@ class DebugPilotApp(App):
         Binding("f10", "code_step_over", "Step over"),
         Binding("f11", "code_step_in", "Step in"),
         Binding("shift+f11", "code_step_out", "Step out"),
+        Binding("ctrl+f10", "code_run_to_cursor", "Run to cursor"),
         # Containers only; Code has its own pane order. Text fields keep word movement.
         Binding("ctrl+left", "container_pane(-1)", "Pane ←"),
         Binding("ctrl+right", "container_pane(1)", "Pane →"),
@@ -178,6 +181,8 @@ class DebugPilotApp(App):
         self._runtime_target: str | None = None
         self._stats_previous: ContainerStats | None = None
         self._stats_wake = asyncio.Event()
+        # Bumped whenever profiles are applied, so a slower background read never wins.
+        self._launch_revision = 0
         self._stats_task: asyncio.Task | None = None
         self._update_task: asyncio.Task | None = None
         self._compose_projects: dict[str, ComposeProject] = {}
@@ -280,6 +285,22 @@ class DebugPilotApp(App):
                 self._theme_store.save(theme.name)
         except ConfigurationError as error:
             self.notify(str(error), severity="warning")
+
+    def get_system_commands(self, screen):
+        """Ctrl+P's Keys opens the grouped shortcuts, not Textual's raw list of bindings."""
+        for command in super().get_system_commands(screen):
+            if command.title == "Keys":
+                yield SystemCommand(
+                    "Keys", "List the shortcuts of the area on screen, grouped by task",
+                    self.action_show_shortcuts,
+                )
+            else:
+                yield command
+
+    def action_show_shortcuts(self) -> None:
+        """? lists the keys of the area on screen, grouped by task."""
+        area = "code" if self.query_one(CodeWorkspace).display else "containers"
+        self.push_screen(ShortcutsScreen(area))
 
     def action_toggle_area(self) -> None:
         code = self.query_one(CodeWorkspace).display
@@ -498,7 +519,7 @@ class DebugPilotApp(App):
         while not self._closing:
             try:
                 inventory = await self.engine.list_containers()
-                self._update_launch_profiles(inventory)
+                await self._refresh_launch_profiles(inventory)
                 active = sum(item.state in ACTIVE_STATES for item in inventory)
                 self.query_one("#docker-state", Static).update(
                     f"debugealo  ·  Docker: connected  ·  {active} active / {len(inventory)} total"
@@ -506,13 +527,13 @@ class DebugPilotApp(App):
                 self._show_inventory(inventory)
             except DebugPilotError as error:
                 self.query_one("#docker-state", Static).update(f"Docker unavailable: {error}")
-                self._update_launch_profiles()
+                await self._refresh_launch_profiles(None)
                 self._show_inventory([])
             except Exception:
                 self.query_one("#docker-state", Static).update(
                     "Docker unavailable: unable to read inventory. Retrying…"
                 )
-                self._update_launch_profiles()
+                await self._refresh_launch_profiles(None)
                 self._show_inventory([])
             await asyncio.sleep(self.refresh_interval)
 
@@ -670,7 +691,41 @@ class DebugPilotApp(App):
         self.query_one("#profile-recreate", Button).disabled = not actionable
         self.query_one("#profile-build-recreate", Button).disabled = not actionable
 
-    def _update_launch_profiles(self, inventory: list[ContainerInfo] | None = None) -> None:
+    def _read_launch_profiles(self, inventory: list[ContainerInfo] | None) -> list[LaunchProfile]:
+        """The disk part of a profile refresh: reads launch.json and resolves every path.
+
+        Profiles often live on slow disks (a Windows drive seen from WSL), so the periodic
+        refresh runs this in a thread; register() never writes, it only swaps a list.
+        """
+        if inventory is not None:
+            self._launch_store.register(inventory)
+        return [profile for profile in self._launch_store.profiles() if not profile.dynamic]
+
+    async def _refresh_launch_profiles(self, inventory: list[ContainerInfo] | None) -> None:
+        """Read profiles off the UI thread, then apply them unless something newer did."""
+        if self._launch_store is None:
+            self._update_launch_profiles(inventory)
+            return
+        revision = self._launch_revision
+        try:
+            profiles = await asyncio.to_thread(self._read_launch_profiles, inventory)
+        except (ConfigurationError, OSError) as error:
+            failure = error
+
+            def loaded():
+                raise failure
+        else:
+            def loaded():
+                return profiles
+        if revision != self._launch_revision or self._closing:
+            return  # An edit or reload applied newer profiles meanwhile; the next pass reads.
+        self._update_launch_profiles(inventory, loaded)
+
+    def _update_launch_profiles(
+        self, inventory: list[ContainerInfo] | None = None, loaded=None
+    ) -> None:
+        """Apply launch profiles; loaded() returns them already read, else they are read here."""
+        self._launch_revision += 1
         if self._launch_store is None:
             self._launch_loaded = True
             self.query_one("#launch-state", Static).update(
@@ -682,9 +737,8 @@ class DebugPilotApp(App):
             self._render_launch_profiles()
             return
         try:
-            if inventory is not None:
-                self._launch_store.register(inventory)
-            profiles = [profile for profile in self._launch_store.profiles() if not profile.dynamic]
+            profiles = (loaded() if loaded is not None
+                        else self._read_launch_profiles(inventory))
             self._launch_loaded = True
             previous_key = (
                 self._selection_key
@@ -1580,6 +1634,9 @@ class DebugPilotApp(App):
 
     def action_code_step_out(self) -> None:
         self.query_one(CodeWorkspace).debug_control("step_out")
+
+    def action_code_run_to_cursor(self) -> None:
+        self.query_one(CodeWorkspace).run_to_cursor()
 
     def action_debugger_unavailable(self) -> None:
         self.notify("Debugger controls are available in the Code area.")
@@ -2612,6 +2669,8 @@ class DebugPilotApp(App):
             self.query_one(self._selection_table_selector(), DataTable).focus()
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "show_shortcuts" and isinstance(self.screen, ModalScreen):
+            return False  # Never stacked on a dialog (or on itself).
         if action == "clear_containers_filter":
             focused = self.focused
             return bool(
@@ -2647,7 +2706,7 @@ class DebugPilotApp(App):
         }:
             return False
         if action in {
-            "debug_code", "code_step_over", "code_step_in", "code_step_out",
+            "debug_code", "code_step_over", "code_step_in", "code_step_out", "code_run_to_cursor",
             "toggle_code_terminal",
         } and (
             not self.is_mounted or not self.query_one(CodeWorkspace).display
