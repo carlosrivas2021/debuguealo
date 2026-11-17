@@ -166,6 +166,8 @@ class DebugPilotApp(App):
         self._runtime_target: str | None = None
         self._stats_previous: ContainerStats | None = None
         self._stats_wake = asyncio.Event()
+        # Bumped whenever profiles are applied, so a slower background read never wins.
+        self._launch_revision = 0
         self._stats_task: asyncio.Task | None = None
         self._update_task: asyncio.Task | None = None
         self._compose_projects: dict[str, ComposeProject] = {}
@@ -460,7 +462,7 @@ class DebugPilotApp(App):
         while not self._closing:
             try:
                 inventory = await self.engine.list_containers()
-                self._update_launch_profiles(inventory)
+                await self._refresh_launch_profiles(inventory)
                 active = sum(item.state in ACTIVE_STATES for item in inventory)
                 self.query_one("#docker-state", Static).update(
                     f"debugealo  ·  Docker: connected  ·  {active} active / {len(inventory)} total"
@@ -468,13 +470,13 @@ class DebugPilotApp(App):
                 self._show_inventory(inventory)
             except DebugPilotError as error:
                 self.query_one("#docker-state", Static).update(f"Docker unavailable: {error}")
-                self._update_launch_profiles()
+                await self._refresh_launch_profiles(None)
                 self._show_inventory([])
             except Exception:
                 self.query_one("#docker-state", Static).update(
                     "Docker unavailable: unable to read inventory. Retrying…"
                 )
-                self._update_launch_profiles()
+                await self._refresh_launch_profiles(None)
                 self._show_inventory([])
             await asyncio.sleep(self.refresh_interval)
 
@@ -632,7 +634,41 @@ class DebugPilotApp(App):
         self.query_one("#profile-recreate", Button).disabled = not actionable
         self.query_one("#profile-build-recreate", Button).disabled = not actionable
 
-    def _update_launch_profiles(self, inventory: list[ContainerInfo] | None = None) -> None:
+    def _read_launch_profiles(self, inventory: list[ContainerInfo] | None) -> list[LaunchProfile]:
+        """The disk part of a profile refresh: reads launch.json and resolves every path.
+
+        Profiles often live on slow disks (a Windows drive seen from WSL), so the periodic
+        refresh runs this in a thread; register() never writes, it only swaps a list.
+        """
+        if inventory is not None:
+            self._launch_store.register(inventory)
+        return [profile for profile in self._launch_store.profiles() if not profile.dynamic]
+
+    async def _refresh_launch_profiles(self, inventory: list[ContainerInfo] | None) -> None:
+        """Read profiles off the UI thread, then apply them unless something newer did."""
+        if self._launch_store is None:
+            self._update_launch_profiles(inventory)
+            return
+        revision = self._launch_revision
+        try:
+            profiles = await asyncio.to_thread(self._read_launch_profiles, inventory)
+        except (ConfigurationError, OSError) as error:
+            failure = error
+
+            def loaded():
+                raise failure
+        else:
+            def loaded():
+                return profiles
+        if revision != self._launch_revision or self._closing:
+            return  # An edit or reload applied newer profiles meanwhile; the next pass reads.
+        self._update_launch_profiles(inventory, loaded)
+
+    def _update_launch_profiles(
+        self, inventory: list[ContainerInfo] | None = None, loaded=None
+    ) -> None:
+        """Apply launch profiles; loaded() returns them already read, else they are read here."""
+        self._launch_revision += 1
         if self._launch_store is None:
             self._launch_loaded = True
             self.query_one("#launch-state", Static).update(
@@ -644,9 +680,8 @@ class DebugPilotApp(App):
             self._render_launch_profiles()
             return
         try:
-            if inventory is not None:
-                self._launch_store.register(inventory)
-            profiles = [profile for profile in self._launch_store.profiles() if not profile.dynamic]
+            profiles = (loaded() if loaded is not None
+                        else self._read_launch_profiles(inventory))
             self._launch_loaded = True
             previous_key = (
                 self._selection_key
