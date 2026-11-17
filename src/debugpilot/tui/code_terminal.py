@@ -10,6 +10,7 @@ from debugpilot.terminal.code_session import CodeSession
 from debugpilot.tui.code_run_context import CodeRunContext
 from debugpilot.tui.terminal_view import (
     MAX_FEED_CHARS,
+    ScrollbackScreen,
     TerminalContext,
     TerminalPane,
     resize_screen,
@@ -46,7 +47,7 @@ class CodeTerminal(TerminalPane):
             self.select_profile(profile)
             return context, False
         rows, columns = self._screen_size()
-        screen = pyte.Screen(columns=columns, lines=rows)
+        screen = ScrollbackScreen(columns=columns, lines=rows)
         context = CodeRunContext(
             key=profile.name,
             profile=profile,
@@ -72,8 +73,9 @@ class CodeTerminal(TerminalPane):
             self._session_closed = True
             self._terminal_context = None
             rows, columns = self._screen_size()
-            self._screen = pyte.Screen(columns=columns, lines=rows)
+            self._screen = ScrollbackScreen(columns=columns, lines=rows)
             self._stream = pyte.Stream(self._screen)
+            self._scroll = 0
             self._update_title()
             self.refresh()
             return None
@@ -83,6 +85,8 @@ class CodeTerminal(TerminalPane):
         return context
 
     def _bind_context(self, context):
+        # Each profile's terminal opens at its latest output.
+        self._scroll = 0
         self._session = context.session
         self._session_closed = not context.active
         self._terminal_context = TerminalContext("code", context.profile.root)

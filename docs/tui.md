@@ -44,6 +44,13 @@ the dashboard. Focus returns to the project tree; press `O` there to restore the
 Hiding does not clear output or close an active session. Explicitly opening a terminal
 with `H` also reveals the console. `O` does not hide the right-hand container shell.
 
+Terminals (the container shell, Host Bash, and Code's run terminal) keep the last 2000
+lines that scrolled off the top. Scroll back with the mouse wheel or **Shift+PgUp** /
+**Shift+PgDn**; the top row then shows how many lines back the view is. New output keeps
+the view on the same text, and any key typed into the program returns to the live screen.
+Full-screen programs that scroll a region under a fixed header (editors, `top`) do not
+add to it. Reading back also works after the program ended.
+
 ## Containers / Code
 
 Use the top **Containers** and **Code** buttons, or `Ctrl+T`, to switch without
