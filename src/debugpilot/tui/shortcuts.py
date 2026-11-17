@@ -83,6 +83,7 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
             Shortcut("F10", "Step over", ("f10",)),
             Shortcut("F11", "Step in", ("f11",)),
             Shortcut("Shift+F11", "Step out", ("shift+f11",)),
+            Shortcut("Ctrl+F10", "Run to the line under the source cursor", ("ctrl+f10",)),
         )),
         ("Breakpoints", (
             Shortcut("F9", "Toggle a breakpoint at the source cursor", ("f9",)),
