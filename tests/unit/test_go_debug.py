@@ -382,3 +382,45 @@ def test_delve_build_notice_is_console_output_not_the_programs():
     session._event({'event': 'output', 'body': {'category': 'stdout',
                                                 'output': 'Building houses\n'}})
     assert output == [('console', 'Building /work/main.go\n'), ('stdout', 'Building houses\n')]
+
+
+async def test_build_folder_cleanup_waits_for_windows_to_release_the_program(monkeypatch):
+    # Windows keeps the built .exe locked a moment after Delve and the program exit.
+    from debugpilot.debugger import go
+
+    attempts = []
+
+    def locked_twice(build):
+        attempts.append(build)
+        return len(attempts) > 2
+
+    monkeypatch.setattr(go, '_remove_build_dir', locked_twice)
+    monkeypatch.setattr(go, 'BUILD_CLEANUP_DELAY', 0)
+    session = GoDebugSession()
+    session._build_dir = object()
+    await session._cleanup()
+    assert len(attempts) == 3 and session._build_dir is None
+
+
+async def test_build_folder_left_locked_never_fails_the_close(monkeypatch):
+    from debugpilot.debugger import go
+
+    monkeypatch.setattr(go, '_remove_build_dir', lambda build: False)
+    monkeypatch.setattr(go, 'BUILD_CLEANUP_DELAY', 0)
+    session = GoDebugSession()
+    session._build_dir = object()
+    await session._cleanup()  # Left to the temporary folder; no exception.
+    assert session._build_dir is None
+
+
+async def test_windows_stack_paths_from_delve_use_the_native_form(monkeypatch):
+    from debugpilot.debugger import go
+
+    async def frames(self):
+        return [{'source': {'path': 'C:/work/app/main.go'}}, {'source': {}}]
+
+    monkeypatch.setattr(go.PythonDebugSession, 'stack', frames)
+    monkeypatch.setattr(go.os, 'name', 'nt')
+    stack = await GoDebugSession().stack()
+    assert stack[0]['source']['path'] == 'C:\\work\\app\\main.go'
+    assert stack[1]['source'] == {}
