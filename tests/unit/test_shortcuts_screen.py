@@ -39,6 +39,7 @@ def test_each_area_lists_its_groups_then_the_global_keys():
     assert "Ctrl+L" in containers and "Shift+F5" not in containers
     assert "Shift+F5" in code and "Ctrl+L" not in code
     assert "Breakpoints" in code and "Ctrl+T" in code
+    assert "Ctrl+F10" in code and "Ctrl+F10" not in containers  # Run to cursor.
 
 
 def _title(app):
