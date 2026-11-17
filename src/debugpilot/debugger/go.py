@@ -64,6 +64,16 @@ class GoDebugSession(PythonDebugSession):
         super().__init__(on_event, on_output, timeout=timeout)
         self._build_dir = None
 
+    def _event(self, message):
+        body = message.get('body') or {}
+        if (message.get('event') == 'output' and self.state == 'building'
+                and body.get('category') == 'stdout'
+                and body.get('output', '').startswith('Building ')):
+            # Delve 1.27+ reports "Building <program>" as stdout before compiling; it is
+            # Delve's notice, not the program's output.
+            message = {**message, 'body': {**body, 'category': 'console'}}
+        super()._event(message)
+
     async def start(self, profile, breakpoints, options=None):
         if self.state not in {'idle', 'closed'}:
             raise DebugError('A debug session is already active; Stop before starting again.')

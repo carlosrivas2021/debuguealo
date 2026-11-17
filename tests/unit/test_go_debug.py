@@ -368,3 +368,17 @@ while True:
     assert loop.time() - started < 10
     assert session.state == 'closed'
     await session.close()
+
+
+def test_delve_build_notice_is_console_output_not_the_programs():
+    # Delve 1.27+ sends "Building <program>" as stdout while it compiles.
+    output = []
+    session = GoDebugSession(on_output=lambda category, text: output.append((category, text)))
+    session.state = 'building'
+    session._event({'event': 'output', 'body': {'category': 'stdout',
+                                                'output': 'Building /work/main.go\n'}})
+    session.state = 'running'
+    # Once running, a program printing the same words is its own output.
+    session._event({'event': 'output', 'body': {'category': 'stdout',
+                                                'output': 'Building houses\n'}})
+    assert output == [('console', 'Building /work/main.go\n'), ('stdout', 'Building houses\n')]

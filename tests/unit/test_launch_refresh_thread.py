@@ -22,9 +22,12 @@ async def test_periodic_profile_reads_run_outside_the_ui_thread(monkeypatch):
     monkeypatch.setattr(LaunchProfileStore, "profiles", recorded)
     app = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), refresh_interval=0.05)
     async with app.run_test(size=(120, 40)) as pilot:
-        await until(pilot, lambda: len(readers) >= 3)
+        # Startup reads once on the UI thread on purpose; count the periodic reads after it.
+        await until(pilot, lambda: sum(reader is not ui_thread for reader in readers) >= 3)
+        first_periodic = next(index for index, reader in enumerate(readers)
+                              if reader is not ui_thread)
         # Slow disks (a Windows drive from WSL) must never freeze moving through the list.
-        assert all(reader is not ui_thread for reader in readers[-3:])
+        assert all(reader is not ui_thread for reader in readers[first_periodic:])
         assert app._launch_loaded
 
 
