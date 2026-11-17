@@ -1,5 +1,7 @@
 """Shift+A edits the AWS config and credentials files side by side in Containers."""
 
+import os
+
 import pytest
 from test_tui_grouping import Docker, until
 from textual.widgets import TextArea
@@ -38,7 +40,7 @@ def _app(tmp_path):
 
 async def test_shift_a_opens_config_and_credentials_side_by_side(aws_home, tmp_path):
     aws_home.mkdir(parents=True)
-    (aws_home / "config").write_text("[default]\nregion = us-east-1\n", encoding="utf-8")
+    (aws_home / "config").write_bytes(b"[default]\nregion = us-east-1\n")
     app = _app(tmp_path)
     async with app.run_test(size=(140, 40)) as pilot:
         await until(pilot, lambda: app._inventory_loaded)
@@ -59,7 +61,8 @@ async def test_shift_a_opens_config_and_credentials_side_by_side(aws_home, tmp_p
         await until(pilot, lambda: not isinstance(app.screen, FileEditorScreen))
         credentials = aws_home / "credentials"
         assert credentials.read_text(encoding="utf-8") == "[default]\naws_access_key_id = X\n"
-        assert credentials.stat().st_mode & 0o777 == 0o600
+        if os.name != "nt":  # Windows has no POSIX permission bits.
+            assert credentials.stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.parametrize("focus", ["#code-projects", "#source-text"])

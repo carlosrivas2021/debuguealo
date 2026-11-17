@@ -24,7 +24,8 @@ def _messages(app):
 
 def _aws_files(tmp_path):
     config, credentials = tmp_path / "config", tmp_path / "credentials"
-    config.write_text("[default]\nregion = us-east-1\n", encoding="utf-8")
+    # Bytes, so the file has the same line endings on Windows.
+    config.write_bytes(b"[default]\nregion = us-east-1\n")
     return [
         EditableFile("AWS config", load_text(config)),
         EditableFile("AWS credentials", load_text(credentials)),
