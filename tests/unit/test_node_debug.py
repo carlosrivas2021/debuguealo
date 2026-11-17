@@ -234,3 +234,29 @@ async def test_explicit_npm_target_is_not_npm_cli(tmp_path):
         assert profile.command == ('npm', 'run', 'dev')
     finally:
         await session.close()
+
+
+def test_windows_breakpoints_match_typescript_named_by_path(monkeypatch):
+    # Node on Windows names .ts scripts by their path, and .js scripts by file:// URL.
+    import nturl2path
+    import re
+
+    from debugpilot.debugger import node
+
+    monkeypatch.setattr(node.os, 'name', 'nt')
+    # Windows' own file:// conversion, whatever system runs the test.
+    monkeypatch.setattr(node, 'url2pathname', nturl2path.url2pathname)
+    url = 'file:///C:/work/app/main.ts'
+    fields = NodeDebugSession()._breakpoint_url(url)
+    pattern = re.compile(fields['urlRegex'])
+    assert pattern.match(url) and pattern.match('C:\\work\\app\\main.ts')
+    assert not pattern.match('C:\\work\\app\\main.tsx')
+    assert node._source('C:\\work\\app\\main.ts') is not None
+
+
+def test_other_systems_keep_the_exact_breakpoint_url(monkeypatch):
+    from debugpilot.debugger import node
+
+    monkeypatch.setattr(node.os, 'name', 'posix')
+    assert NodeDebugSession()._breakpoint_url('file:///work/main.ts') == {
+        'url': 'file:///work/main.ts'}

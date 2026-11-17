@@ -65,6 +65,7 @@ async def test_stats_reuse_the_persistent_inventory_worker(tmp_path, spawns):  #
         await service.close()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="uses a local Unix socket endpoint")
 async def test_stats_rejects_invalid_container_names(tmp_path):
     service = DockerService(unreachable(tmp_path))
     with pytest.raises(ValueError, match="Invalid container"):

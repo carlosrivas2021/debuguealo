@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +14,7 @@ from debugpilot.storage.code_projects import CodeProject
 from debugpilot.terminal.session import TerminalSession
 
 PROGRAMS = {
-    'python': ('main.py', ('python3', '-u', 'main.py'),
+    'python': ('main.py', (sys.executable, '-u', 'main.py'),
                'name = input("name? ")\nprint(f"HELLO:{name}", flush=True)\n'
                'import sys\nrest = sys.stdin.read()\nprint(f"REST:{rest.strip()}", flush=True)\n'),
     'go': ('main.go', ('go', 'run', 'main.go'),
@@ -167,7 +168,7 @@ async def test_python_shows_its_terminal_prompts_and_echo(tmp_path):
     output = []
     session = PythonDebugSession(on_output=lambda category, chunk: output.append(chunk))
     try:
-        await session.start(CodeProject('python', tmp_path, ('python3', 'main.py')), {})
+        await session.start(CodeProject('python', tmp_path, (sys.executable, 'main.py')), {})
         await wait_running(session)
         await output_contains(output, 'name? ')
         session.send_input('ana')

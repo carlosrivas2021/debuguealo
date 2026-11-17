@@ -1,6 +1,7 @@
 """Conditional breakpoints and logpoints through each real debug adapter."""
 
 import asyncio
+import sys
 
 import pytest
 
@@ -10,7 +11,7 @@ from debugpilot.storage.code_projects import CodeProject
 
 # Each program sums 0..4; the loop body is on LOOP_LINE and prints TOTAL:10 at the end.
 PROGRAMS = {
-    'python': ('main.py', ('python3', '-u', 'main.py'), 3,
+    'python': ('main.py', (sys.executable, '-u', 'main.py'), 3,
                'total = 0\nfor i in range(5):\n    total += i\n'
                'print(f"TOTAL:{total}", flush=True)\n'),
     'go': ('main.go', ('go', 'run', 'main.go'), 8,
@@ -179,7 +180,7 @@ class RecordingClient:
 
 async def test_dap_payload_without_options_is_unchanged(tmp_path):
     session = PythonDebugSession()
-    session.profile = CodeProject('payload', tmp_path, ('python3', 'main.py'))
+    session.profile = CodeProject('payload', tmp_path, (sys.executable, 'main.py'))
     session._client = RecordingClient()
     await session.set_breakpoints(str(tmp_path / 'main.py'), (4, 2))
     await session.set_breakpoints(str(tmp_path / 'main.py'), (2, 4, 6), {

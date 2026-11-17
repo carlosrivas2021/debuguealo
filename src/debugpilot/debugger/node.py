@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import itertools
 import json
+import os
 import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -142,10 +143,16 @@ def _node_argv(profile, command, environment=None):
 
 
 def _source(url):
+    if os.name == 'nt' and _WINDOWS_PATH.match(url):
+        # Node on Windows names TypeScript scripts by their path, not a file:// URL.
+        return str(Path(url))
     parsed = urlsplit(url)
     if parsed.scheme != 'file' or parsed.netloc not in {'', 'localhost'}:
         return None
     return str(Path(url2pathname(unquote(parsed.path))))
+
+
+_WINDOWS_PATH = re.compile(r'[A-Za-z]:\\')
 
 
 def _call_argument(result):
@@ -383,6 +390,17 @@ class NodeDebugSession(PythonDebugSession):
         self._emit({'event': 'breakpoints', 'body': {'path': path}})
         return entries
 
+    def _breakpoint_url(self, url):
+        """How to name a script when setting a breakpoint in it.
+
+        On Windows, Node names a TypeScript script by its path (C:\\...) rather than its
+        file:// URL, so either form matches.
+        """
+        local = _source(url) if os.name == 'nt' else None
+        if local is None:
+            return {'url': url}
+        return {'urlRegex': f'^(?:{re.escape(url)}|{re.escape(local)})$'}
+
     def _script_url(self, path):
         """The Inspector URL of a local script."""
         return Path(path).resolve().as_uri()
@@ -433,7 +451,7 @@ class NodeDebugSession(PythonDebugSession):
                 entries.append({'id': None, 'verified': False, 'line': line})
                 continue
             url, generated_line, column = target
-            request = {'url': url, 'lineNumber': generated_line}
+            request = {**self._breakpoint_url(url), 'lineNumber': generated_line}
             if column is not None:
                 request['columnNumber'] = column
             condition = cdp_condition(line_options.get(line), hit_key(key, line))

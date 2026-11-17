@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import sys
 
 import pytest
@@ -183,12 +184,19 @@ def test_debug_finds_the_interpreter_on_the_profile_path(monkeypatch, tmp_path, 
     tools = tmp_path / 'tools'
     tools.mkdir()
     real = sys.executable if language == 'python' else shutil.which('node')
-    name = 'python3' if language == 'python' else 'node'
-    (tools / name).symlink_to(real)
+    command = 'python3' if language == 'python' else 'node'
+    if os.name == 'nt':
+        # Symlinks need extra privileges on Windows; only the name on PATH matters here.
+        name = f'{command}.exe'
+        shutil.copyfile(real, tools / name)
+    else:
+        name = command
+        (tools / name).symlink_to(real)
     profile, _, _ = program(tmp_path, language)
-    profile = replace(profile, env=(('PATH', str(tools)),))
+    profile = replace(profile, command=(command, *profile.command[1:]),
+                      env=(('PATH', str(tools)),))
     if language == 'python':
         interpreter, _ = _target(profile)
     else:
         interpreter = _node_argv(profile, profile.command)[0]
-    assert interpreter == str(tools / name)
+    assert os.path.normcase(interpreter) == os.path.normcase(str(tools / name))
