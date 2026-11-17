@@ -1,0 +1,103 @@
+"""The debugealo theme is the default, and the theme picked in the app is remembered."""
+
+import json
+
+import pytest
+from test_tui_grouping import Docker, until
+
+from debugpilot.core.engine import DebugPilotEngine
+from debugpilot.core.exceptions import ConfigurationError
+from debugpilot.storage.config import Settings
+from debugpilot.storage.ui_theme import ThemeStore
+from debugpilot.tui.app import DebugPilotApp
+
+
+def make_app():
+    return DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()))
+
+
+def test_store_round_trip_and_absence(tmp_path):
+    store = ThemeStore(tmp_path / "theme.json")
+    assert store.load() is None and not store.path.exists()
+    store.save("tokyo-night")
+    assert store.load() == "tokyo-night"
+    assert json.loads(store.path.read_text()) == {"version": 1, "theme": "tokyo-night"}
+
+
+@pytest.mark.parametrize("content", [
+    "not json", '{"version": 2, "theme": "nord"}', '{"version": 1, "theme": "Bad Name"}',
+    '{"version": 1, "theme": "nord", "extra": 1}',
+])
+def test_invalid_store_is_reported_and_never_replaced(tmp_path, content):
+    store = ThemeStore(tmp_path / "theme.json")
+    store.path.write_text(content)
+    with pytest.raises(ConfigurationError, match="Invalid saved theme"):
+        store.load()
+    with pytest.raises(ConfigurationError, match="Invalid saved theme"):
+        store.save("nord")
+    assert store.path.read_text() == content
+
+
+def test_store_default_location_is_beside_the_settings(tmp_path):
+    assert ThemeStore().path == tmp_path / ".debugpilot" / "theme.json"
+
+
+async def test_debugealo_is_the_default_and_nothing_is_written(tmp_path):
+    app = make_app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.theme == "debugealo"
+        assert app.screen.styles.background.hex == "#080B0E"
+    assert not ThemeStore().path.exists()
+
+
+async def test_a_picked_theme_is_remembered_for_the_next_session(tmp_path):
+    app = make_app()
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.theme = "nord"
+        await until(pilot, lambda: ThemeStore().path.exists())
+    assert ThemeStore().load() == "nord"
+    restarted = make_app()
+    async with restarted.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert restarted.theme == "nord"
+
+
+@pytest.mark.parametrize("content,message", [
+    ('{"version": 1, "theme": "no-such-theme"}', "Unknown saved theme 'no-such-theme'"),
+    ("not json", "Invalid saved theme"),
+])
+async def test_a_bad_saved_theme_falls_back_with_a_warning(monkeypatch, content, message):
+    store = ThemeStore()
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    store.path.write_text(content)
+    notes = []
+    app = make_app()
+    monkeypatch.setattr(app, "notify", lambda text, **_: notes.append(text))
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert app.theme == "debugealo"
+        assert any(message in note for note in notes)
+    assert store.path.read_text() == content
+
+
+async def test_every_theme_loads_and_recolors_the_app(monkeypatch, tmp_path):
+    from test_code_debug_ui import debug_app
+
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 50)) as pilot:
+        await pilot.click("#area-code")
+        await pilot.pause()
+        sidebar = app.query_one("#source-sidebar")
+        title = app.query_one("#source-files-title")
+        dark = sidebar.styles.background.hex, title.styles.color.hex
+        assert dark == ("#101518", "#A9C2CC")  # The debugealo palette, as before.
+        for name in sorted(app.available_themes):
+            app.theme = name  # A theme without some variable would fail to parse here.
+            await pilot.pause()
+            variables = app.get_css_variables()
+            assert sidebar.styles.background.hex.upper() == variables["surface"].upper(), name
+        app.theme = "textual-light"
+        await pilot.pause()
+        assert (sidebar.styles.background.hex, title.styles.color.hex) != dark
+        assert app.screen.styles.background.hex == app.get_css_variables()["background"].upper()

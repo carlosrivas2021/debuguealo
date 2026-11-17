@@ -1,18 +1,18 @@
-Screen { background: #080b0e; color: #d6d9dc; }
+Screen { background: $background; color: $foreground; }
 /* The breakpoint panel keeps the source visible behind it. */
 BreakpointDialog { background: transparent; }
-#area-navigation { height: 1; background: #101518; }
+#area-navigation { height: 1; background: $surface; }
 #area-navigation Button { width: auto; min-width: 12; }
-#area-navigation Button.-primary { background: #30414c; color: #ffffff; text-style: bold; }
+#area-navigation Button.-primary { background: $block-cursor-background; color: $block-cursor-foreground; text-style: bold; }
 #container-area, #code-workspace { height: 1fr; }
-#code-actions { height: 1; background: #101518; }
+#code-actions { height: 1; background: $surface; }
 #code-actions Button { width: auto; margin-right: 1; }
-#code-run-state { width: 1fr; height: 1; padding: 0 1; color: #a9c2cc; }
-#code-branch { width: auto; max-width: 40; height: 1; padding: 0 1; color: #7fc8a9; text-wrap: nowrap; text-overflow: ellipsis; }
+#code-run-state { width: 1fr; height: 1; padding: 0 1; color: $text-secondary; }
+#code-branch { width: auto; max-width: 40; height: 1; padding: 0 1; color: $text-success; text-wrap: nowrap; text-overflow: ellipsis; }
 #source-browser { height: 1fr; }
 #source-layout { height: 1fr; }
-#source-sidebar { width: 30; min-width: 22; background: #101518; border-right: solid #2b3439; }
-.pane-title { height: 1; padding: 0 1; color: #a9c2cc; text-style: bold; background: #171c20; }
+#source-sidebar { width: 30; min-width: 22; background: $surface; border-right: solid $border-blurred; }
+.pane-title { height: 1; padding: 0 1; color: $text-secondary; text-style: bold; background: $panel; }
 #code-profiles-pane { height: auto; }
 /* A fixed blank row above each sidebar title. */
 #code-title-row, #source-files-title, #source-breakpoints-title { margin-top: 1; }
@@ -21,96 +21,96 @@ BreakpointDialog { background: transparent; }
 /* The only focusable title: show where the focus is, like a selected row. */
 #source-breakpoints-title:focus { background: $block-cursor-background; color: $block-cursor-foreground; }
 #source-breakpoints { scrollbar-size-horizontal: 0; background: transparent; }
-#code-status { height: auto; max-height: 3; padding: 0 1; color: #9db5bf; }
+#code-status { height: auto; max-height: 3; padding: 0 1; color: $text-muted; }
 /* Transparent so the unused rows show the sidebar's background, not a gray block. */
 #code-projects { height: 6; scrollbar-size-horizontal: 0; background: transparent; }
-#source-tree { height: 1fr; background: #101518; color: #c8cdd1; }
+#source-tree { height: 1fr; background: $surface; color: $foreground; }
 #source-main { width: 1fr; }
 #source-editor-row { height: 2fr; min-height: 6; }
 #source-pane { width: 1fr; }
-#source-header { height: 1; background: #101518; }
-#source-status { width: 1fr; height: 1; color: #9db5bf; padding: 0 1; }
+#source-header { height: 1; background: $surface; }
+#source-status { width: 1fr; height: 1; color: $text-muted; padding: 0 1; }
 #source-breakpoint { width: auto; }
-#source-text { height: 1fr; border: none; background: #080b0e; color: #d6d9dc; }
-#code-terminal { height: 1fr; min-height: 4; border-top: solid #2b3439; border-title-color: #a9c2cc; }
-#code-terminal:focus { border-top: thick #facc15; border-title-color: #facc15; }
-#code-debug { width: 44; min-width: 32; border-left: solid #2b3439; border-title-color: #a9c2cc; }
+#source-text { height: 1fr; border: none; background: $background; color: $foreground; }
+#code-terminal { height: 1fr; min-height: 4; border-top: solid $border-blurred; border-title-color: $text-secondary; }
+#code-terminal:focus { border-top: thick $warning; border-title-color: $warning; }
+#code-debug { width: 44; min-width: 32; border-left: solid $border-blurred; border-title-color: $text-secondary; }
 #code-debug-controls { height: 1; }
 #code-debug-controls Button { width: auto; min-width: 5; margin-right: 1; }
 #code-inspection { height: 1fr; min-height: 4; layout: vertical; }
-#code-stack { height: 1fr; width: 1fr; min-height: 2; scrollbar-size-horizontal: 0; border-top: solid #2b3439; border-title-color: #a9c2cc; }
-#code-watch-pane { height: auto; border-top: solid #2b3439; border-title-color: #a9c2cc; }
+#code-stack { height: 1fr; width: 1fr; min-height: 2; scrollbar-size-horizontal: 0; border-top: solid $border-blurred; border-title-color: $text-secondary; }
+#code-watch-pane { height: auto; border-top: solid $border-blurred; border-title-color: $text-secondary; }
 /* A blank row above each debug section title keeps them apart. */
 #code-stack, #code-watch-pane, #code-variables { margin-top: 1; }
 #code-watches { height: auto; max-height: 8; overflow-x: hidden; overflow-y: auto; }
-#code-variables { width: 1fr; height: 1fr; overflow-x: hidden; overflow-y: auto; padding: 0 1; border-top: solid #2b3439; border-title-color: #a9c2cc; }
+#code-variables { width: 1fr; height: 1fr; overflow-x: hidden; overflow-y: auto; padding: 0 1; border-top: solid $border-blurred; border-title-color: $text-secondary; }
 #code-variables-pane { width: 1fr; height: 1fr; }
-#variable-preview { height: auto; max-height: 40%; overflow-y: auto; padding: 0 1; border-top: solid #2b3439; color: #a9c2cc; }
-#watch-preview { height: auto; max-height: 4; overflow-y: auto; padding: 0 1; border-top: solid #2b3439; color: #a9c2cc; }
+#variable-preview { height: auto; max-height: 40%; overflow-y: auto; padding: 0 1; border-top: solid $border-blurred; color: $text-secondary; }
+#watch-preview { height: auto; max-height: 4; overflow-y: auto; padding: 0 1; border-top: solid $border-blurred; color: $text-secondary; }
 /* Placed over the edited variable's row, after its name. */
 #variable-value { position: absolute; height: 1; }
 #code-bottom { height: 1fr; min-height: 4; }
-#code-debug-output { height: 1fr; min-height: 3; background: #080b0e; border-top: solid #2b3439; border-title-color: #a9c2cc; }
-Button { height: 1; min-height: 1; border: none; padding: 0 1; background: #171c20; color: #c8cdd1; }
-Button:hover { background: #242c32; }
-Button:focus { background: #30414c; color: #ffffff; text-style: bold; }
-Button:disabled { color: #697279; background: #101417; }
-#topbar { height: 2; background: #101518; padding: 0 1; border-bottom: solid #2b3439; }
+#code-debug-output { height: 1fr; min-height: 3; background: $background; border-top: solid $border-blurred; border-title-color: $text-secondary; }
+Button { height: 1; min-height: 1; border: none; padding: 0 1; background: $panel; color: $foreground; }
+Button:hover { background: $block-hover-background; }
+Button:focus { background: $block-cursor-background; color: $block-cursor-foreground; text-style: bold; }
+Button:disabled { color: $text-disabled; background: $surface; }
+#topbar { height: 2; background: $surface; padding: 0 1; border-bottom: solid $border-blurred; }
 #open-launch-file { width: 20; min-width: 20; height: 1; border: none; padding: 0; }
-#docker-state { width: 1fr; height: 1; background: #101518; color: #9db5bf; padding: 0 1; }
+#docker-state { width: 1fr; height: 1; background: $surface; color: $text-muted; padding: 0 1; }
 #dashboard { height: 1fr; min-height: 8; }
-#sidebar { width: 48; border: none; scrollbar-gutter: stable; background: #080b0e; }
+#sidebar { width: 48; border: none; scrollbar-gutter: stable; background: $background; }
 #launch-section { height: 1fr; min-height: 8; }
 #launch-section.empty-launch { height: 9; }
-#launch-title { width: 1fr; height: 1; color: #a9c2cc; padding: 0 0 0 1; }
+#launch-title { width: 1fr; height: 1; color: $text-secondary; padding: 0 0 0 1; }
 #launch-profiles { height: 1fr; }
 #profile-actions { display: none; layout: horizontal; height: 1; }
 #profile-actions Button { width: 1fr; min-width: 10; height: 1; }
-#empty-welcome { display: none; height: 6; padding: 0 1; color: #9ba5aa; }
+#empty-welcome { display: none; height: 6; padding: 0 1; color: $text-muted; }
 #empty-welcome-message { height: 3; }
 #empty-welcome Button { width: 1fr; min-width: 14; height: 1; }
 #active-container-heading { layout: horizontal; height: 1; }
-#active-containers-title { width: 1fr; height: 1; color: #a9c2cc; }
+#active-containers-title { width: 1fr; height: 1; color: $text-secondary; }
 #show-all { width: auto; height: 1; padding: 0; border: none; }
 /* Redundant with the detail cards; the corner now hosts notifications. */
-#container-info { display: none; height: 4; color: #9ba5aa; padding: 0 1; }
-#right-panel { width: 1fr; height: 1fr; border: none; border-left: solid #2b3439; }
+#container-info { display: none; height: 4; color: $text-muted; padding: 0 1; }
+#right-panel { width: 1fr; height: 1fr; border: none; border-left: solid $border-blurred; }
 #logs-panel { width: 1fr; height: 1fr; border: none; }
 #container-details { display: none; height: auto; padding: 0 1; }
 #detail-cards { grid-size: 2; grid-gutter: 0 1; grid-rows: auto; height: auto; margin-top: 1; }
-.detail-card { height: auto; min-height: 5; padding: 0 1; border: round #2b3439; border-title-color: #a9c2cc; border-title-style: bold; color: #d6d9dc; background: #0b1013; }
-.detail-card.state-running { border: round #3f7d4f; }
-.detail-card.state-exited { border: round #8a4b4b; }
-.detail-card.state-paused { border: round #8a7a3f; }
+.detail-card { height: auto; min-height: 5; padding: 0 1; border: round $border-blurred; border-title-color: $text-secondary; border-title-style: bold; color: $foreground; background: $background; }
+.detail-card.state-running { border: round $success-muted; }
+.detail-card.state-exited { border: round $error-muted; }
+.detail-card.state-paused { border: round $warning 50%; }
 .detail-card.wide { column-span: 2; }
 #project-overview { display: none; height: 1fr; padding: 0 1; }
-#project-overview-title { height: 1; color: #a9c2cc; margin-bottom: 1; }
+#project-overview-title { height: 1; color: $text-secondary; margin-bottom: 1; }
 #project-overview-table { height: 1fr; }
-#container-details-title { height: 1; color: #a9c2cc; }
-#container-details-content { height: auto; color: #9ba5aa; }
-#log-state { height: 1; color: #a9c2cc; padding: 0 1; }
+#container-details-title { height: 1; color: $text-secondary; }
+#container-details-content { height: auto; color: $text-muted; }
+#log-state { height: 1; color: $text-secondary; padding: 0 1; }
 /* A card under the detail cards that takes the rest of the right panel. */
-#compose-console { height: 1fr; min-height: 6; margin: 1 1 0 1; border: round #2b3439; border-title-color: #a9c2cc; border-title-style: bold; background: #080b0e; }
+#compose-console { height: 1fr; min-height: 6; margin: 1 1 0 1; border: round $border-blurred; border-title-color: $text-secondary; border-title-style: bold; background: $background; }
 #compose-console.output-hidden { height: 3; min-height: 3; }
 #right-panel.output-collapsed #container-details { height: 1fr; }
-#compose-empty { height: 1; color: #9ba5aa; padding: 0 1; }
+#compose-empty { height: 1; color: $text-muted; padding: 0 1; }
 #compose-console.output-hidden #compose-empty, #compose-empty.hidden { display: none; }
 /* The card border title already names the console. */
 #compose-console #compose-output-heading { display: none; }
-#compose-output-heading { height: 1; color: #a9c2cc; padding: 0 1; }
+#compose-output-heading { height: 1; color: $text-secondary; padding: 0 1; }
 #compose-output-toggle { width: 5; min-width: 5; height: 1; }
-#compose-output-viewer { height: 1fr; padding: 0 1; background: #080b0e; }
-#terminal-context { width: 1fr; height: 1; color: #9ba5aa; padding: 0 1; }
+#compose-output-viewer { height: 1fr; padding: 0 1; background: $background; }
+#terminal-context { width: 1fr; height: 1; color: $text-muted; padding: 0 1; }
 #terminal-close { width: 18; height: 1; }
 #terminal-pane { height: 1fr; min-height: 2; }
 /* Docked so it stays at the bottom even when only auto-height details sit above it. */
-#host-terminal { dock: bottom; height: 12; min-height: 6; border-top: solid #2b3439; background: #080b0e; }
-#host-terminal-controls { height: 1; background: #101518; }
+#host-terminal { dock: bottom; height: 12; min-height: 6; border-top: solid $border-blurred; background: $background; }
+#host-terminal-controls { height: 1; background: $surface; }
 /* O collapses the host shell to its title bar without closing the session. */
 #host-terminal.minimized { height: 2; min-height: 2; }
 #host-terminal.minimized #terminal-pane { display: none; }
 #debugger-state { display: none; }
-#inline-compose { display: none; height: 3; background: #292316; }
+#inline-compose { display: none; height: 3; background: $warning-muted; }
 #inline-compose-message { width: 1fr; height: 3; padding: 0 1; }
 #inline-compose Button { width: 12; min-width: 10; height: 1; }
 .compact #dashboard { layout: vertical; }
@@ -130,42 +130,42 @@ Button:disabled { color: #697279; background: #101417; }
 .compact #code-debug { width: 32; }
 .compact #code-inspection { min-height: 2; }
 .compact #code-debug-output { min-height: 2; }
-#launch-state { height: 1; color: #9ba5aa; padding: 0 1; }
+#launch-state { height: 1; color: $text-muted; padding: 0 1; }
 
 /* Compact native controls and the existing artboard palette, not theme defaults. */
-#launch-profiles { background: #080b0e; }
+#launch-profiles { background: $background; }
 /* The cursor row already shows focus; the default focus tint read as a separate gray block. */
 #launch-profiles:focus { background-tint: transparent; }
 /* Focus is shown by the cursor row; a focus tint would turn the whole log gray. */
 #log-entries:focus { background-tint: transparent; }
-#active-container-heading { background: #101518; }
-#log-state { background: #101518; padding: 0 1; }
-LogViewer { background: #080b0e; }
-LogViewer .log-controls { height: 1; padding: 0 1; background: #101518; }
-LogViewer Input { height: 1; min-height: 1; border: none; padding: 0 1; margin: 0 1 0 0; background: #171c20; color: #d6d9dc; }
-LogViewer Input:focus { background: #30414c; }
+#active-container-heading { background: $surface; }
+#log-state { background: $surface; padding: 0 1; }
+LogViewer { background: $background; }
+LogViewer .log-controls { height: 1; padding: 0 1; background: $surface; }
+LogViewer Input { height: 1; min-height: 1; border: none; padding: 0 1; margin: 0 1 0 0; background: $panel; color: $foreground; }
+LogViewer Input:focus { background: $block-cursor-background; }
 LogViewer Select { height: 1; min-height: 1; width: 16; border: none; padding: 0; }
-LogViewer SelectCurrent { height: 1; min-height: 1; border: none; padding: 0; background: #171c20; }
-LogViewer .log-status { color: #9ba5aa; padding: 0 1; }
-DataTable { background: #080b0e; color: #d6d9dc; }
-DataTable > .datatable--header { background: #101518; color: #a9c2cc; text-style: bold; }
+LogViewer SelectCurrent { height: 1; min-height: 1; border: none; padding: 0; background: $panel; }
+LogViewer .log-status { color: $text-muted; padding: 0 1; }
+DataTable { background: $background; color: $foreground; }
+DataTable > .datatable--header { background: $surface; color: $text-secondary; text-style: bold; }
 DataTable:focus > .datatable--header { background-tint: transparent; }
-DataTable > .datatable--odd-row { background: #080b0e; }
-DataTable > .datatable--even-row { background: #101518; }
-DataTable > .datatable--cursor { background: #30414c; color: #ffffff; }
-DataTable > .datatable--header-cursor { background: #101518; color: #a9c2cc; }
-DataTable > .datatable--hover { background: #242c32; }
-Footer, FooterKey, FooterLabel { background: #101518; color: #9ba5aa; }
-FooterKey > .footer-key--key { background: #101518; color: #a9c2cc; }
-FooterKey > .footer-key--description { background: #101518; color: #9ba5aa; }
+DataTable > .datatable--odd-row { background: $background; }
+DataTable > .datatable--even-row { background: $surface; }
+DataTable > .datatable--cursor { background: $block-cursor-background; color: $block-cursor-foreground; }
+DataTable > .datatable--header-cursor { background: $surface; color: $text-secondary; }
+DataTable > .datatable--hover { background: $block-hover-background; }
+Footer, FooterKey, FooterLabel { background: $surface; color: $text-muted; }
+FooterKey > .footer-key--key { background: $surface; color: $text-secondary; }
+FooterKey > .footer-key--description { background: $surface; color: $text-muted; }
 
 /* Container shells share the right-hand logs region; Host Bash stays in the dock. */
-#container-shell { display: none; height: 1fr; background: #080b0e; }
-#container-shell-controls { height: 1; background: #101518; }
-#container-terminal-context { width: 1fr; height: 1; color: #9ba5aa; }
+#container-shell { display: none; height: 1fr; background: $background; }
+#container-shell-controls { height: 1; background: $surface; }
+#container-terminal-context { width: 1fr; height: 1; color: $text-muted; }
 #container-shell-logs { width: 8; }
 #container-terminal-close { width: 16; }
-#container-terminal-pane { height: 1fr; min-height: 2; background: #080b0e; }
+#container-terminal-pane { height: 1fr; min-height: 2; background: $background; }
 
 /* Notifications sit in the free bottom-left corner under the project list. */
 /* Kept above the 3-row inline confirmation bar so a toast never hides its message. */

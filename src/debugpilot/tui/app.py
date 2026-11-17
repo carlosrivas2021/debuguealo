@@ -23,6 +23,7 @@ from debugpilot.docker.compose import ComposeError, ComposePlan, ComposeProject,
 from debugpilot.docker.diagnostics import default_endpoint
 from debugpilot.storage.compose_projects import ComposeProjectStore
 from debugpilot.storage.launch_profiles import LaunchProfile, LaunchProfileStore, profile_services
+from debugpilot.storage.ui_theme import ThemeStore
 from debugpilot.tui.code_workspace import CodeWorkspace
 from debugpilot.tui.compose_output import ProjectOutputBuffers
 from debugpilot.tui.container_details import ContainerDetails, ProjectOverview, published_ports
@@ -39,6 +40,7 @@ from debugpilot.tui.host_terminal import HostTerminal
 from debugpilot.tui.list_filter import ListFilter
 from debugpilot.tui.log_viewer import LogViewer
 from debugpilot.tui.terminal_view import TerminalPane
+from debugpilot.tui.theme import DEBUGEALO_THEME, DEFAULT_THEME
 
 ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
 
@@ -137,7 +139,17 @@ class DebugPilotApp(App):
     ):
         super().__init__()
         self.engine = engine
-        self.theme = "textual-dark"
+        self.register_theme(DEBUGEALO_THEME)
+        self._theme_store = ThemeStore()
+        self._theme_error: str | None = None
+        try:
+            saved = self._theme_store.load()
+        except ConfigurationError as error:
+            saved, self._theme_error = None, str(error)
+        if saved is not None and saved not in self.available_themes:
+            self._theme_error = f"Unknown saved theme {saved!r}; using {DEFAULT_THEME}."
+            saved = None
+        self.theme = saved or DEFAULT_THEME
         self.refresh_interval = max(0.05, refresh_interval)
         self.selected_container: ContainerInfo | None = None
         self.selected_project: str | None = None
@@ -247,6 +259,16 @@ class DebugPilotApp(App):
         self.query_one("#area-containers", Button).variant = "default" if code else "primary"
         self.query_one("#code-projects" if code else "#launch-profiles", DataTable).focus()
 
+    def _remember_theme(self, theme) -> None:
+        """The theme picked in Ctrl+P → Theme is the one the next session starts with."""
+        try:
+            saved = self._theme_store.load()
+            # Nothing is written until someone picks a theme other than the default.
+            if saved != theme.name and (saved is not None or theme.name != DEFAULT_THEME):
+                self._theme_store.save(theme.name)
+        except ConfigurationError as error:
+            self.notify(str(error), severity="warning")
+
     def action_toggle_area(self) -> None:
         code = self.query_one(CodeWorkspace).display
         self.query_one("#area-containers" if code else "#area-code", Button).press()
@@ -326,6 +348,9 @@ class DebugPilotApp(App):
     async def on_mount(self) -> None:
         if self._compose_config_error:
             self.notify(self._compose_config_error, severity="warning")
+        if self._theme_error:
+            self.notify(self._theme_error, severity="warning")
+        self.theme_changed_signal.subscribe(self, self._remember_theme)
         table = self.query_one("#launch-profiles", DataTable)
         table.focus()
         await self.engine.start()
