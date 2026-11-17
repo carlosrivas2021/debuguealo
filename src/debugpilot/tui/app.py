@@ -9,7 +9,7 @@ from pathlib import Path
 
 from rich.text import Text
 from textual import events, on
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import var
@@ -248,6 +248,17 @@ class DebugPilotApp(App):
         self.query_one("#area-code", Button).variant = "primary" if code else "default"
         self.query_one("#area-containers", Button).variant = "default" if code else "primary"
         self.query_one("#code-projects" if code else "#launch-profiles", DataTable).focus()
+
+    def get_system_commands(self, screen):
+        """Ctrl+P's Keys opens the grouped shortcuts, not Textual's raw list of bindings."""
+        for command in super().get_system_commands(screen):
+            if command.title == "Keys":
+                yield SystemCommand(
+                    "Keys", "List the shortcuts of the area on screen, grouped by task",
+                    self.action_show_shortcuts,
+                )
+            else:
+                yield command
 
     def action_show_shortcuts(self) -> None:
         """? lists the keys of the area on screen, grouped by task."""

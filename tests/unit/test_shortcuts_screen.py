@@ -76,3 +76,22 @@ async def test_question_mark_opens_the_area_shortcuts_and_tab_switches(monkeypat
         await until(pilot, lambda: field.has_focus)
         await pilot.press("question_mark")
         assert field.value == "?" and not isinstance(app.screen, ShortcutsScreen)
+
+
+async def test_the_command_palette_keys_opens_the_same_screen(monkeypatch, tmp_path):
+    from test_code_debug_ui import debug_app
+    from textual.command import CommandPalette
+
+    app, _, _ = debug_app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 52)) as pilot:
+        await until(pilot, lambda: app._inventory_loaded)
+        await pilot.click("#area-code")
+        await pilot.press("ctrl+p")
+        await until(pilot, lambda: isinstance(app.screen, CommandPalette))
+        await pilot.press(*"Keys")
+        await pilot.pause(0.5)
+        await pilot.press("enter")
+        # Not Textual's raw HelpPanel: the grouped list of the area on screen.
+        await until(pilot, lambda: isinstance(app.screen, ShortcutsScreen))
+        assert _title(app) == "Code · shortcuts"
+        assert not app.query("HelpPanel")
