@@ -59,7 +59,11 @@ BUILD_CLEANUP_DELAY = 0.1
 
 def _remove_build_dir(build) -> bool:
     """Remove the built program's folder; False while Windows still holds it."""
-    build.cleanup()
+    try:
+        build.cleanup()
+    except OSError:
+        # Some Python 3.12 releases raise here despite ignore_cleanup_errors.
+        return False
     return not os.path.exists(build.name)
 
 class GoDebugSession(PythonDebugSession):

@@ -424,3 +424,16 @@ async def test_windows_stack_paths_from_delve_use_the_native_form(monkeypatch):
     stack = await GoDebugSession().stack()
     assert stack[0]['source']['path'] == 'C:\\work\\app\\main.go'
     assert stack[1]['source'] == {}
+
+
+def test_a_cleanup_that_raises_counts_as_still_locked(tmp_path):
+    # Some Python 3.12 releases let PermissionError out of TemporaryDirectory.cleanup.
+    from debugpilot.debugger import go
+
+    class Locked:
+        name = str(tmp_path)
+
+        def cleanup(self):
+            raise PermissionError(5, 'Access is denied')
+
+    assert go._remove_build_dir(Locked()) is False
