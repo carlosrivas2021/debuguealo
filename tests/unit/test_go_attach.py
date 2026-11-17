@@ -328,8 +328,17 @@ async def test_real_headless_delve_breakpoint_disconnect_and_reconnect(tmp_path)
                            if item.get('event') == 'transportClosed')
         first_disconnect_reason = first_close['body']['message']
         assert isinstance(first_disconnect_reason, str)
+        # The detached target keeps running: its loop writes ticks (it may not have written
+        # the first one yet on a loaded machine).
+        for _ in range(500):
+            if marker.exists():
+                break
+            await asyncio.sleep(0.02)
         initial = marker.read_text(encoding='utf-8')
-        await asyncio.sleep(0.15)
+        for _ in range(500):
+            if marker.read_text(encoding='utf-8') != initial:
+                break
+            await asyncio.sleep(0.02)
         assert marker.read_text(encoding='utf-8') != initial
         await session.start(target, {})
         await session.close()

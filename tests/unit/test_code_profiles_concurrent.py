@@ -454,14 +454,16 @@ async def test_two_owned_python_runs_keep_output_and_stop_selected_only(monkeypa
         assert alive(first_pid) and alive(second_pid)
 
         await pilot.click("#code-stop")
-        assert not alive(second_pid)
+        # Windows ends a process a moment after it is told to.
+        assert await _gone_soon(second_pid)
         assert alive(first_pid), "stopping the selected profile stopped its sibling"
         app.query_one("#code-projects", DataTable).move_cursor(row=0)
         await pilot.pause()
         assert f"RUN_1_PID:{first_pid}" in pane.render().plain
         assert alive(first_pid)
 
-    assert first_pid is not None and not alive(first_pid), "quit left an owned run process alive"
+    assert first_pid is not None and await _gone_soon(first_pid), (
+        "quit left an owned run process alive")
 
 
 async def test_run_and_debug_coexist_but_same_profile_actions_only_select(
