@@ -79,6 +79,8 @@ class CodeWorkspace(Vertical):
         Binding("colon", "focus_console", "Evaluate"),
         # Where the debugger pauses on exceptions: uncaught, all, or none.
         Binding("e", "cycle_exceptions", "Exceptions"),
+        # The profile's Git branches, like clicking the branch in the action bar.
+        Binding("b", "switch_branch", "Branch"),
         Binding("slash", "filter_profiles", "Filter"),
         Binding("escape", "clear_profiles_filter", show=False),
         # Move the boundary between profiles and files, like dragging the splitter.
@@ -424,6 +426,9 @@ class CodeWorkspace(Vertical):
         return self._profiles.get(table.ordered_rows[table.cursor_row].key.value)
 
     @on(BranchLabel.Clicked)
+    def action_switch_branch(self) -> None:
+        self._branch_clicked()
+
     def _branch_clicked(self) -> None:
         profile = self._highlighted_profile()
         if profile is None or self._shutting_down:
@@ -603,7 +608,7 @@ class CodeWorkspace(Vertical):
                         and focused is not None and focused.id == "code-projects")
         if action in {
             "stop_run", "resize_profiles", "reload_profiles", "restart_run", "focus_prompt",
-            "filter_profiles", "cycle_exceptions", "focus_console",
+            "filter_profiles", "cycle_exceptions", "focus_console", "switch_branch",
         }:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
@@ -611,6 +616,8 @@ class CodeWorkspace(Vertical):
                 isinstance(focused, TerminalPane) and focused.active
             ):
                 return False
+        if action == "switch_branch" and not self._branch.display:
+            return False  # The profile's folder is not in a Git repository.
         if action in {"restart_run", "reload_profiles"}:
             # Exactly one of them owns R, so the footer names what it will do.
             profile = self._highlighted_profile()

@@ -1,6 +1,8 @@
 Screen { background: $background; color: $foreground; }
 /* The breakpoint panel keeps the source visible behind it. */
 BreakpointDialog { background: transparent; }
+/* The branch list drops down over the workspace, which stays in view. */
+BranchPicker { background: transparent; }
 #area-navigation { height: 1; background: $surface; }
 #area-navigation Button { width: auto; min-width: 12; }
 #area-navigation Button.-primary { background: $block-cursor-background; color: $block-cursor-foreground; text-style: bold; }
