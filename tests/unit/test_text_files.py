@@ -14,6 +14,10 @@ def mode(path):
     return stat.S_IMODE(path.stat().st_mode)
 
 
+# Windows has no POSIX permission bits: every file reports 0o666.
+POSIX_MODES = os.name != "nt"
+
+
 def test_missing_file_opens_empty_and_is_created_private_on_save(tmp_path):
     target = tmp_path / ".aws" / "credentials"
     loaded = load_text(target)
@@ -22,8 +26,9 @@ def test_missing_file_opens_empty_and_is_created_private_on_save(tmp_path):
     saved = save_text(loaded, "[default]\naws_access_key_id = X\n")
 
     assert target.read_text(encoding="utf-8") == "[default]\naws_access_key_id = X\n"
-    assert mode(target) == 0o600
-    assert mode(target.parent) == 0o700
+    if POSIX_MODES:
+        assert mode(target) == 0o600
+        assert mode(target.parent) == 0o700
     assert saved.exists and saved.text == target.read_text(encoding="utf-8")
 
 
@@ -35,7 +40,8 @@ def test_saving_keeps_the_existing_mode_and_leaves_no_temporary_file(tmp_path):
     save_text(load_text(target), "[default]\nregion = us-east-1\n")
 
     assert target.read_text(encoding="utf-8") == "[default]\nregion = us-east-1\n"
-    assert mode(target) == 0o640
+    if POSIX_MODES:
+        assert mode(target) == 0o640
     assert sorted(path.name for path in tmp_path.iterdir()) == ["config"]
 
 

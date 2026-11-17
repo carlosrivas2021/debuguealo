@@ -124,7 +124,8 @@ async def test_unreachable_endpoint_reports_python_target(tmp_path):
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
-    session = PythonAttachSession(timeout=2)
+    # Windows refuses a closed local port only after about 2 s of retries.
+    session = PythonAttachSession(timeout=5)
 
     with pytest.raises(DebugError, match='Unable to attach to Python/debugpy'):
         await session.start(attach_profile(tmp_path, port), {})
@@ -146,7 +147,8 @@ async def test_go_session_still_reports_go_target(tmp_path):
     profile = CodeProject('Go', tmp_path, (), None, RemoteAttach('127.0.0.1', port, '/app'))
 
     with pytest.raises(DebugError, match='Unable to attach to Go/Delve'):
-        await GoAttachSession(timeout=2).start(profile, {})
+        # Windows refuses a closed local port only after about 2 s of retries.
+        await GoAttachSession(timeout=5).start(profile, {})
 
 
 async def next_state(session, wanted):

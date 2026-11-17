@@ -166,6 +166,8 @@ class DebugPilotApp(App):
         self._collapsed_projects: set[str] = set()
         self._inventory_widths: dict[str, tuple[int, int, int]] = {}
         self._inventory_content: dict[str, tuple[tuple[str, str, str, str], ...]] = {}
+        # A redraw at the real width is scheduled after the first layout.
+        self._inventory_refit_pending = False
         self._selection_changed = asyncio.Event()
         # Logs stream only on request and close again when the selected row changes.
         self._logs_requested = False
@@ -183,6 +185,8 @@ class DebugPilotApp(App):
         self._stats_wake = asyncio.Event()
         # Bumped whenever profiles are applied, so a slower background read never wins.
         self._launch_revision = 0
+        # The last periodic read failed once; a second failure in a row is shown.
+        self._launch_read_failed = False
         self._stats_task: asyncio.Task | None = None
         self._update_task: asyncio.Task | None = None
         self._compose_projects: dict[str, ComposeProject] = {}
@@ -448,6 +452,11 @@ class DebugPilotApp(App):
         viewport = (
             table.content_region.width or self.query_one("#launch-profiles").content_region.width
         )
+        if not viewport and not self._inventory_refit_pending:
+            # Drawn before the first layout: fit the columns to the real width right after
+            # it, before anyone scrolls, rather than on a later refresh.
+            self._inventory_refit_pending = True
+            self.call_after_refresh(self._refit_inventory)
         # Three columns each have left/right cell padding; reserve scrollbar space
         # even while hidden so it can appear without overflowing the same columns.
         available = max(
@@ -514,6 +523,11 @@ class DebugPilotApp(App):
             )
         self._inventory_content[table.id] = content
         return True
+
+    def _refit_inventory(self) -> None:
+        self._inventory_refit_pending = False
+        if not self._closing and self.query_one("#launch-profiles").content_region.width:
+            self._render_launch_profiles()
 
     async def _refresh_loop(self) -> None:
         while not self._closing:
@@ -671,10 +685,15 @@ class DebugPilotApp(App):
             self._launch_rows = {k: v for k, v in self._launch_rows.items() if k in shown}
             self._launch_child_rows = {
                 k: v for k, v in self._launch_child_rows.items() if k in shown}
+        scroll_y = table.scroll_y
         redrawn = self._render_inventory(table, rows)
         selected_row_key = self._selection_key or self._selected_profile_key
         if redrawn and selected_row_key in table.rows:
-            table.move_cursor(row=table.get_row_index(selected_row_key))
+            # A redraw (new rows, or columns refitted once the table got its real width)
+            # keeps the view where the user left it instead of jumping to the cursor.
+            table.move_cursor(row=table.get_row_index(selected_row_key), scroll=False)
+            if scroll_y:
+                table.call_after_refresh(table.scroll_to, y=scroll_y, animate=False)
         # A filter that matches nothing is not an empty inventory.
         empty = self._launch_loaded and not unfiltered and not self._launch_error
         self.query_one("#empty-welcome").display = empty
@@ -715,10 +734,19 @@ class DebugPilotApp(App):
             def loaded():
                 raise failure
         else:
+            failure = None
+
             def loaded():
                 return profiles
         if revision != self._launch_revision or self._closing:
             return  # An edit or reload applied newer profiles meanwhile; the next pass reads.
+        if failure is not None and self._launch_error is None and self._launch_loaded \
+                and not self._launch_read_failed:
+            # launch.json may be mid-save (or briefly locked on Windows): keep the profiles
+            # shown and read again on the next pass; only a repeated error is shown.
+            self._launch_read_failed = True
+            return
+        self._launch_read_failed = False
         self._update_launch_profiles(inventory, loaded)
 
     def _update_launch_profiles(

@@ -111,7 +111,8 @@ async def test_node_session_rejects_profile_without_node_attach(tmp_path):
 
 
 async def test_unreachable_endpoint_reports_node_target(tmp_path):
-    session = NodeAttachSession(timeout=2)
+    # Windows refuses a closed local port only after about 2 s of retries.
+    session = NodeAttachSession(timeout=5)
 
     with pytest.raises(DebugError, match='Unable to attach to Node/Inspector'):
         await session.start(attach_profile(tmp_path, free_port()), {})
@@ -281,6 +282,7 @@ async def test_shift_f5_dispatches_node_attach_and_stop_only_disconnects(node_at
         assert 'Exited' not in state
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which('node') is None, reason='needs the node runtime')
 async def test_target_exit_closes_session_as_lost_without_cleanup_warning(tmp_path):
@@ -391,6 +393,7 @@ async def stop_target(target, drain):
         await drain
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which('node') is None, reason='needs the node runtime')
 async def test_failed_breakpoint_cleanup_warns_on_disconnect(tmp_path):
@@ -413,6 +416,7 @@ async def test_failed_breakpoint_cleanup_warns_on_disconnect(tmp_path):
         await stop_target(target, drain)
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which('node') is None, reason='needs the node runtime')
 async def test_transport_lost_during_disconnect_does_not_warn(tmp_path):
@@ -433,6 +437,7 @@ async def test_transport_lost_during_disconnect_does_not_warn(tmp_path):
         await stop_target(target, drain)
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 @pytest.mark.integration
 @pytest.mark.skipif(shutil.which('node') is None, reason='needs the node runtime')
 async def test_inspect_brk_target_stops_at_first_line_and_disconnect_lets_it_finish(tmp_path):

@@ -1,5 +1,7 @@
 """Nested variables (object fields, dict entries) through each real debug adapter."""
 
+import sys
+
 import pytest
 from test_breakpoint_options_debug import SESSIONS, next_event
 
@@ -9,7 +11,7 @@ from debugpilot.storage.code_projects import CodeProject
 # Each program pauses on BREAK_LINE with config.port = 80 and config.point.x = 1,
 # then prints RESULT:<port>:<x>.
 PROGRAMS = {
-    'python': ('main.py', ('python3', '-u', 'main.py'), 6,
+    'python': ('main.py', (sys.executable, '-u', 'main.py'), 6,
                'class Point:\n    def __init__(self):\n        self.x = 1\n'
                "config = {'port': 80, 'point': Point()}\n"
                'ready = True\n'

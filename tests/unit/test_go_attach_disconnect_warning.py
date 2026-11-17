@@ -48,8 +48,11 @@ async def test_stop_surfaces_breakpoint_clear_transport_warning(monkeypatch, tmp
                     await pilot.pause(0.01)
             intent = dict(debug.session.requested_breakpoints)
             await pilot.click('#code-stop')
-
-            assert debug.session.state == 'closed'
+            # Closing is asynchronous: a slow runner is still "closing" right after the
+            # click, and leaving early kept the peer's connection open in teardown.
+            async with asyncio.timeout(10):
+                while debug.session.state != 'closed':
+                    await pilot.pause(0.02)
             output = '\n'.join(line.text for line in
                                app.query_one('#code-debug-output').lines)
             status = rendered(app, '#code-run-state')

@@ -149,6 +149,10 @@ def _read_env_file(root: Path, env_file: str) -> dict[str, str]:
     except IsADirectoryError:
         raise ConfigurationError(f"envFile {env_file} is a directory, not a file.") from None
     except OSError:
+        # Windows reports opening a folder as a permission error.
+        if path.is_dir():
+            raise ConfigurationError(
+                f"envFile {env_file} is a directory, not a file.") from None
         message = f"Cannot read envFile {env_file}; check permissions."
         raise ConfigurationError(message) from None
     if len(data) > MAX_ENV_FILE_BYTES:

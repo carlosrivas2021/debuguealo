@@ -38,7 +38,9 @@ async def test_empty_launch_sidebar_opens_launch_file_directly_on_user_action(
         assert not app.query_one("#logs-panel").display
         assert not path.exists()
         assert await pilot.click("#open-launch-file")
-        await until(pilot, lambda: isinstance(app.screen, FileEditorScreen))
+        # Ready once its editor is mounted, not merely pushed.
+        await until(pilot, lambda: isinstance(app.screen, FileEditorScreen)
+                    and app.screen.query(TextArea))
         assert [file.loaded.path for file in app.screen.files] == [path.resolve()]
 
         app.screen.query_one(TextArea).text = json.dumps({

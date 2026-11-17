@@ -27,21 +27,34 @@ class BranchPicker(ModalScreen[str | None]):
         self.current = current
 
     def compose(self) -> ComposeResult:
+        initial = self.branches.index(self.current) if self.current in self.branches else None
         with Vertical():
             yield Label("Switch branch · Enter to switch, Esc to close")
-            yield OptionList(*(
+            yield _BranchOptions(*(
                 Option(f"{'●' if name == self.current else ' '} {name}", id=name)
                 for name in self.branches
-            ), id="branch-options")
-
-    def on_mount(self) -> None:
-        options = self.query_one(OptionList)
-        if self.current in self.branches:
-            options.highlighted = self.branches.index(self.current)
-        options.focus()
+            ), initial=initial, id="branch-options")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option.id)
 
     def action_close(self) -> None:
         self.dismiss(None)
+
+
+class _BranchOptions(OptionList):
+    """The branch list picks the current branch and takes the focus once it is mounted.
+
+    The picker's own on_mount can run before this list is mounted (seen on Windows), where
+    querying it failed and a highlight set early was replaced by the list's own setup.
+    """
+
+    def __init__(self, *options, initial: int | None, **kwargs):
+        super().__init__(*options, **kwargs)
+        self._initial = initial
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        if self._initial is not None:
+            self.highlighted = self._initial
+        self.focus()

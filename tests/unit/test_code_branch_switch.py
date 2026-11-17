@@ -1,7 +1,9 @@
 """Clicking the branch in the Code bar lists local branches and switches with git."""
 
 import json
+import os
 import shutil
+import stat
 import sys
 
 import pytest
@@ -47,8 +49,10 @@ def _messages(app):
 
 async def _open_picker(pilot, app):
     await pilot.click("#code-branch")
-    await until(pilot, lambda: isinstance(app.screen, BranchPicker))
-    return app.screen.query_one(OptionList)
+    # Ready once the list has the focus, with the current branch picked.
+    await until(pilot, lambda: isinstance(app.screen, BranchPicker)
+                and isinstance(app.focused, OptionList))
+    return app.focused
 
 
 async def _choose(pilot, options, name):
@@ -85,7 +89,8 @@ async def test_choosing_a_branch_switches_the_repo_and_reloads_the_open_file(
         await until(pilot, lambda: _branch(app) == "⎇ feature/login")
         assert current_branch(repo) == "feature/login"
         await until(pilot, lambda: app.query_one("#source-text", TextArea).text == "feature\n")
-        assert "Switched to feature/login." in _messages(app)
+        # The notice can land a moment after the file reloads.
+        await until(pilot, lambda: "Switched to feature/login." in _messages(app))
 
 
 async def test_escape_closes_the_list_without_switching(monkeypatch, tmp_path):
@@ -144,7 +149,9 @@ async def test_a_live_profile_in_the_same_repository_blocks_switching(monkeypatc
 async def test_a_profile_outside_git_shows_no_branch_to_click(monkeypatch, tmp_path):
     app, repo = _app(monkeypatch, tmp_path)
     git(repo, "branch", "unused")
-    shutil.rmtree(repo / ".git")
+    # Git keeps its objects read-only, which Windows refuses to delete.
+    shutil.rmtree(repo / ".git", onexc=lambda remove, path, _error: (
+        os.chmod(path, stat.S_IWRITE), remove(path)))
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.click("#area-code")
         await pilot.pause()

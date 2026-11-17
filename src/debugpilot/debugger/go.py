@@ -2,10 +2,11 @@
 
 import asyncio
 import contextlib
+import os
 import shutil
 import socket
 import tempfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from debugpilot.debugger.dap import DAPClient, DebugError
 from debugpilot.debugger.python import (
@@ -50,6 +51,20 @@ GO_EXCEPTION_FILTERS = {
     'none': (),
 }
 
+
+# Windows may hold the built program a moment after it exits: 5 s at most.
+BUILD_CLEANUP_ATTEMPTS = 50
+BUILD_CLEANUP_DELAY = 0.1
+
+
+def _remove_build_dir(build) -> bool:
+    """Remove the built program's folder; False while Windows still holds it."""
+    try:
+        build.cleanup()
+    except OSError:
+        # Some Python 3.12 releases raise here despite ignore_cleanup_errors.
+        return False
+    return not os.path.exists(build.name)
 
 class GoDebugSession(PythonDebugSession):
     """One Go/Delve session with the same events and inspection API as Python debug."""
@@ -104,7 +119,9 @@ class GoDebugSession(PythonDebugSession):
                 with socket.socket() as reservation:
                     reservation.bind(('127.0.0.1', 0))
                     port = reservation.getsockname()[1]
-                self._build_dir = tempfile.TemporaryDirectory(prefix='debugpilot-go-build-')
+                # Cleanup is retried below; a target Windows keeps locked must not raise.
+                self._build_dir = tempfile.TemporaryDirectory(
+                    prefix='debugpilot-go-build-', ignore_cleanup_errors=True)
                 output = str(Path(self._build_dir.name) / 'debugpilot-target')
                 self._adapter = CodeSession(self._adapter_output, self._adapter_exit)
                 await self._adapter.open_command(
@@ -182,6 +199,23 @@ class GoDebugSession(PythonDebugSession):
 
     async def _cleanup(self):
         await super()._cleanup()
-        if self._build_dir is not None:
-            self._build_dir.cleanup()
-            self._build_dir = None
+        build, self._build_dir = self._build_dir, None
+        if build is None:
+            return
+        # Windows keeps the built program locked for a moment after Delve and the program
+        # exit; retry briefly, then leave it to the temporary folder instead of failing.
+        for _ in range(BUILD_CLEANUP_ATTEMPTS):
+            if await asyncio.to_thread(_remove_build_dir, build):
+                return
+            await asyncio.sleep(BUILD_CLEANUP_DELAY)
+
+    async def stack(self):
+        frames = await super().stack()
+        if os.name == 'nt':
+            # Delve reports Windows paths with forward slashes; the rest of debugealo, and
+            # the files the user opens, use the native form.
+            for frame in frames:
+                source = frame.get('source') or {}
+                if isinstance(source.get('path'), str):
+                    source['path'] = str(PureWindowsPath(source['path']))
+        return frames

@@ -73,3 +73,29 @@ async def test_unchanged_refresh_keeps_viewport_and_selection_but_updates_ports(
         assert table.row_count == 41
         assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value == key
         assert app.selected_container.id == "api-00"
+
+
+async def test_refitting_the_columns_keeps_the_view_where_the_user_left_it(tmp_path):
+    # The first draw can happen before the table has its real width; the refresh that
+    # then refits the columns used to jump the view back to the selected row.
+    docker = ControlledInventory()
+    app = DebugPilotApp(
+        DebugPilotEngine(Settings(), docker=docker), workspace=tmp_path, refresh_interval=0.05
+    )
+    async with app.run_test(size=(100, 32)) as pilot:
+        table = app.query_one("#launch-profiles", DataTable)
+        await until(pilot, lambda: docker.requested == 2 and table.row_count == 41)
+        table.focus()
+        table.move_cursor(row=table.get_row_index("container:api-00"))
+        await until(pilot, lambda: app.selected_container is not None)
+        await pilot.pause()
+        table.scroll_end(animate=False)
+        await pilot.pause()
+        viewport = table.scroll_y
+        assert viewport > 0
+        app._inventory_widths.clear()  # As if the first draw had used another width.
+        app._render_launch_profiles()
+        await pilot.pause()
+        assert table.scroll_y == viewport
+        assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value == (
+            "container:api-00")

@@ -68,7 +68,10 @@ def test_write_refuses_symlink(tmp_path):
     real = tmp_path / "real.env"
     real.write_text("A=1\n")
     link = tmp_path / ".env.aws"
-    link.symlink_to(real)
+    try:
+        link.symlink_to(real)
+    except OSError:  # Windows accounts without Developer Mode cannot create symlinks.
+        pytest.skip("this account cannot create symlinks")
     with pytest.raises(aws.CredentialError, match="symlink"):
         aws.write_env_file(link, creds())
     assert real.read_text() == "A=1\n"

@@ -211,6 +211,10 @@ class NodeAttachSession(NodeDebugSession):
         self._emit({'event': 'breakpoints', 'body': {'path': key}})
         return entries
 
+    def _breakpoint_url(self, url):
+        # The target's scripts live under the POSIX remote root: one exact URL.
+        return {'url': url}
+
     def _script_url(self, path):
         """The target's URL of a local workspace file, through remoteRoot."""
         try:

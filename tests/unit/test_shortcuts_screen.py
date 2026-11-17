@@ -53,7 +53,8 @@ async def test_question_mark_opens_the_area_shortcuts_and_tab_switches(monkeypat
     async with app.run_test(size=(140, 52)) as pilot:
         await until(pilot, lambda: app._inventory_loaded)
         await pilot.press("question_mark")
-        await until(pilot, lambda: isinstance(app.screen, ShortcutsScreen))
+        # Shown once its title is set (in its own on_mount).
+        await until(pilot, lambda: isinstance(app.screen, ShortcutsScreen) and _title(app))
         assert _title(app) == "Containers · shortcuts"
         text = str(app.screen.query_one("#shortcuts-list").render())
         assert "Ctrl+L" in text and "Everywhere" in text
@@ -66,7 +67,8 @@ async def test_question_mark_opens_the_area_shortcuts_and_tab_switches(monkeypat
 
         await pilot.click("#area-code")
         await pilot.press("question_mark")
-        await until(pilot, lambda: isinstance(app.screen, ShortcutsScreen))
+        # Shown once its title is set (in its own on_mount).
+        await until(pilot, lambda: isinstance(app.screen, ShortcutsScreen) and _title(app))
         assert _title(app) == "Code · shortcuts"
         await pilot.press("escape")
         await until(pilot, lambda: not isinstance(app.screen, ShortcutsScreen))
@@ -93,6 +95,7 @@ async def test_the_command_palette_keys_opens_the_same_screen(monkeypatch, tmp_p
         await pilot.pause(0.5)
         await pilot.press("enter")
         # Not Textual's raw HelpPanel: the grouped list of the area on screen.
-        await until(pilot, lambda: isinstance(app.screen, ShortcutsScreen))
+        # Shown once its title is set (in its own on_mount).
+        await until(pilot, lambda: isinstance(app.screen, ShortcutsScreen) and _title(app))
         assert _title(app) == "Code · shortcuts"
         assert not app.query("HelpPanel")

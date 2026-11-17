@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import os
 
+import pytest
 from test_source_maps import encode
 
 from debugpilot.debugger import NodeDebugSession
@@ -101,6 +103,7 @@ async def test_javascript_breakpoints_without_maps_are_unchanged(tmp_path):
         await session.close()
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='the remote root must be a POSIX path')
 async def test_attach_maps_ts_breakpoints_through_remote_root(tmp_path):
     import re
 

@@ -65,3 +65,30 @@ async def test_a_slower_background_read_never_overwrites_newer_profiles(monkeypa
         # The read that started before the update is dropped, never shown even briefly.
         assert not any(stale in profiles for profiles in applied)
         assert app._launch_profiles == fresh
+
+
+async def test_a_single_failed_read_keeps_the_profiles_and_a_repeated_one_is_shown(monkeypatch):
+    # Saving launch.json (or Windows briefly locking it) can make one read fail.
+    from debugpilot.core.exceptions import ConfigurationError
+
+    app = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), refresh_interval=60)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: app._launch_loaded)
+        # Drive the refresh by hand: a periodic pass finishing in between would reset it.
+        app._ui_tasks[0].cancel()
+        await pilot.pause(0.2)
+        shown = list(app._launch_profiles)
+        read = app._read_launch_profiles
+
+        def broken(inventory):
+            raise ConfigurationError("Invalid launch profile JSON")
+
+        monkeypatch.setattr(app, "_read_launch_profiles", broken)
+        await app._refresh_launch_profiles(None)
+        assert app._launch_error is None and app._launch_profiles == shown
+        await app._refresh_launch_profiles(None)  # Still broken: now it is shown.
+        assert app._launch_error == "Invalid launch profile JSON"
+        monkeypatch.setattr(app, "_read_launch_profiles", read)
+        await app._refresh_launch_profiles(None)
+        assert app._launch_error is None
+        await pilot.pause()
