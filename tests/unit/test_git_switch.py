@@ -29,11 +29,13 @@ def make_repo(root):
     """A repository on main with app.txt, plus a feature branch that changes it."""
     root.mkdir(parents=True, exist_ok=True)
     git(root, "init", "-q", "-b", "main")
-    (root / "app.txt").write_text("main\n", encoding="utf-8")
+    # Same bytes on every system: Windows git converts line endings by default.
+    git(root, "config", "core.autocrlf", "false")
+    (root / "app.txt").write_bytes(b"main\n")
     git(root, "add", "app.txt")
     git(root, "commit", "-q", "-m", "main")
     git(root, "switch", "-q", "-c", "feature/login")
-    (root / "app.txt").write_text("feature\n", encoding="utf-8")
+    (root / "app.txt").write_bytes(b"feature\n")
     git(root, "commit", "-q", "-am", "feature")
     git(root, "switch", "-q", "main")
     return root
