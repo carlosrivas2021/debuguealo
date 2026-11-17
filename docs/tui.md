@@ -267,6 +267,8 @@ width left after the time, stream and level columns; turn it off to keep one lin
 ## Not implemented yet
 
 Code supports read-only source navigation, persistent root-scoped requested breakpoints,
-Python/Node/Go debugging, and non-owning Go, Python and Node attach. Distinct saved profiles retain separate
-run/debug/attach contexts; the same endpoint cannot be attached twice. Expression
-evaluation and a desktop editor are not implemented. See [Code setup and limits](code-projects.md).
+Python/Node/Go debugging (with watches and a debug console that evaluate expressions while
+paused), and non-owning Go, Python and Node attach. Distinct saved profiles retain separate
+run/debug/attach contexts; the same endpoint cannot be attached twice. Source files are
+read-only: Code never edits them, and there is no built-in source editor. See
+[Code setup and limits](code-projects.md).
