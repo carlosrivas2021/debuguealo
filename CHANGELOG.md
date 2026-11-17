@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/carlosrivas2021/debuguealo/compare/v1.0.0...v1.0.1) (2026-11-17)
+
+
+### Documentation
+
+* expression evaluation exists; only source editing is missing ([#97](https://github.com/carlosrivas2021/debuguealo/issues/97)) ([4a719f3](https://github.com/carlosrivas2021/debuguealo/commit/4a719f3cd7798b6b9d786d0b732dac106cfd86a9))
+
 ## [1.0.0](https://github.com/carlosrivas2021/debuguealo/compare/v0.7.0...v1.0.0) (2026-11-17)
 
 
