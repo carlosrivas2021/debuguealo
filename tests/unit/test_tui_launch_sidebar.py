@@ -1,4 +1,6 @@
 import json
+import os
+import time
 
 import pytest
 from test_tui_compose import Service
@@ -15,6 +17,19 @@ def write_profiles(workspace, profiles):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"version": 1, "configurations": profiles}))
     return path
+
+
+def replace_atomically(path, document):
+    """Save like an editor does, so the refresh (in another thread) never reads half a file."""
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(document))
+    for _ in range(50):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:  # Windows: the refresh may hold the file open for a moment.
+            time.sleep(0.02)
+    os.replace(temporary, path)
 
 
 def profile(name, project, file):
@@ -258,7 +273,7 @@ async def test_reordering_duplicate_names_preserves_selected_project_and_preview
         await pilot.press("r")
         await until(pilot, lambda: app._inline_plan is not None)
         assert app._inline_plan.project.project_name == "second"
-        path.write_text(json.dumps({"version": 1, "configurations": list(reversed(profiles))}))
+        replace_atomically(path, {"version": 1, "configurations": list(reversed(profiles))})
         await pilot.pause(0.2)
         assert app._selection_key == selected_key
         assert app.selected_project == "second"

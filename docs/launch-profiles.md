@@ -20,6 +20,11 @@ central mode. Discovery does not create or rewrite launch files.
 Dynamic profiles are rediscovered from inventory rather than restored from a cache.
 Opening or creating the file never runs Compose.
 
+The dashboard rereads `launch.json` every couple of seconds, so edits made with any editor
+show up on their own. If one read fails, for example because an editor is in the middle of
+saving the file, the profiles already shown stay and the file is read again; an error is
+shown only when the next read fails too.
+
 ## Version 1 shape
 
 ```json

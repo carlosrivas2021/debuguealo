@@ -183,6 +183,8 @@ class DebugPilotApp(App):
         self._stats_wake = asyncio.Event()
         # Bumped whenever profiles are applied, so a slower background read never wins.
         self._launch_revision = 0
+        # The last periodic read failed once; a second failure in a row is shown.
+        self._launch_read_failed = False
         self._stats_task: asyncio.Task | None = None
         self._update_task: asyncio.Task | None = None
         self._compose_projects: dict[str, ComposeProject] = {}
@@ -715,10 +717,19 @@ class DebugPilotApp(App):
             def loaded():
                 raise failure
         else:
+            failure = None
+
             def loaded():
                 return profiles
         if revision != self._launch_revision or self._closing:
             return  # An edit or reload applied newer profiles meanwhile; the next pass reads.
+        if failure is not None and self._launch_error is None and self._launch_loaded \
+                and not self._launch_read_failed:
+            # launch.json may be mid-save (or briefly locked on Windows): keep the profiles
+            # shown and read again on the next pass; only a repeated error is shown.
+            self._launch_read_failed = True
+            return
+        self._launch_read_failed = False
         self._update_launch_profiles(inventory, loaded)
 
     def _update_launch_profiles(
