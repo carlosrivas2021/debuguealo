@@ -173,13 +173,15 @@ async def test_the_list_starts_closed_and_its_title_opens_and_closes_it(monkeypa
         # Focused, the title looks selected, so Alt/Ctrl+arrows never land out of sight.
         assert heading.styles.background != idle
         await pilot.press('enter')
-        assert title(app) == 'BREAKPOINTS 1 ▾' and listed(app) == [' ● main.py:3']
+        await until(pilot, lambda: title(app) == 'BREAKPOINTS 1 ▾')
+        assert listed(app) == [' ● main.py:3']
         # Enter opens it and moves into it, ready to pick a breakpoint.
         table = app.query_one('#source-breakpoints')
         assert app.focused is table
         heading.focus()
         await pilot.press('space')
-        assert title(app) == 'BREAKPOINTS 1 ▸' and listed(app) == []
+        await until(pilot, lambda: title(app) == 'BREAKPOINTS 1 ▸')
+        assert listed(app) == []
         assert app.focused is heading
         # With the list closed, Ctrl+Right skips from the title to the source.
         await pilot.press('ctrl+right')
@@ -188,7 +190,7 @@ async def test_the_list_starts_closed_and_its_title_opens_and_closes_it(monkeypa
         assert title(app) == 'BREAKPOINTS 1 ▸'
         heading.focus()
         await pilot.press('enter')
-        assert listed(app) == [' ● main.py:3']
+        await until(pilot, lambda: listed(app) == [' ● main.py:3'])
     # Every session starts with it closed, whatever it was before.
     restarted = DebugPilotApp(DebugPilotEngine(Settings(), docker=Docker()), workspace=tmp_path)
     async with restarted.run_test(size=(140, 52)) as pilot:

@@ -95,7 +95,7 @@ async def test_refitting_the_columns_keeps_the_view_where_the_user_left_it(tmp_p
         assert viewport > 0
         app._inventory_widths.clear()  # As if the first draw had used another width.
         app._render_launch_profiles()
-        await pilot.pause()
-        assert table.scroll_y == viewport
+        # The view is put back after the redraw's refresh.
+        await until(pilot, lambda: table.scroll_y == viewport)
         assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value == (
             "container:api-00")

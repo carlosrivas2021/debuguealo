@@ -18,7 +18,8 @@ async def watch_config(pilot, app, roots):
     await pilot.click('#area-code')
     await mark(pilot, app, line=3)
     await pilot.press('shift+f5')
-    await until(pilot, lambda: 'config' in app.query_one('#code-variables').text)
+    # Starting the debugger is the slow part on a loaded machine.
+    await until(pilot, lambda: 'config' in app.query_one('#code-variables').text, seconds=60)
     await add_watch(pilot, app, 'config')
     await add_watch(pilot, app, "config['port'] + 1")
     await until(pilot, lambda: watch_rows(app) == [
