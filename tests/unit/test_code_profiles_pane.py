@@ -1,6 +1,7 @@
 """The Code profiles pane: count in the title, fixed spacing, and a resizable list."""
 
 from test_code_debug_ui import debug_app
+from test_tui_grouping import until
 from textual.widgets import DataTable, Static
 
 
@@ -67,8 +68,7 @@ async def test_dragging_the_splitter_resizes_the_list(monkeypatch, tmp_path):
         await pilot.mouse_down('#code-profiles-splitter')
         await pilot.hover('#code-profiles-splitter', offset=(2, 3))
         await pilot.mouse_up('#code-profiles-splitter')
-        await pilot.pause()
-        assert rows(app) == 9
+        await until(pilot, lambda: rows(app) == 9)
         # Dragging resizes; it never selects the handle's characters.
         assert not app.screen.selections
         handle = str(app.query_one('#code-profiles-splitter').render())

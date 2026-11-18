@@ -73,6 +73,7 @@ async def test_stop_reports_to_output_and_keeps_the_list_usable_while_waiting():
         await until(pilot, lambda: ready(app))
         select_key(app, "container:orders-api")
         await pilot.press("s")
+        await until(pilot, lambda: app.query_one("#inline-compose").display)
         await pilot.click("#inline-compose-confirm")
         await pilot.pause()
         table = app.query_one("#launch-profiles", DataTable)
@@ -103,6 +104,7 @@ async def test_a_second_stop_can_be_sent_while_the_first_still_waits():
         await until(pilot, lambda: ready(app))
         select_key(app, "container:orders-api")
         await pilot.press("s")
+        await until(pilot, lambda: app.query_one("#inline-compose").display)
         await pilot.click("#inline-compose-confirm")
         await until(pilot, lambda: pending == [("orders-api",)])
         # The confirmation bar is free again while Docker is still stopping orders-api.
@@ -112,11 +114,13 @@ async def test_a_second_stop_can_be_sent_while_the_first_still_waits():
         assert not app.query_one("#inline-compose").display  # already stopping
         select_key(app, "container:gateway-api")
         await pilot.press("s")
+        await until(pilot, lambda: app.query_one("#inline-compose").display)
         await pilot.click("#inline-compose-confirm")
         await until(pilot, lambda: len(pending) == 2)
         # Stopping the whole project only targets the member not already stopping.
         select_key(app, "project:orders")
         await pilot.press("s")
+        await until(pilot, lambda: app.query_one("#inline-compose").display)
         await pilot.click("#inline-compose-confirm")
         await until(pilot, lambda: len(pending) == 3)
         assert pending == [("orders-api",), ("gateway-api",), ("orders-worker",)]
@@ -262,6 +266,7 @@ async def test_saved_profile_parent_stop_pins_active_project_members(tmp_path, c
             assert not docker.stops
             assert not app.query_one("#inline-compose").display
             await pilot.press("s")
+        await until(pilot, lambda: app.query_one("#inline-compose").display)
         await pilot.click("#inline-compose-confirm")
         await until(pilot, lambda: bool(docker.stops))
         assert docker.stops == [(("orders-api", "orders-worker"), True, 10)]
