@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/carlosrivas2021/debuguealo/compare/v1.1.0...v1.1.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **code:** the branch filter shows what is typed, and its hint fits ([#106](https://github.com/carlosrivas2021/debuguealo/issues/106)) ([dbdb97c](https://github.com/carlosrivas2021/debuguealo/commit/dbdb97c13a43f9e68c8aa9603d834a411ba37062))
+
 ## [1.1.0](https://github.com/carlosrivas2021/debuguealo/compare/v1.0.1...v1.1.0) (2026-11-17)
 
 
