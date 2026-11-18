@@ -85,7 +85,8 @@ async def test_running_profile_keeps_its_launch_branch_until_relaunched(monkeypa
 
         await pilot.click("#code-stop")
         await until(pilot, lambda: "Stopped" in str(app.query_one("#code-run-state").render()))
-        assert _branch(app) == "⎇ hotfix"
+        # The label is read from Git in the background once the run ends.
+        await until(pilot, lambda: _branch(app) == "⎇ hotfix")
 
         table.focus()
         await pilot.press("f5")

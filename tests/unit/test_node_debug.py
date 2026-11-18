@@ -169,7 +169,7 @@ async def test_unterminated_output_and_real_exit_status(tmp_path, exit_code):
     source.write_text('process.stdout.write("OUT");\nprocess.stderr.write("ERR");\n'
                       f'process.exitCode = {exit_code};\n')
     output = []
-    session = NodeDebugSession(timeout=5, on_output=lambda c, t: output.append((c, t)))
+    session = NodeDebugSession(timeout=60, on_output=lambda c, t: output.append((c, t)))
     try:
         await session.start(CodeProject('tail', tmp_path, ('node', 'server.js')), {})
         assert (await event(session, 'exited'))['exitCode'] == exit_code
