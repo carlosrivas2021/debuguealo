@@ -219,3 +219,22 @@ async def test_b_opens_the_list_over_the_workspace_and_typing_filters_it(monkeyp
         await pilot.press("down", "enter")  # Down moves through the list from the filter.
         await until(pilot, lambda: _branch(app) == "⎇ fix/logging")
         assert current_branch(repo) == "fix/logging"
+
+
+async def test_the_filter_shows_what_is_typed_and_the_hint_fits(monkeypatch, tmp_path):
+    app, _ = _app(monkeypatch, tmp_path)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.click("#area-code")
+        await until(pilot, lambda: _branch(app) == "⎇ main")
+        app.query_one("#code-projects").focus()
+        await _open_picker(pilot, app, key="b")
+        await pilot.press(*"feat")
+        await pilot.pause()
+        field = app.screen.query_one("#branch-filter")
+        # Focused, the field keeps its row for text (no focus border taking it).
+        assert field.content_region.height == 1
+        assert "feat" in "".join(strip.text for strip in field.render_lines(
+            field.content_region.reset_offset))
+        hint = app.screen.query_one("Label")
+        box = app.screen.query_one("BranchPicker > Vertical")
+        assert hint.region.right <= box.region.right

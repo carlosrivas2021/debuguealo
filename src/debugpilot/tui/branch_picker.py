@@ -57,8 +57,12 @@ class BranchPicker(ModalScreen[str | None]):
         width: 48; max-height: 80%; height: auto; margin: 1 2 0 0;
         border: round $accent; background: $surface; padding: 0 1;
     }
-    BranchPicker Label { height: 1; color: $text-muted; }
-    BranchPicker Input { height: 1; border: none; padding: 0; margin-bottom: 1; }
+    BranchPicker Label { height: auto; color: $text-muted; }
+    /* Also when focused: Input's own focus border would take the only row of text. */
+    BranchPicker Input, BranchPicker Input:focus {
+        height: 1; border: none; padding: 0 1; margin: 1 0;
+        background: $boost;
+    }
     BranchPicker OptionList { height: auto; max-height: 20; border: none; }
     """
 
@@ -69,7 +73,7 @@ class BranchPicker(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Label("Switch branch · type to filter · Enter switches · Esc closes")
+            yield Label("Switch branch · type to filter\nEnter switches · Esc closes")
             yield _BranchFilter(placeholder="Filter branches", id="branch-filter")
             yield _BranchOptions(
                 *self._options(self.branches), initial=self._current_index(self.branches),
