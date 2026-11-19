@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Actions → ci → Run workflow: run Windows on any branch before merging something delicate.
+  # Actions → ci → Run workflow: run the checks again on any branch.
   workflow_dispatch:
 
 permissions:
@@ -28,11 +28,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Pull requests run Linux only; main and manual runs add Windows (informational).
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "windows-latest"]') }}
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # Windows is informational until its run is green; Linux is the required check.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +47,13 @@ jobs:
           node-version: "24"
       - run: uv sync --locked
       - run: uv run pytest -q -n auto -m "not integration" tests/unit
+        if: runner.os != 'Windows'
+      # A loaded Windows runner fails a few timing-sensitive tests at random, and now and
+      # then a thread never exits when a test closes its event loop. There, a failed test
+      # runs up to twice more, and a test stuck for 5 minutes is stopped and retried.
+      # Linux stays strict, so a real intermittent bug still shows up there.
+      - run: uv run pytest -q -n auto -m "not integration" --reruns 2 --timeout 300 tests/unit
+        if: runner.os == 'Windows'
 
   integration:
     runs-on: ubuntu-latest

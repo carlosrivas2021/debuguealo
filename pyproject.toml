@@ -45,6 +45,8 @@ debugealo = "debugpilot.cli:app"
 dev = [
     "pytest>=8.3,<10",
     "pytest-asyncio>=0.25,<2",
+    "pytest-rerunfailures>=15,<17",
+    "pytest-timeout>=2.3,<3",
     "pytest-xdist>=3.6,<4",
     "ruff>=0.9,<1",
 ]
