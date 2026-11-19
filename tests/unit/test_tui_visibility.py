@@ -55,7 +55,7 @@ async def test_hiding_selected_stopped_container_clears_selection_and_keeps_scop
         assert app.selected_project == "demo"
         assert "stopped:container:off" not in keys(app, "#launch-profiles")
         # The project selection shows its overview instead of auto-opening logs.
-        assert app.query_one("#project-overview").region.height > 0
+        await until(pilot, lambda: app.query_one("#project-overview").region.height > 0)
     assert len(docker.closed) == len(docker.opened)
 
 

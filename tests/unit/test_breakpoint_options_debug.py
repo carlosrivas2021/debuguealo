@@ -1,6 +1,7 @@
 """Conditional breakpoints and logpoints through each real debug adapter."""
 
 import asyncio
+import functools
 import sys
 
 import pytest
@@ -22,7 +23,9 @@ PROGRAMS = {
              'let total = 0;\nfor (let i = 0; i < 5; i++) {\n  total += i;\n}\n'
              'console.log(`TOTAL:${total}`);\n'),
 }
-SESSIONS = {'python': PythonDebugSession, 'go': GoDebugSession, 'node': NodeDebugSession}
+# The startup limit only bounds a real failure; a loaded CI machine needs more than 15 s.
+SESSIONS = {language: functools.partial(session, timeout=60) for language, session in (
+    ('python', PythonDebugSession), ('go', GoDebugSession), ('node', NodeDebugSession))}
 CONDITIONS = {'python': 'i == 3', 'go': 'i == 3', 'node': 'i === 3'}
 
 

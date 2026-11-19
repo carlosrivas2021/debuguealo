@@ -29,16 +29,15 @@ async def test_compose_output_is_docked_separate_and_o_restores_control(tmp_path
         await pilot.pause()
         assert not console.expanded  # no keyboard shortcut on purpose
         await pilot.click("#compose-output-toggle")
-        await pilot.pause()
-        assert console.expanded and app.query_one("#compose-output-viewer").display
+        await until(pilot, lambda: console.expanded)
+        assert app.query_one("#compose-output-viewer").display
         await pilot.click("#compose-output-toggle")
-        await pilot.pause()
-        assert console.display and not console.expanded
-        assert not app.query_one("#compose-output-viewer").display
+        await until(pilot, lambda: not console.expanded)
+        assert console.display and not app.query_one("#compose-output-viewer").display
         assert app.query_one("#launch-profiles").has_focus
         await pilot.click("#compose-output-toggle")
-        await pilot.pause()
-        assert console.expanded and app.query_one("#compose-output-viewer").display
+        await until(pilot, lambda: console.expanded)
+        assert app.query_one("#compose-output-viewer").display
 
 
 async def test_native_inventory_scales_scrolls_and_shows_only_published_port_labels():

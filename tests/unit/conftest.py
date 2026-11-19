@@ -1,5 +1,14 @@
 
 import pytest
+from textual.widgets import Button
+
+
+@pytest.fixture(autouse=True)
+def immediate_button_presses(monkeypatch):
+    # After a press, a Button ignores clicks until a 0.2 s timer ends its "-active" look.
+    # A loaded machine runs that timer late, so a test's next click on the same button
+    # was dropped at random. People never click twice in 0.2 s expecting two actions.
+    monkeypatch.setattr(Button, "_start_active_affect", lambda self: None)
 
 
 @pytest.fixture(autouse=True)
