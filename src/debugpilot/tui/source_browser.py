@@ -331,6 +331,9 @@ class SourceBrowser(Vertical):
             for entry in entries[:2000]:
                 if entry.is_symlink() or entry.is_junction():
                     continue
+                # Git's own data (a folder, or a file in a worktree or submodule).
+                if entry.name.casefold() == ".git":
+                    continue
                 kinds.append((entry, entry.is_dir(follow_symlinks=False)))
             kinds.sort(key=lambda kind: (not kind[1], kind[0].name.casefold()))
             for entry, is_dir in kinds:

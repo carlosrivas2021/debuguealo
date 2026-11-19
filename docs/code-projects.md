@@ -42,8 +42,8 @@ processes. Container action shortcuts are inactive in Code.
 ## Layout
 
 Code is laid out like an IDE: profile names, the file tree and the project's breakpoints on the
-left (the tree's root is the selected profile's folder; the **PROFILES** title shows how many
-there are), source in
+left (the tree's root is the selected profile's folder, without Git's own `.git` data; the
+**PROFILES** title shows how many there are), source in
 the center, the **Debug** panel (controls, stack, variables) on the right while a debug
 session is selected, and the bottom area below: the Code terminal for runs or **Debug output**
 for debug sessions. **O** hides or shows the bottom area, the same key that shows the host

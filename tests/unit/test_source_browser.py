@@ -125,3 +125,26 @@ async def test_right_expands_and_left_collapses_a_folder_like_the_variables(tmp_
         assert tree.cursor_node is folder
         await pilot.press("left")  # On an open folder: close it.
         assert not folder.is_expanded
+
+
+async def test_the_git_folder_is_hidden_and_other_dotfiles_are_listed(tmp_path):
+    # Git's own data is not project code; a worktree or submodule has a .git file instead.
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".env").write_text("A=1\n")
+    (tmp_path / "main.py").write_text("print(1)\n")
+    nested = tmp_path / "vendor"
+    nested.mkdir()
+    (nested / ".git").write_text("gitdir: ../.git/modules/vendor\n")
+    (nested / "lib.py").write_text("x = 1\n")
+    app = BrowserApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        browser = app.query_one(SourceBrowser)
+        browser.set_project(tmp_path)
+        tree = browser.query_one(Tree)
+        assert [str(child.label) for child in tree.root.children] == [
+            ".github", "vendor", ".env", "main.py"]
+        folder = next(child for child in tree.root.children if str(child.label) == "vendor")
+        folder.expand()
+        await pilot.pause()
+        assert [str(child.label) for child in folder.children] == ["lib.py"]
