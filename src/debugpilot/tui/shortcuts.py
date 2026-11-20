@@ -109,6 +109,7 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
         ("Profiles and files", (
             Shortcut("→ / ←", "Open / close a folder in the file tree", ("right", "left")),
             Shortcut("B", "Switch Git branch (type to filter the list)", ("b",)),
+            Shortcut("F", "Find a file by name, or (Tab) a line by its text", ("f",)),
             Shortcut("Alt+↑ / Alt+↓", "Give the profiles or the files more rows",
                      ("alt+up", "alt+down")),
         )),
