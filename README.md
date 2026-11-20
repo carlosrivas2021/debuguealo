@@ -101,6 +101,7 @@ Debugging Go also needs [Delve](https://github.com/carlosrivas2021/debuguealo/bl
 | `R` | Restart the running profile, or reload `launch.json` when it is stopped |
 | `P` | Go to the running program's input (**Esc** returns to the profiles) |
 | `:` | While paused, evaluate an expression in the selected frame (**↑**/**↓** history, **Esc** returns) |
+| `F` | Find a file by name, or (`Tab`) a line by its text, and open it |
 
 The full workflow is in the [keyboard guide](https://github.com/carlosrivas2021/debuguealo/blob/main/docs/tui.md).
 
