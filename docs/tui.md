@@ -124,8 +124,9 @@ shows the project overview; selecting a child shows that container's details and
 acts on that actual container. `Ctrl+L` opens logs for either selection. A child appears under its owning profile and is not
 repeated in the unowned groups of the same tree. Press `Space` on a profile or project
 group to collapse or expand its children; selection stays on that group. `r` previews Recreate and `Shift+R` previews
-Build + Recreate for the selected saved profile; both preserve confirmation and target
-pinning. Redundant sidebar Play/Recreate buttons are hidden. Incomplete or invalid
+Build + Recreate for the selected saved profile; on a container row under a profile, both
+target only that container's Compose service (`--no-deps`). Both preserve confirmation and
+target pinning. Redundant sidebar Play/Recreate buttons are hidden. Incomplete or invalid
 profiles remain visible as pending and must be fixed in `launch.json` before they can run.
 
 ## Active containers and logs
@@ -187,8 +188,8 @@ automatically.
 
 | Control | Effect |
 | --- | --- |
-| `r` | Preview Recreate for the selected saved launch profile. |
-| `Shift+R` | Preview Build + Recreate for the selected saved launch profile. |
+| `r` | Preview Recreate for the selected saved launch profile, or only the selected container's service. |
+| `Shift+R` | Preview Build + Recreate for the selected saved launch profile, or only the selected container's service. |
 | `s` | Confirm stopping the selected visible container or project group. |
 | `a` | Refresh AWS credentials for every profile with `awsCredentials`, then offer Recreate for the running ones. |
 | `Shift+A` | Edit the AWS config and credentials files side by side in the built-in editor (also from Code). |
