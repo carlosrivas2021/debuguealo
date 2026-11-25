@@ -200,3 +200,40 @@ async def test_compose_modal_does_not_stop_background_inventory_or_leak_on_exit(
         await pilot.pause()
         assert not isinstance(app.screen, ComposeDialog)
     assert engine.state == EngineState.CLOSED
+
+
+async def test_one_failed_inventory_read_keeps_the_last_containers_shown():
+    docker = Docker()
+    engine = DebugPilotEngine(Settings(), docker=docker)
+    app = DebugPilotApp(engine, refresh_interval=0.05)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await wait_until(pilot, lambda: set(app._inventory) == {"api", "worker"})
+        reads = []
+        hold = asyncio.Event()
+
+        async def flaky():
+            reads.append(None)
+            if len(reads) == 1:
+                raise DockerError("Docker is busy.")
+            await hold.wait()  # Freeze the next poll so the failed one is observable.
+            return docker.inventory
+
+        docker.list_containers = flaky
+        await wait_until(pilot, lambda: len(reads) >= 2)
+        # A single failed poll (a build loading Docker, a container removed mid-read)
+        # is shown in the status line but never empties the inventory.
+        assert "busy" in str(app.query_one("#docker-state", Static).render()).lower()
+        assert set(app._inventory) == {"api", "worker"}
+        assert app.query_one("#launch-profiles", DataTable).row_count > 0
+        hold.set()
+
+
+async def test_repeated_inventory_failures_still_empty_the_inventory():
+    docker = Docker()
+    engine = DebugPilotEngine(Settings(), docker=docker)
+    app = DebugPilotApp(engine, refresh_interval=0.05)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await wait_until(pilot, lambda: set(app._inventory) == {"api", "worker"})
+        docker.failure = True
+        await wait_until(pilot, lambda: not app._inventory)
+        assert "unavailable" in str(app.query_one("#docker-state", Static).render()).lower()

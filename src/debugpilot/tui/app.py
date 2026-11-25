@@ -44,6 +44,8 @@ from debugpilot.tui.terminal_view import TerminalPane
 from debugpilot.tui.theme import DEBUGEALO_THEME, DEFAULT_THEME, theme_style
 
 ACTIVE_STATES = frozenset({"running", "paused", "restarting"})
+# Consecutive failed inventory reads tolerated before the inventory is emptied.
+INVENTORY_FAILURE_LIMIT = 3
 
 
 def _plan_scope(plan) -> str:
@@ -154,6 +156,7 @@ class DebugPilotApp(App):
             saved = None
         self.theme = saved or DEFAULT_THEME
         self.refresh_interval = max(0.05, refresh_interval)
+        self._inventory_failures = 0
         self.selected_container: ContainerInfo | None = None
         self.selected_project: str | None = None
         self._selection_key: str | None = None
@@ -539,17 +542,25 @@ class DebugPilotApp(App):
                     f"debugealo  ·  Docker: connected  ·  {active} active / {len(inventory)} total"
                 )
                 self._show_inventory(inventory)
+                self._inventory_failures = 0
             except DebugPilotError as error:
                 self.query_one("#docker-state", Static).update(f"Docker unavailable: {error}")
-                await self._refresh_launch_profiles(None)
-                self._show_inventory([])
+                await self._inventory_read_failed()
             except Exception:
                 self.query_one("#docker-state", Static).update(
                     "Docker unavailable: unable to read inventory. Retrying…"
                 )
-                await self._refresh_launch_profiles(None)
-                self._show_inventory([])
+                await self._inventory_read_failed()
             await asyncio.sleep(self.refresh_interval)
+
+    async def _inventory_read_failed(self) -> None:
+        # A build loading Docker, or a container removed mid-read, fails one poll; keep
+        # the last inventory shown until the failure repeats, so rows do not flicker to 0/0.
+        self._inventory_failures += 1
+        if self._inventory_loaded and self._inventory_failures < INVENTORY_FAILURE_LIMIT:
+            return
+        await self._refresh_launch_profiles(None)
+        self._show_inventory([])
 
     async def _stats_loop(self) -> None:
         """Sample the selected container's inspect and stats; nothing without a target."""
@@ -1213,7 +1224,9 @@ class DebugPilotApp(App):
         if self._compose_output_matches_selection(run.project) and not self._closing:
             self._restore_compose_output()
         self._record_compose_output(
-            run, f"Starting {run.plan.action}: {run.project} / {_plan_scope(run.plan)}"
+            run,
+            f"Starting {run.plan.action}: {run.project} / {_plan_scope(run.plan)}. "
+            "Esc stops it while this project is selected.",
         )
 
     def _record_compose_output(
@@ -2693,8 +2706,29 @@ class DebugPilotApp(App):
                 self._set_logs_requested(False)
                 self.query_one(self._selection_table_selector(), DataTable).focus()
                 return
+            if not self.query_one("#inline-compose").display:
+                self._explain_compose_cancel()
             self._dismiss_inline_compose()
             self.query_one(self._selection_table_selector(), DataTable).focus()
+
+    def _explain_compose_cancel(self) -> None:
+        """Esc on another project never stops a run; say which project to select instead."""
+        running = [
+            project for project, task in self._compose_tasks.items() if not task.done()
+        ]
+        if not running:
+            return
+        names = ", ".join(self._compose_project_label(project) for project in running)
+        self.notify(
+            f"Esc stops the selected project's Compose run. Select {names} to stop it.",
+            severity="information",
+        )
+
+    def _compose_project_label(self, project: str) -> str:
+        profile = next(
+            (item for item in self._launch_profiles if item.project_name == project), None
+        )
+        return (profile.name if profile is not None and profile.name else None) or project
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "show_shortcuts" and isinstance(self.screen, ModalScreen):
