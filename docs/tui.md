@@ -68,7 +68,7 @@ profiles match, such as `2/5`.
 
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
 the source, in screen order, and while a debug session shows its panel also the call stack, the
-watch list and the variables; **Alt+Left** and **Alt+Right** do the same. In the file tree and the variables, **Right** opens a folder or a variable's fields, **Left** closes it or moves to the folder or variable that holds it, and **Space** toggles it. **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
+watch list and the variables; **Alt+Left** and **Alt+Right** do the same. In the file tree and the variables, **Right** opens a folder or a variable's fields, **Left** closes it or moves to the folder or variable that holds it, and **Space** toggles it. **F** finds a file of the project by name, or with **Tab** a line by its text, and opens it (see [Code projects](code-projects.md)). **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
 terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **T** opens a
 Bash shell at the root of the project in the file tree, below the editor; **T** from outside it
 goes back to the run output. **S** or **Stop** ends only the selected Code
