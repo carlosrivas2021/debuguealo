@@ -136,8 +136,8 @@ async def test_recreate_same_project_profiles_keep_options_and_reject_stale_prof
             await pilot.press("r")
             project, action, scope = service.previews[-1]
             assert action == "recreate" and project.project_name == "demo"
-            # The public profile action deliberately recreates ALL services.
-            assert scope is None
+            # A container row recreates only its own service, with the profile's options.
+            assert scope == app.selected_container.compose_service
             assert (project.up.build, project.up.detach, project.up.force_recreate) == options
             assert project.files == ((tmp_path / "compose.yaml").resolve(),)
             previous = len(service.runs)
@@ -148,7 +148,7 @@ async def test_recreate_same_project_profiles_keep_options_and_reject_stale_prof
             )
             assert len(service.runs) == previous + 1
             plan, confirmed = service.runs[-1]
-            assert confirmed is True and plan.project == project and plan.service is None
+            assert confirmed is True and plan.project == project and plan.service == scope
             assert app.selected_container.id == identity and app._selected_profile_name == name
             assert not opened and not docker.stops
             unchanged(originals)

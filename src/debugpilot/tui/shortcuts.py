@@ -42,8 +42,11 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
         ("Projects and containers", (
             Shortcut("Space", "Collapse or expand a group", ("space",)),
             Shortcut("D", "Show the selected container's details", ("d",)),
-            Shortcut("R", "Preview Play / Recreate", ("r",)),
-            Shortcut("Shift+R", "Preview Build + Recreate", ("shift+r",)),
+            Shortcut("R", "Preview Recreate of the profile, or the selected service", ("r",)),
+            Shortcut(
+                "Shift+R", "Preview Build + Recreate of the profile, or the selected service",
+                ("shift+r",),
+            ),
             Shortcut("S", "Stop the container or project, after confirmation", ("s",)),
             Shortcut(
                 "Esc",

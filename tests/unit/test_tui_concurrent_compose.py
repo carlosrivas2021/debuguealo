@@ -3,6 +3,7 @@
 import asyncio
 import json
 
+import pytest
 from test_tui_grouping import ready, select_key, until
 from test_tui_stop import StopDocker
 from textual.widgets import RichLog, Static
@@ -378,3 +379,42 @@ async def test_run_start_line_says_how_to_stop_it(tmp_path, monkeypatch):
         assert "Esc stops it while this project is selected" in buffered(app, "orders")
         service.gate("orders").set()
         await until(pilot, lambda: app._compose_tasks["orders"].done())
+
+
+@pytest.mark.parametrize(("key", "action"), [("r", "recreate"), ("R", "rebuild")])
+async def test_recreate_on_a_container_targets_only_its_service(tmp_path, monkeypatch, key, action):
+    service = ProjectService()
+    app, _docker = create_app(tmp_path, monkeypatch, service)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(app._launch_profiles) and ready(app))
+        child = "profile-child:profile:Orders:orders-api"
+        select_key(app, child)
+        await until(pilot, lambda: app._selection_key == child)
+        target = app.selected_container.compose_service
+        assert target
+        await pilot.press(key)
+        assert app.query_one("#inline-compose").display
+        plan = app._inline_plan
+        assert (plan.action, plan.service) == (action, target)
+        assert f"/ {target}?" in message(app)
+        await pilot.click("#inline-compose-confirm")
+        await until(pilot, service.began("orders").is_set)
+        assert app._compose_tasks["orders"] is not None
+        service.gate("orders").set()
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
+        assert f"Starting {action}: orders / {target}" in buffered(app, "orders")
+
+
+@pytest.mark.parametrize(("key", "action"), [("r", "recreate"), ("R", "rebuild")])
+async def test_recreate_on_a_profile_row_still_targets_the_whole_profile(
+    tmp_path, monkeypatch, key, action
+):
+    service = ProjectService()
+    app, _docker = create_app(tmp_path, monkeypatch, service)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(app._launch_profiles) and ready(app))
+        select_key(app, "profile:Orders")
+        await until(pilot, lambda: app._selection_key == "profile:Orders")
+        await pilot.press(key)
+        plan = app._inline_plan
+        assert (plan.action, plan.service) == (action, None)

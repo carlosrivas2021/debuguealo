@@ -1850,7 +1850,7 @@ class DebugPilotApp(App):
         try:
             project = self._project_from_profile(profile)
             service = ComposeService(self.engine.settings)
-            plan = service.preview(project, action)
+            plan = service.preview(project, action, self._selected_child_service())
         except (ConfigurationError, ComposeError) as error:
             self.notify(f"Launch profile pending: {error}. Edit launch.json.", severity="warning")
             return
@@ -1868,6 +1868,11 @@ class DebugPilotApp(App):
         self.query_one("#inline-compose-confirm", Button).disabled = False
         self.query_one("#inline-compose-cancel", Button).label = "Cancel"
         self.query_one("#inline-compose-confirm", Button).focus()
+
+    def _selected_child_service(self) -> str | None:
+        """A container row under a profile scopes R / Shift+R to its own Compose service."""
+        child = self._launch_child_rows.get(self._selection_key or "")
+        return (child[1].compose_service or None) if child is not None else None
 
     def _open_compose(self, initial_action: str = "recreate", *, contextual: bool = False) -> None:
         from debugpilot.docker.compose import ComposeService

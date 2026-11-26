@@ -144,7 +144,8 @@ async def test_child_actions_retain_child_selection_and_log_target(tmp_path, mon
             await pilot.press("r")
             await until(pilot, lambda: app._inline_plan is not None)
             assert app._inline_plan.project.project_name == "owned"
-            assert app._inline_plan.service is None
+            # A container row scopes the action to its own service.
+            assert app._inline_plan.service == "worker"
             assert not service.runs
             if finish == "cancel":
                 await pilot.press("escape")
