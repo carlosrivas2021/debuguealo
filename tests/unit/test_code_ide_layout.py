@@ -72,7 +72,7 @@ async def test_footer_shows_debug_shortcuts_only_in_the_code_area(monkeypatch, t
         await pilot.pause()
         containers = _shown_keys(app)
         assert not {"f9", "f10", "f11", "shift+f11", "ctrl+j"} & containers
-        assert "o" in containers  # The host terminal.
+        assert "t" in containers and "o" not in containers  # T is the host terminal.
         await pilot.click("#area-code")
         await pilot.pause()
         code = _shown_keys(app)

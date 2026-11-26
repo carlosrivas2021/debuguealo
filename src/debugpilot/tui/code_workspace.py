@@ -1,6 +1,7 @@
 """Central code profiles and one independently owned local execution."""
 
 import asyncio
+from pathlib import Path
 
 from rich.text import Text
 from textual import on
@@ -20,6 +21,7 @@ from debugpilot.storage.git_branches import (
     switch_branch,
 )
 from debugpilot.storage.git_head import current_branch
+from debugpilot.terminal.session import TerminalUnavailable
 from debugpilot.tui.branch_picker import BranchPicker
 from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
@@ -61,6 +63,15 @@ STATUS_ICONS = {"run": ("▶", "text-success"), "debug": ("◉", "text-warning")
 STATUS_REFRESH_SECONDS = 0.5
 
 
+def _display_path(path: Path) -> str:
+    """A folder as a shell shows it: under the home folder, starting with ~."""
+    try:
+        relative = path.relative_to(Path.home())
+    except (ValueError, RuntimeError):
+        return str(path)
+    return "~" if relative == Path(".") else f"~/{relative.as_posix()}"
+
+
 class CodeWorkspace(Vertical):
     # Shown in the footer only while focus is inside Code; the app-level F9 stays hidden.
     BINDINGS = [
@@ -82,6 +93,8 @@ class CodeWorkspace(Vertical):
         Binding("e", "cycle_exceptions", "Exceptions"),
         # The profile's Git branches, like clicking the branch in the action bar.
         Binding("b", "switch_branch", "Branch"),
+        # A shell at the root of the project in the file tree; T again goes back.
+        Binding("t", "toggle_shell", "Shell"),
         # A file by name, or (Tab) a line by its text, in the project shown in the tree.
         Binding("f", "find_in_project", "Find"),
         Binding("slash", "filter_profiles", "Filter"),
@@ -106,8 +119,12 @@ class CodeWorkspace(Vertical):
         self._profile_rows = DEFAULT_PROFILE_ROWS
         # The keys the footer last drew; redrawing rebuilds every footer key.
         self._drawn_bindings = None
-        # Last view the user chose per profile ("run" or "debug"), used when neither is live.
+        # Last view the user chose per profile ("run", "debug" or "shell").
         self._last_view: dict[str, str] = {}
+        # One shell per project root, kept alive while other profiles are shown.
+        self._shells: dict[Path, TerminalPane] = {}
+        # Roots whose shell the user exited: hidden for every profile until T reopens it.
+        self._ended_shells: set[Path] = set()
         # Branch each profile was launched from; a live session keeps showing it after a checkout.
         self._launch_branches: dict[str, str | None] = {}
         self._run_button = Button("▶ Run", id="code-run")
@@ -288,7 +305,15 @@ class CodeWorkspace(Vertical):
         self._sync_controls()
 
     def _apply_view(self, profile):
-        """Show exactly one of the run terminal or the debug panel for the selection."""
+        """Show exactly one of the run terminal, the debug panel or the shell."""
+        root = self._browser.root_path
+        shell = self._shells.get(root)
+        shell_view = (
+            shell is not None and root not in self._ended_shells
+            and self._last_view.get(profile.name if profile else "") == "shell"
+        )
+        for pane in self._shells.values():
+            pane.display = shell_view and pane is shell
         run = self._pane.selected_context
         debug = self._debug.selected
         run_live = bool(run and (run.pending or run.active or run.stopping))
@@ -303,12 +328,47 @@ class CodeWorkspace(Vertical):
             view = "debug"
         else:
             view = self._last_view.get(profile.name if profile else "", "run")
+        if shell_view:
+            view = "shell"
         # The side panel is for live sessions; a finished one keeps only its output below.
-        self._debug.display = view == "debug" and debug_live
+        self._debug.display = debug_live if shell_view else view == "debug" and debug_live
         self._debug.output.display = view == "debug"
         self._debug.sync_input()
         self._pane.display = view == "run" and run is not None
         return view
+
+    async def action_toggle_shell(self) -> None:
+        """Show the project's shell, opening it if needed, or go back to the run output."""
+        root = self._browser.root_path
+        profile = self._highlighted_profile()
+        if root is None or self._shutting_down:
+            return
+        name = profile.name if profile is not None else ""
+        shell = self._shells.get(root)
+        if shell is not None and shell.display and shell.active:
+            self._last_view.pop(name, None)  # Back to whatever run/debug would show.
+            self._apply_view(profile)
+            return
+        if shell is None:
+            shell = TerminalPane(
+                classes="code-shell",
+                escape_hook=lambda: self.query_one("#code-projects", DataTable).focus(),
+                exit_hook=lambda: self._shell_exited(root, shell),
+            )
+            shell.border_title = f"Shell · {_display_path(root)}"
+            self._shells[root] = shell
+            await self._bottom.mount(shell)
+        self._last_view[name] = "shell"
+        self._ended_shells.discard(root)
+        self._show_bottom()
+        self._apply_view(profile)
+        if shell.active:
+            shell.focus()
+            return
+        try:
+            await shell.open_host(root)  # Focuses the shell once it runs.
+        except TerminalUnavailable as error:
+            self._state(f"Shell unavailable: {error}")
 
     def _state(self, message):
         self._run_state.update(message)
@@ -618,6 +678,16 @@ class CodeWorkspace(Vertical):
         self._debug.start(profile)
         self._sync_controls()
 
+    def _shell_exited(self, root: Path, shell: TerminalPane) -> None:
+        """`exit` hides the shell; the next T opens a new one in the same folder."""
+        if self._shutting_down:
+            return
+        had_focus = self.app.focused is shell
+        self._ended_shells.add(root)
+        self._apply_view(self._highlighted_profile())
+        if had_focus:
+            self.query_one("#code-projects", DataTable).focus()
+
     def check_action(self, action, parameters):
         if action == "clear_profiles_filter":
             # Esc in the profile list clears a kept filter.
@@ -627,6 +697,7 @@ class CodeWorkspace(Vertical):
         if action in {
             "stop_run", "resize_profiles", "reload_profiles", "restart_run", "focus_prompt",
             "filter_profiles", "cycle_exceptions", "focus_console", "switch_branch",
+            "toggle_shell",
             "find_in_project",
         }:
             focused = self.app.focused
@@ -635,6 +706,8 @@ class CodeWorkspace(Vertical):
                 isinstance(focused, TerminalPane) and focused.active
             ):
                 return False
+        if action == "toggle_shell" and self._browser.root_path is None:
+            return False  # No profile, so no project to open a shell in.
         if action == "switch_branch" and not self._branch.display:
             return False  # The profile's folder is not in a Git repository.
         if action == "find_in_project" and self.query_one(SourceBrowser).root_path is None:
@@ -879,6 +952,8 @@ class CodeWorkspace(Vertical):
         self._shutting_down = True
         await self._pane.close_all()
         await self._debug.close_all()
+        for shell in self._shells.values():
+            await shell.close_session()
 
     async def on_unmount(self):
         await self.shutdown()

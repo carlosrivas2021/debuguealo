@@ -35,7 +35,7 @@ async def test_console_starts_collapsed_button_expands_and_host_opens_below(tmp_
         await pilot.pause()
         assert not console.expanded and dashboard.region.height == full_height
         assert made == []
-        await pilot.press("h")
+        await pilot.press("t")
         await pilot.pause()
         pane = app.query_one("#terminal-pane", TerminalPane)
         assert len(made) == 1 and made[0].host[0] == service.resolve()
@@ -46,9 +46,8 @@ async def test_console_starts_collapsed_button_expands_and_host_opens_below(tmp_
         assert pane.parent is host and host.parent is right
         assert host.region.x >= right.region.x and host.region.bottom == right.region.bottom
         assert app.query_one("#sidebar").region.height == full_height
-        await pilot.click("#terminal-close")
-        await pilot.pause()
-        assert made[0].closed and not pane.active
+        made[0].on_exit()  # The user types `exit`.
+        await until(pilot, lambda: not pane.active and not host.display)
         assert_files_unchanged(launch, compose, original)
 
 
@@ -69,7 +68,7 @@ async def test_host_terminal_stays_at_the_bottom_when_the_output_card_is_hidden(
         table.move_cursor(row=table.get_row_index(child))
         await until(pilot, lambda: app.selected_container is not None)
         # Container details have auto height, so nothing else fills the panel.
-        await pilot.press("h")
+        await pilot.press("t")
         await pilot.pause()
         host, right = app.query_one("#host-terminal"), app.query_one("#right-panel")
         assert host.display and not app.query_one(ExecutionConsole).expanded

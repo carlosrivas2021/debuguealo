@@ -4,7 +4,7 @@ import json
 import pytest
 from test_tui_grouping import Docker, item, until
 from textual.events import Key
-from textual.widgets import Button, Checkbox, DataTable, Static
+from textual.widgets import Checkbox, DataTable, Static
 
 from debugpilot.core.engine import DebugPilotEngine
 from debugpilot.storage.config import Settings
@@ -123,14 +123,14 @@ async def test_c_opens_pinned_running_child_only_when_left_table_focused(fake_te
     assert fake_terminal[0].closed
 
 
-async def test_h_is_independent_of_selection_and_uses_canonical_workspace(fake_terminal, tmp_path):
+async def test_t_is_independent_of_selection_and_uses_canonical_workspace(fake_terminal, tmp_path):
     docker = Docker()
     app = app_for(docker, tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: app.query_one("#launch-profiles", DataTable).row_count > 0)
         await select_row(app, pilot, "#launch-profiles", "project:catalog", None)
         assert app.selected_container is None
-        await pilot.press("h")
+        await pilot.press("t")
         await until(pilot, lambda: len(fake_terminal) == 1)
         assert fake_terminal[0].host[0] == tmp_path.resolve()
         assert app.query_one("#terminal-pane", TerminalPane).context.kind == "host"
@@ -150,12 +150,12 @@ async def test_terminal_owns_keys_escape_and_does_not_reopen_on_selection(fake_t
         await until(pilot, lambda: len(fake_terminal) == 1)
         pane = app.query_one("#container-terminal-pane", TerminalPane)
         context = pane.context
-        await pilot.press("c", "h", "q", "d", "s", "r", "o", "ctrl+c")
-        for character in "CHQDSRO":
+        await pilot.press("c", "h", "q", "d", "s", "r", "o", "t", "ctrl+c")
+        for character in "CHQDSROT":
             pane.post_message(Key(character, character))
         await pilot.pause()
         assert fake_terminal[0].writes == [
-            "c", "h", "q", "d", "s", "r", "o", "\x03", "C", "H", "Q", "D", "S", "R", "O"
+            "c", "h", "q", "d", "s", "r", "o", "t", "\x03", "C", "H", "Q", "D", "S", "R", "O", "T"
         ]
         await pilot.press("escape")
         assert app.focused is table
@@ -203,21 +203,26 @@ async def test_o_minimizes_and_restores_the_host_terminal_without_closing_it(
         await until(pilot, lambda: table.row_count > 0)
         table.focus()
         await pilot.pause()
-        assert footer_keys(app).get("o") == "Host terminal"
-        # With no host shell yet, O opens one, like H.
-        await pilot.press("o")
+        assert footer_keys(app).get("t") == "Host terminal"
+        # H and O no longer open it; T is the one key, as in Code.
+        assert "h" not in footer_keys(app) and "o" not in footer_keys(app)
+        await pilot.press("h", "o")
+        await pilot.pause()
+        assert not fake_terminal
+        # With no host shell yet, T opens one.
+        await pilot.press("t")
         await until(pilot, lambda: len(fake_terminal) == 1)
         await pilot.pause()
         host = app.query_one("#host-terminal")
         pane = app.query_one("#terminal-pane", TerminalPane)
         await pilot.press("escape")
-        assert footer_keys(app).get("o") == "Host terminal"
-        await pilot.press("o")
+        assert footer_keys(app).get("t") == "Host terminal"
+        await pilot.press("t")
         await pilot.pause()
         assert host.display and host.has_class("minimized") and not pane.display
         assert host.region.height <= 2 and pane.active and not fake_terminal[0].closed
         assert app.focused is table
-        await pilot.press("o")
+        await pilot.press("t")
         await pilot.pause()
         assert not host.has_class("minimized") and pane.display and app.focused is pane
         assert fake_terminal[0].writes == []
@@ -230,7 +235,7 @@ async def test_host_without_workspace_fails_actionably_and_mount_stays_inactive(
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: app.query_one("#launch-profiles", DataTable).row_count > 0)
         app.query_one("#launch-profiles", DataTable).focus()
-        await pilot.press("h")
+        await pilot.press("t")
         assert fake_terminal == []
         status = str(app.query_one("#terminal-context", Static).render())
         assert "workspace" in status.lower()
@@ -264,7 +269,7 @@ async def test_host_startup_error_is_visible_and_fake_session_is_closed(
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: app.query_one("#launch-profiles", DataTable).row_count > 0)
         app.query_one("#launch-profiles", DataTable).focus()
-        await pilot.press("h")
+        await pilot.press("t")
         await until(
             pilot,
             lambda: "Bash is unavailable"
@@ -274,7 +279,7 @@ async def test_host_startup_error_is_visible_and_fake_session_is_closed(
     assert len(fake_terminal) == 1 and fake_terminal[0].closed
 
 
-async def test_close_button_can_cancel_pending_host_open(monkeypatch, tmp_path):
+async def test_t_again_cancels_a_pending_host_open(monkeypatch, tmp_path):
     entered, release, closed = asyncio.Event(), asyncio.Event(), asyncio.Event()
     cancelled = asyncio.Event()
 
@@ -296,12 +301,13 @@ async def test_close_button_can_cancel_pending_host_open(monkeypatch, tmp_path):
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: app.query_one("#launch-profiles", DataTable).row_count > 0)
         app.query_one("#launch-profiles", DataTable).focus()
-        opening = asyncio.create_task(pilot.press("h"))
+        opening = asyncio.create_task(pilot.press("t"))
         responsive = False
         startup_cancelled = False
         try:
             await asyncio.wait_for(entered.wait(), 10)
-            app.query_one("#terminal-close", Button).press()
+            # T again while Bash is starting gives up on it.
+            await pilot.press("t")
             try:
                 # The startup stays held until `release`, so a blocked close never finishes
                 # however long this waits; the margin only absorbs a loaded machine.
@@ -314,7 +320,28 @@ async def test_close_button_can_cancel_pending_host_open(monkeypatch, tmp_path):
             release.set()
             await asyncio.wait_for(opening, 10)
         await pilot.pause()
-        assert responsive, "Close terminal was blocked by pending H startup"
+        assert responsive, "T was blocked by a pending host startup"
         assert startup_cancelled, "Close must cancel the pending startup owner"
         assert not app.query_one("#terminal-pane", TerminalPane).active
         assert "Terminal closed" in str(app.query_one("#terminal-context", Static).render())
+
+
+async def test_exit_closes_host_bash_and_t_opens_a_new_one(fake_terminal, tmp_path):
+    app = app_for(Docker(), tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        table = app.query_one("#launch-profiles", DataTable)
+        await until(pilot, lambda: table.row_count > 0)
+        table.focus()
+        assert not app.query("#terminal-close")  # No close button: `exit` closes it.
+        await pilot.press("t")
+        await until(pilot, lambda: len(fake_terminal) == 1)
+        host = app.query_one("#host-terminal")
+        pane = app.query_one("#terminal-pane", TerminalPane)
+        await until(pilot, lambda: app.focused is pane)
+        fake_terminal[0].on_exit()
+        await until(pilot, lambda: not host.display)
+        assert not pane.active and app.focused is table
+        assert "Terminal closed" in str(app.query_one("#terminal-context", Static).render())
+        await pilot.press("t")
+        await until(pilot, lambda: len(fake_terminal) == 2 and pane.active)
+        assert host.display

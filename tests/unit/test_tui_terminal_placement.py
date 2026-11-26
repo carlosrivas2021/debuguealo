@@ -97,7 +97,7 @@ async def test_view_switch_keeps_host_below_and_only_one_session(
         await select_row(app, pilot, "#launch-profiles",
                          "profile-child:profile:Central:actual-worker-29", "actual-worker-29")
         assert pane.context.container.id == "actual-api-17" and len(made) == 1
-        await pilot.press("h")
+        await pilot.press("t")
         await pilot.pause()
         host = app.query_one("#terminal-pane", TerminalPane)
         assert made[0].closed and len(made) == 2
@@ -149,7 +149,7 @@ async def test_close_during_view_switch_joins_prior_cleanup_without_starting_c(
         await until(pilot, lambda: docker.requested == 2)
         await select_row(app, pilot, "#launch-profiles",
                          "profile-child:profile:Central:actual-api-17", "actual-api-17")
-        await pilot.press("h", "escape", "c")
+        await pilot.press("t", "escape", "c")
         await asyncio.wait_for(entered.wait(), 1)
         try:
             active = app.query_one("#container-shell")

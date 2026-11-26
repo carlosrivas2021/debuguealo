@@ -46,10 +46,18 @@ left (the tree's root is the selected profile's folder; the **PROFILES** title s
 there are), source in
 the center, the **Debug** panel (controls, stack, variables) on the right while a debug
 session is selected, and the bottom area below: the Code terminal for runs or **Debug output**
-for debug sessions. **O** hides or shows the bottom area, the same key that shows the host
-terminal in Containers; typing an "o" in a text field or a terminal still types it. The footer lists the shortcuts
+for debug sessions. **O** hides or shows the bottom area; typing an "o" in a text field or a
+terminal still types it. The footer lists the shortcuts
 available in the current area. Selecting a profile shows one bottom view: its live session,
 otherwise the run or debug view you used last for that profile.
+
+**T** opens a Bash shell in the bottom area, in the folder at the root of the file tree, and
+puts the cursor in it; its border names that folder. **T** is also the key for Host Bash in
+Containers. Each project keeps its own shell: selecting another profile shows that
+profile's view, and coming back shows the shell still running. **Escape** returns focus to the
+profiles, and **T** there goes back to the run or debug view without closing the shell; **T**
+again shows it. Typing `exit` closes the shell and hides it; the next **T** opens a new one. Shells close when the app
+quits.
 
 Each profile in the list shows its state before the name: **▶** (green) while it runs,
 **◉** (yellow) while it debugs, and no icon when it is stopped. The icons follow every

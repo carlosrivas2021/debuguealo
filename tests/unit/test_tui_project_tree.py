@@ -135,7 +135,7 @@ async def test_one_tree_collapses_filters_and_preserves_action_targets(tmp_path,
         table.move_cursor(row=table.get_row_index("container:loose"))
         await until(pilot, lambda: app.selected_container is not None)
         assert app.selected_container.id == "loose" and app._selected_profile_name is None
-        await pilot.press("c", "h")
+        await pilot.press("c", "t")
         await until(pilot, lambda: len(opened) == 2)
         assert opened[0][0] == "container" and opened[0][1]["target"].id == "loose"
         assert opened[0][1]["cwd"] == tmp_path and opened[0][1]["endpoint"]

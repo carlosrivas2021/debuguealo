@@ -34,15 +34,14 @@ Text filter, search, and severity share one compact toolbar. Search still suppor
 Ctrl+F, Enter, N, and Shift+N; filtering and log ingestion are unchanged. Table headers,
 selection, controls, and footer use the existing dark project palette.
 The lower console starts completely hidden, leaving all rows available to the dashboard.
-Press `O` from the project tree to show it. When shown, the Compose console displays an
-empty-state hint until a real execution produces output.
+When shown, the Compose console displays an empty-state hint until a real execution
+produces output.
 Inactive terminal panes occupy no rows. `C` replaces the right-hand logs with the
-selected container's shell without opening the lower console; `H` shows Host Bash below.
-Only one session is active: switching between C/H closes the previous session first.
-Press `O` or **Hide output · O** to hide the entire console and return all its rows to
-the dashboard. Focus returns to the project tree; press `O` there to restore the dock.
-Hiding does not clear output or close an active session. Explicitly opening a terminal
-with `H` also reveals the console. `O` does not hide the right-hand container shell.
+selected container's shell without opening the lower console; `T` shows Host Bash below,
+the same key that opens the shell in Code. Only one session is active: switching between
+C/T closes the previous session first. With Host Bash open, `T` from the project tree
+hides it down to its title row and shows it again; hiding never closes the session. `T`
+does not hide the right-hand container shell.
 
 Terminals (the container shell, Host Bash, and Code's run terminal) keep the last 2000
 lines that scrolled off the top. Scroll back with the mouse wheel or **Shift+PgUp** /
@@ -70,7 +69,9 @@ profiles match, such as `2/5`.
 In Code, **Ctrl+Left** and **Ctrl+Right** move focus between the profiles, the file tree and
 the source, in screen order, and while a debug session shows its panel also the call stack, the
 watch list and the variables; **Alt+Left** and **Alt+Right** do the same. In the file tree and the variables, **Right** opens a folder or a variable's fields, **Left** closes it or moves to the folder or variable that holds it, and **Space** toggles it. **F** finds a file of the project by name, or with **Tab** a line by its text, and opens it (see [Code projects](code-projects.md)). **F5** or **▶ Run** runs the selected profile without debug; focus stays on the profiles. Click its
-terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **S** or **Stop** ends only the selected Code
+terminal to type; **Escape** returns focus to profiles and **O** hides or shows it. **T** opens a
+Bash shell at the root of the project in the file tree, below the editor; **T** from outside it
+goes back to the run output. **S** or **Stop** ends only the selected Code
 context. **R** restarts the selected profile while it runs or debugs; when it is stopped, **R** or
 **↻ Reload** rereads the code `launch.json`. A running profile survives area changes; repeated F5 does not restart it. Distinct
 profiles may run/debug/attach concurrently, with one live session per saved profile; selecting
@@ -194,10 +195,9 @@ automatically.
 | `a` | Refresh AWS credentials for every profile with `awsCredentials`, then offer Recreate for the running ones. |
 | `Shift+A` | Edit the AWS config and credentials files side by side in the built-in editor (also from Code). |
 | `C` | From the project tree, show `/bin/sh` for the selected running container in the logs area. |
-| `H` | With the project tree focused, open host Bash in the explicit local workspace or the selected central profile's validated working directory. |
+| `T` | With the project tree focused, open host Bash in the explicit local workspace or the selected central profile's validated working directory; with it open, hide or show it. |
 | `D` | Close open logs and show details for the selected container. |
 | `Esc` | In the terminal, return focus to the current left table; otherwise close open logs, cancel a pending confirmation, or stop the selected project's running Compose operation (Esc on another project names the project to select). |
-| `O` | Hide/show the entire docked console; when hidden, restore it from the project tree with `O`. |
 | `Ctrl+O` | Edit the central (or explicitly selected local) `launch.json` in the built-in editor. |
 | `Ctrl+L` | From outside a focused shell, open and focus logs for the current selection. |
 | `Ctrl+T` | Switch between the Containers and Code areas. |
@@ -208,11 +208,11 @@ automatically.
 configured Docker endpoint, or the existing platform default. With an explicit local
 workspace, both terminals keep using that canonical workspace. In central-profile mode,
 both use the selected profile's working directory, resolved by the same workspace/path
-validation as Compose. `H` requires no container selection. Missing or invalid profile
+validation as Compose. `T` requires no container selection. Missing or invalid profile
 contexts are refused; no arbitrary current-directory fallback is used.
 Both require a focused project tree; invalid workspace/target contexts are refused.
 Startup failures appear in the corresponding terminal area. There is no PowerShell fallback. Once a terminal
-is focused, typed keys and control keys—including `Q`, `D`, `S`, `R`, and `O`—belong to
+is focused, typed keys and control keys—including `Q`, `D`, `S`, `R`, `O` and `T`—belong to
 the shell; `Ctrl+C` is sent to it and `Esc` returns focus to the left table. To copy output,
 drag over it with the mouse: releasing the button copies the selection and shows
 **Copied N characters**. This works anywhere text can be selected, including logs, detail
@@ -222,8 +222,10 @@ without a selection, `Ctrl+C` interrupts the process as usual. The terminal
 keeps its opened target when inventory selection changes and is never reopened by refresh.
 For C, **Logs** (or Esc, then Ctrl+L) returns to logs without ending the shell.
 Press C on the same selected target to restore that pinned session; changing selection
-alone never retargets it. Both terminal areas offer **Close terminal** to end the session
-or cancel a pending startup; closing C restores the details (or the logs, if they were open). Switching views joins prior cleanup,
+alone never retargets it. Typing `exit` in Host Bash ends it and hides its dock; the next `T`
+opens a new one, and `T` while Bash is still starting cancels the startup. The container
+shell offers **Close terminal** to end it; closing C restores the details (or the logs, if they
+were open). Switching views joins prior cleanup,
 including when a pending switch is cancelled. Startup runs
 outside the app message handler so the close control remains responsive; close and app
 shutdown cancel and join any pending opening task before releasing the session.

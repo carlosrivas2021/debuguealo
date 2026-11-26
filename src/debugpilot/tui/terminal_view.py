@@ -94,9 +94,11 @@ class TerminalPane(Widget):
     # advertising Esc keeps the footer from going blank with no way back.
     BINDINGS = [Binding("escape", "release_focus", "Back to list")]
 
-    def __init__(self, *, escape_hook=None, **kwargs) -> None:
+    def __init__(self, *, escape_hook=None, exit_hook=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._escape_hook = escape_hook
+        # Called when the shell ends on its own (`exit`), never on an explicit close.
+        self._exit_hook = exit_hook
         self._session: TerminalSession | None = None
         self._terminal_context: TerminalContext | None = None
         self._screen = ScrollbackScreen(80, 24)
@@ -188,6 +190,8 @@ class TerminalPane(Widget):
         if generation == self._generation:
             self._session_closed = True
             self.refresh()
+            if self._exit_hook is not None:
+                self._exit_hook()
 
     @staticmethod
     def _terminal_color(value: str) -> str | None:

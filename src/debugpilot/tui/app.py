@@ -108,8 +108,8 @@ class DebugPilotApp(App):
         Binding("space", "toggle_project", "Expand/collapse"),
         Binding("slash", "filter_containers", "Filter"),
         Binding("c", "open_container_terminal", "Container shell"),
-        Binding("h", "open_host_terminal", "Host Bash"),
-        Binding("o", "toggle_host_terminal", "Host terminal"),
+        # Same key as the shell in Code: opens host Bash, then hides or shows it.
+        Binding("t", "toggle_host_terminal", "Host terminal"),
         Binding("r", "recreate_selected", "Recreate"),
         Binding("R,shift+r", "build_selected", "Build + Recreate"),
         Binding("s", "stop_selected", "Stop"),
@@ -368,7 +368,9 @@ class DebugPilotApp(App):
                 yield ExecutionConsole(id="compose-console")
                 # The host shell docks at the bottom of the right panel, under the output.
                 host = HostTerminal(
-                    id="host-terminal", escape_hook=self._focus_terminal_selection
+                    id="host-terminal",
+                    escape_hook=self._focus_terminal_selection,
+                    exit_hook=self._host_shell_exited,
                 )
                 host.display = False
                 self._host_terminal_pane = self._terminal_pane = host.terminal_pane
@@ -1471,6 +1473,10 @@ class DebugPilotApp(App):
         host = self.query_one(HostTerminal)
         if self._host_terminal_pane is None:
             return
+        if self._terminal_open_task is not None and not self._terminal_open_task.done():
+            # T while Bash is still starting gives up on it, e.g. a startup that hangs.
+            await self.action_close_terminal()
+            return
         if not self._host_terminal_pane.active:
             await self.action_open_host_terminal()
             return
@@ -1597,7 +1603,7 @@ class DebugPilotApp(App):
                         raise
                 if kind == "container":
                     host = self.query_one(HostTerminal)
-                    host.set_terminal_status("Host terminal inactive · H host Bash")
+                    host.set_terminal_status("Host terminal inactive · T host Bash")
                     host.display = False
                 if kind == "container":
                     await pane.open_container(target, endpoint, cwd)
@@ -1633,6 +1639,19 @@ class DebugPilotApp(App):
             if pane is not None:
                 await pane.close_session()
 
+    def _host_shell_exited(self) -> None:
+        """`exit` in host Bash closes the dock, as closing the terminal does."""
+        if self._closing:
+            return
+        host = self.query_one(HostTerminal)
+        had_focus = self.focused is self._host_terminal_pane
+        host.remove_class("minimized")
+        host.display = False
+        if self._terminal_pane is self._host_terminal_pane:
+            self._terminal_status("Terminal closed · C container shell · T host Bash")
+        if had_focus:
+            self._focus_terminal_selection()
+
     async def action_close_terminal(self) -> None:
         await self._cancel_terminal_open()
         await self._close_terminal_views()
@@ -1643,7 +1662,7 @@ class DebugPilotApp(App):
             host.remove_class("minimized")
             host.display = False
             self._focus_terminal_selection()
-        self._terminal_status("Terminal closed · C container shell · H host Bash")
+        self._terminal_status("Terminal closed · C container shell · T host Bash")
 
     def action_retry_logs(self) -> None:
         if self.selected_container or self.selected_project:
@@ -2689,7 +2708,6 @@ class DebugPilotApp(App):
             # Reuse the selection owner so old streams close before the buffer resets.
             self.action_retry_logs()
 
-    @on(Button.Pressed, "#terminal-close")
     @on(Button.Pressed, "#container-terminal-close")
     async def terminal_close_pressed(self) -> None:
         await self.action_close_terminal()
@@ -2757,7 +2775,7 @@ class DebugPilotApp(App):
             not self.is_mounted
             or self._host_terminal_pane is None
             or self.query_one(CodeWorkspace).display
-            # Without a live shell, O opens one, so it follows H's availability rules.
+            # Without a live shell, T opens one, so it needs the project tree focused.
             or (
                 not self._host_terminal_pane.active
                 and (not self._left_table_focused() or isinstance(self.screen, ModalScreen))
