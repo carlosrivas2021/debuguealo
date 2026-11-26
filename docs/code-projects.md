@@ -95,7 +95,8 @@ with a field at its top, and **Tab** switches between two ways of searching with
   for it. At most 500 lines are listed.
 
 **↑**/**↓** move through the list while you type, **Enter** opens the file (at the line, for a
-text match) and puts the cursor in it, and **Escape** closes the list. Neither search follows
+text match) and puts the cursor in it, and **Escape** closes the list. The file tree opens the
+file's folders and marks it, as it does for any file opened in Code. Neither search follows
 links, reads binary files or files over 1 MiB, or looks inside tool folders such as `.git`,
 `node_modules`, `__pycache__` or `.venv`. Up to 50,000 files are listed.
 

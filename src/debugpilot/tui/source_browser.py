@@ -397,7 +397,30 @@ class SourceBrowser(Vertical):
             editor.move_cursor((min(line - 1, editor.document.line_count - 1), 0))
         self.query_one("#source-breakpoint", Button).disabled = False
         self._set_status(f"{path.name} · read-only")
+        self._reveal(path)
         return True
+
+    def _reveal(self, path: Path) -> None:
+        """Open the folders down to an opened file and put the tree cursor on it."""
+        tree = self.query_one(Tree)
+        node = tree.root
+        try:
+            parts = path.relative_to(self.root_path).parts
+        except ValueError:
+            return
+        for index in range(len(parts)):
+            self._populate(node)
+            target = self.root_path.joinpath(*parts[: index + 1])
+            child = next(
+                (item for item in node.children if item.data and item.data[0] == target), None
+            )
+            if child is None:
+                return  # Not listed (a skipped entry, or past the listing limit).
+            if index < len(parts) - 1:
+                child.expand()
+            node = child
+        # Lines are laid out on the next refresh; moving the cursor never selects or focuses.
+        tree.call_after_refresh(tree.move_cursor, node)
 
     def show_execution(self, root, path, line):
         if self.open_source(root, path, line):

@@ -2,7 +2,7 @@
 
 from test_code_debug_ui import debug_app
 from test_tui_grouping import until
-from textual.widgets import DataTable, Input, OptionList, TextArea
+from textual.widgets import DataTable, Input, OptionList, TextArea, Tree
 
 from debugpilot.tui.project_finder import ProjectFinder
 
@@ -120,3 +120,29 @@ async def test_f_types_in_a_text_field_instead(monkeypatch, tmp_path):
         await pilot.pause()
         assert not isinstance(app.screen, ProjectFinder)
         assert app.query_one("#code-filter", Input).value == "f"
+
+
+def tree_cursor(app):
+    node = app.query_one("#source-tree", Tree).cursor_node
+    return node.data[0] if node is not None and node.data else None
+
+
+async def test_the_opened_file_is_marked_in_the_tree(monkeypatch, tmp_path):
+    app, roots, _store = debug_app(monkeypatch, tmp_path)
+    root = project(roots)
+    async with app.run_test(size=(140, 45)) as pilot:
+        await open_finder(pilot, app)
+        await pilot.press(*"omod", "enter")
+        await until(pilot, lambda: not isinstance(app.screen, ProjectFinder))
+        # Its folder opens and the cursor sits on it, even inside a closed folder.
+        await until(pilot, lambda: tree_cursor(app) == root / "orders" / "models.py")
+        orders = app.query_one("#source-tree", Tree).cursor_node.parent
+        assert orders.is_expanded
+        # The editor keeps the keys; marking the tree never moves focus.
+        assert app.focused is editor(app)
+        await pilot.press("f")
+        await until(pilot, lambda: isinstance(app.screen, ProjectFinder)
+                    and "files" in status(app))
+        await pilot.press(*"README", "enter")
+        await until(pilot, lambda: tree_cursor(app) == root / "README.md")
+        assert editor(app).text.startswith("# Shop")
