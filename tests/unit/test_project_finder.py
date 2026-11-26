@@ -1,4 +1,4 @@
-"""F in Code finds a file by name, or (Tab) a line by its text, and opens it."""
+"""In Code, F finds a line by its text and Shift+F a file by its name, then opens it."""
 
 from test_code_debug_ui import debug_app
 from test_tui_grouping import until
@@ -29,30 +29,36 @@ def status(app):
     return str(app.screen.query_one("#find-status").render())
 
 
-def modes(app):
-    return str(app.screen.query_one("#find-modes").render())
+def title(app):
+    return str(app.screen.query_one("#find-title").render())
 
 
-async def open_finder(pilot, app):
+def placeholder(app):
+    return app.screen.query_one("#find-query", Input).placeholder
+
+
+async def open_finder(pilot, app, key="F"):
+    """Shift+F finds a file, F a line of text."""
     await pilot.click("#area-code")
     app.query_one("#code-projects", DataTable).focus()
-    await pilot.press("f")
+    await pilot.press(key)
     await until(pilot, lambda: isinstance(app.screen, ProjectFinder)
                 and isinstance(app.focused, Input) and app.focused.id == "find-query")
     # Ready once the files are listed.
-    await until(pilot, lambda: "files" in status(app))
+    await until(pilot, lambda: status(app) != "Listing files…")
 
 
 def editor(app):
     return app.query_one("#source-text", TextArea)
 
 
-async def test_f_lists_the_files_and_typing_finds_one_by_name(monkeypatch, tmp_path):
+async def test_shift_f_lists_the_files_and_typing_finds_one_by_name(monkeypatch, tmp_path):
     app, roots, _store = debug_app(monkeypatch, tmp_path)
     project(roots)
     async with app.run_test(size=(140, 45)) as pilot:
         await open_finder(pilot, app)
-        assert "[Files]" in modes(app)
+        assert title(app).startswith("Find a file in ") and placeholder(app) == "File name"
+        assert "Tab" not in title(app)
         assert shown(app) == ["README.md", "main.py", "orders/models.py", "orders/views.py"]
         assert status(app) == "4 files"
         await pilot.press(*"omod")
@@ -63,13 +69,12 @@ async def test_f_lists_the_files_and_typing_finds_one_by_name(monkeypatch, tmp_p
         assert app.focused is editor(app)
 
 
-async def test_tab_searches_the_text_and_enter_opens_the_line(monkeypatch, tmp_path):
+async def test_f_searches_the_text_and_enter_opens_the_line(monkeypatch, tmp_path):
     app, roots, _store = debug_app(monkeypatch, tmp_path)
     project(roots)
     async with app.run_test(size=(140, 45)) as pilot:
-        await open_finder(pilot, app)
-        await pilot.press("tab")
-        assert "[Text]" in modes(app)
+        await open_finder(pilot, app, "f")
+        assert title(app).startswith("Find text in ") and placeholder(app) == "Text in the files"
         assert status(app) == "Type at least 2 characters"
         await pilot.press(*"total")
         await until(pilot, lambda: shown(app) == [
@@ -84,16 +89,15 @@ async def test_tab_searches_the_text_and_enter_opens_the_line(monkeypatch, tmp_p
         assert app.focused is editor(app)
 
 
-async def test_tab_goes_back_to_files_with_the_same_query(monkeypatch, tmp_path):
+async def test_tab_no_longer_switches_between_files_and_text(monkeypatch, tmp_path):
     app, roots, _store = debug_app(monkeypatch, tmp_path)
     project(roots)
     async with app.run_test(size=(140, 45)) as pilot:
-        await open_finder(pilot, app)
-        await pilot.press("tab", *"views")
+        await open_finder(pilot, app, "f")
+        await pilot.press(*"views", "tab")
         await until(pilot, lambda: status(app) == "No line matches")
-        await pilot.press("tab")
-        assert "[Files]" in modes(app)
-        await until(pilot, lambda: shown(app) == ["orders/views.py"])
+        assert title(app).startswith("Find text in ") and placeholder(app) == "Text in the files"
+        assert not app.screen.query("#find-modes")
 
 
 async def test_escape_closes_without_opening_anything(monkeypatch, tmp_path):
@@ -140,7 +144,7 @@ async def test_the_opened_file_is_marked_in_the_tree(monkeypatch, tmp_path):
         assert orders.is_expanded
         # The editor keeps the keys; marking the tree never moves focus.
         assert app.focused is editor(app)
-        await pilot.press("f")
+        await pilot.press("F")
         await until(pilot, lambda: isinstance(app.screen, ProjectFinder)
                     and "files" in status(app))
         await pilot.press(*"README", "enter")

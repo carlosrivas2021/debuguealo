@@ -27,7 +27,7 @@ from debugpilot.tui.code_debug import CodeDebug
 from debugpilot.tui.code_terminal import CodeTerminal
 from debugpilot.tui.list_filter import ListFilter, matches
 from debugpilot.tui.pane_splitter import PaneSplitter
-from debugpilot.tui.project_finder import ProjectFinder
+from debugpilot.tui.project_finder import FILES, TEXT, ProjectFinder
 from debugpilot.tui.source_browser import SourceBrowser, SourceText
 from debugpilot.tui.terminal_view import TerminalPane
 from debugpilot.tui.theme import theme_style
@@ -95,8 +95,9 @@ class CodeWorkspace(Vertical):
         Binding("b", "switch_branch", "Branch"),
         # A shell at the root of the project in the file tree; T again goes back.
         Binding("t", "toggle_shell", "Shell"),
-        # A file by name, or (Tab) a line by its text, in the project shown in the tree.
-        Binding("f", "find_in_project", "Find"),
+        # A line by its text, or (Shift+F) a file by its name, in the project in the tree.
+        Binding("f", "find_text", "Find text"),
+        Binding("F,shift+f", "find_file", "Find file"),
         Binding("slash", "filter_profiles", "Filter"),
         Binding("escape", "clear_profiles_filter", show=False),
         # Move the boundary between profiles and files, like dragging the splitter.
@@ -488,7 +489,13 @@ class CodeWorkspace(Vertical):
         table = tables.first()
         return self._profiles.get(table.ordered_rows[table.cursor_row].key.value)
 
-    def action_find_in_project(self) -> None:
+    def action_find_text(self) -> None:
+        self._find_in_project(TEXT)
+
+    def action_find_file(self) -> None:
+        self._find_in_project(FILES)
+
+    def _find_in_project(self, mode: str) -> None:
         browser = self.query_one(SourceBrowser)
         root = browser.root_path
         if root is None:
@@ -501,7 +508,7 @@ class CodeWorkspace(Vertical):
             if browser.open_source(root, root / path, line):
                 browser.query_one(SourceText).focus()
 
-        self.app.push_screen(ProjectFinder(root), open_found)
+        self.app.push_screen(ProjectFinder(root, mode), open_found)
 
     @on(BranchLabel.Clicked)
     def action_switch_branch(self) -> None:
@@ -698,7 +705,7 @@ class CodeWorkspace(Vertical):
             "stop_run", "resize_profiles", "reload_profiles", "restart_run", "focus_prompt",
             "filter_profiles", "cycle_exceptions", "focus_console", "switch_branch",
             "toggle_shell",
-            "find_in_project",
+            "find_text", "find_file",
         }:
             focused = self.app.focused
             # A text field or a live terminal types the letter instead.
@@ -710,7 +717,9 @@ class CodeWorkspace(Vertical):
             return False  # No profile, so no project to open a shell in.
         if action == "switch_branch" and not self._branch.display:
             return False  # The profile's folder is not in a Git repository.
-        if action == "find_in_project" and self.query_one(SourceBrowser).root_path is None:
+        if action in {"find_text", "find_file"} and (
+            self.query_one(SourceBrowser).root_path is None
+        ):
             return False  # No profile, so no project to search.
         if action in {"restart_run", "reload_profiles"}:
             # Exactly one of them owns R, so the footer names what it will do.

@@ -1,4 +1,4 @@
-"""F in Code: find a file of the project by name, or (Tab) a line by its text, and open it.
+"""In Code, F finds a line of the project by its text and Shift+F a file by its name.
 
 Like the branch list, it floats over a see-through screen with a filter at its top. Files
 are listed once in a thread; a text search starts a moment after the last key, runs in a
@@ -39,11 +39,7 @@ def _count(number: int, noun: str, plural: str | None = None) -> str:
 class ProjectFinder(ModalScreen[tuple[str, int | None] | None]):
     """Dismisses with (path relative to the project, line or None), or None on Escape."""
 
-    BINDINGS = [
-        Binding("escape", "close", "Close"),
-        # Priority: otherwise Tab would move the focus out of the query field.
-        Binding("tab,shift+tab", "switch_mode", "Files ⇄ Text", priority=True),
-    ]
+    BINDINGS = [Binding("escape", "close", "Close")]
     DEFAULT_CSS = """
     ProjectFinder { align: center top; }
     ProjectFinder > Vertical {
@@ -51,7 +47,6 @@ class ProjectFinder(ModalScreen[tuple[str, int | None] | None]):
         border: round $accent; background: $surface; padding: 0 1;
     }
     ProjectFinder Label, ProjectFinder #find-status { height: auto; color: $text-muted; }
-    ProjectFinder #find-modes { height: 1; margin-top: 1; }
     /* Also when focused: Input's own focus border would take the only row of text. */
     ProjectFinder Input, ProjectFinder Input:focus {
         height: 1; border: none; padding: 0 1; margin: 1 0;
@@ -60,10 +55,12 @@ class ProjectFinder(ModalScreen[tuple[str, int | None] | None]):
     ProjectFinder OptionList { height: auto; max-height: 24; border: none; }
     """
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, mode: str = FILES):
         super().__init__()
+        if mode not in (FILES, TEXT):
+            raise ValueError(f"Unknown find mode: {mode}")
         self.root = Path(root)
-        self.mode = FILES
+        self.mode = mode
         self._files: list[str] | None = None
         self._files_truncated = False
         self._targets: list[tuple[str, int | None]] = []
@@ -72,37 +69,20 @@ class ProjectFinder(ModalScreen[tuple[str, int | None] | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Label(f"Find in {self.root.name} · Tab: Files ⇄ Text\n"
-                        "Enter opens · Esc closes")
-            yield Static(id="find-modes")
-            yield _FindQuery(placeholder="File name", id="find-query")
+            what = "a file" if self.mode == FILES else "text"
+            yield Label(f"Find {what} in {self.root.name}\nEnter opens · Esc closes",
+                        id="find-title")
+            yield _FindQuery(
+                placeholder="File name" if self.mode == FILES else "Text in the files",
+                id="find-query")
             yield OptionList(id="find-results")
             yield Static("Listing files…", id="find-status", markup=False)
 
     def on_mount(self) -> None:
-        self._show_modes()
         self.run_worker(self._list_files(), group="find-files")
 
     async def _list_files(self) -> None:
         self._files, self._files_truncated = await asyncio.to_thread(project_files, self.root)
-        self._refresh()
-
-    def _show_modes(self) -> None:
-        active = self.app.get_css_variables().get("accent", "")
-        parts = []
-        for mode, name in ((FILES, "Files"), (TEXT, "Text")):
-            if mode == self.mode:
-                parts.append((f"[{name}]", f"bold {active}".strip()))
-            else:
-                parts.append((f" {name} ", "dim"))
-            parts.append("  ")
-        self.query_one("#find-modes", Static).update(Text.assemble(*parts[:-1]))
-        self.query_one("#find-query", Input).placeholder = (
-            "File name" if self.mode == FILES else "Text in the files")
-
-    def action_switch_mode(self) -> None:
-        self.mode = TEXT if self.mode == FILES else FILES
-        self._show_modes()
         self._refresh()
 
     @on(Input.Changed, "#find-query")
