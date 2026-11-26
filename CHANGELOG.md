@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/carlosrivas2021/debuguealo/compare/v1.1.1...v1.2.0) (2026-11-26)
+
+
+### Features
+
+* **code:** F finds a file by name, or a line by its text ([#110](https://github.com/carlosrivas2021/debuguealo/issues/110)) ([c118804](https://github.com/carlosrivas2021/debuguealo/commit/c118804b22000e1593b2d29ac28f49e344cea8eb))
+* **code:** T opens a shell at the project's root, and T is host Bash in Containers ([#114](https://github.com/carlosrivas2021/debuguealo/issues/114)) ([26e1f63](https://github.com/carlosrivas2021/debuguealo/commit/26e1f6320c87c9001466fc5c2fae1dd780bd87fe))
+
+
+### Bug Fixes
+
+* **code:** the file tree marks the file F opens ([#115](https://github.com/carlosrivas2021/debuguealo/issues/115)) ([41078b1](https://github.com/carlosrivas2021/debuguealo/commit/41078b17fe17fe4f629356cf43b5e97c608b6297))
+* **compose:** one failed Docker read no longer empties the list, and Esc says which run it stops ([#111](https://github.com/carlosrivas2021/debuguealo/issues/111)) ([11562a4](https://github.com/carlosrivas2021/debuguealo/commit/11562a447422d6f25a7085a514e49935d689236c))
+* **compose:** r and Shift+R on a container recreate only its service ([#112](https://github.com/carlosrivas2021/debuguealo/issues/112)) ([9d58cd1](https://github.com/carlosrivas2021/debuguealo/commit/9d58cd14edf094bb1785fc902e951d46ee04b0bc))
+
 ## [1.1.1](https://github.com/carlosrivas2021/debuguealo/compare/v1.1.0...v1.1.1) (2026-11-18)
 
 
