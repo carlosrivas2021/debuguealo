@@ -94,11 +94,11 @@ async def test_actual_dashboard_visual_rules(tmp_path, monkeypatch, rule):
             host = app.query_one("#host-terminal")
             pane = host.terminal_pane
             assert not host.display
-            await pilot.press("h")
+            await pilot.press("t")
             await until(pilot, lambda: pane.active)
             await pilot.pause()
             assert host.display and pane.region.height > 0
-            await pilot.click("#terminal-close")
+            pane._session.callbacks["on_exit"]()  # The user types `exit`.
             await until(pilot, lambda: not pane.active)
             await pilot.pause()
             assert not host.display

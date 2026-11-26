@@ -67,8 +67,7 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
         )),
         ("Terminals", (
             Shortcut("C", "Open the container shell", ("c",)),
-            Shortcut("H", "Open host Bash", ("h",)),
-            Shortcut("O", "Show or hide the output console", ("o",)),
+            Shortcut("T", "Open host Bash, then hide or show it", ("t",)),
             Shortcut("Esc", "Leave a terminal, back to the list", ("escape",)),
             # Handled by the terminal itself, which gets every key while it has the focus.
             Shortcut("Shift+PgUp / PgDn", "Scroll back / forward (or the mouse wheel)"),
@@ -86,6 +85,7 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
             Shortcut("R", "Restart the running profile, or reload launch.json", ("r",)),
             Shortcut("E", "Pause on uncaught exceptions → all → none", ("e",)),
             Shortcut("O", "Show or hide the terminal or debug output", ("o",)),
+            Shortcut("T", "Open a shell at the project's root, or go back", ("t",)),
             Shortcut("P", "Go to the running program's input (Esc returns)", ("p",)),
             Shortcut("Shift+PgUp / PgDn", "Scroll the terminal back / forward (or the wheel)"),
         )),

@@ -78,9 +78,8 @@ Debugging Go also needs [Delve](https://github.com/carlosrivas2021/debuguealo/bl
 | `s` | Stop the selected container or project, after confirmation |
 | `Shift+A` | Edit the AWS config and credentials files side by side |
 | `Ctrl+L` | Open logs (`D` or `Esc` closes them, `Ctrl+R` reconnects) |
-| `C` / `H` | Open the container shell / host Bash |
+| `C` / `T` | Open the container shell / host Bash (`T` again hides or shows it) |
 | `Shift+PgUp` / `Shift+PgDn` or the mouse wheel | Scroll back through a terminal's output (any key returns) |
-| `O` | Show or hide the output console |
 | `Space` | Collapse or expand a group |
 
 **Code**

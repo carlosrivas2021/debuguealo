@@ -70,7 +70,7 @@ def assert_files_unchanged(launch, compose, original):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("key", ["h", "c"])
+@pytest.mark.parametrize("key", ["t", "c"])
 async def test_central_profile_opens_exact_context_and_reveals_hidden_console(
     tmp_path, monkeypatch, key
 ):
@@ -87,15 +87,15 @@ async def test_central_profile_opens_exact_context_and_reveals_hidden_console(
         await pilot.press(key)
         await pilot.pause()
         assert len(made) == 1
-        pane = app.query_one("#terminal-pane" if key == "h" else "#container-terminal-pane",
+        pane = app.query_one("#terminal-pane" if key == "t" else "#container-terminal-pane",
                              TerminalPane)
         console = app.query_one(ExecutionConsole)
-        owner = app.query_one("#host-terminal" if key == "h" else "#container-shell")
+        owner = app.query_one("#host-terminal" if key == "t" else "#container-shell")
         assert pane.active and owner.display and pane.region.height > 0
         assert app.focused is pane
         await pilot.press("x", "o")
         assert made[0].writes == ["x", "o"] and owner.display
-        if key == "h":
+        if key == "t":
             assert made[0].host[0] == service.resolve()
             assert pane.context.kind == "host" and pane.context.container is None
         else:
@@ -105,7 +105,7 @@ async def test_central_profile_opens_exact_context_and_reveals_hidden_console(
             assert pane.context.container.id == "actual-api-17"
         context = pane.context
         await pilot.press("escape")
-        if key == "h":
+        if key == "t":
             # The host shell is independent of the output card's own toggle.
             await click_output_toggle(pilot)
             await pilot.pause()
@@ -119,10 +119,14 @@ async def test_central_profile_opens_exact_context_and_reveals_hidden_console(
             await pilot.pause()
         assert owner.display and pane.active and pane.context == context
         assert len(made) == 1 and not made[0].closed
-        await pilot.click("#terminal-close" if key == "h" else "#container-terminal-close")
-        await pilot.pause()
-        assert made[0].closed and not pane.active
-        assert not owner.display if key == "h" else app.query_one("#logs-panel").display
+        if key == "t":
+            made[0].on_exit()  # Host Bash has no close button; `exit` ends it.
+            await until(pilot, lambda: not pane.active and not owner.display)
+        else:
+            await pilot.click("#container-terminal-close")
+            await pilot.pause()
+            assert made[0].closed and not pane.active
+            assert app.query_one("#logs-panel").display
         assert_files_unchanged(launch, compose, original)
     assert made[0].closed
 
@@ -175,7 +179,7 @@ async def test_context_refusals_and_explicit_local_workspace_are_preserved(
     async with app.run_test(size=(120, 40)) as pilot:
         await until(pilot, lambda: docker.requested == 2)
         app.query_one("#launch-profiles", DataTable).focus()
-        await pilot.press("h")
+        await pilot.press("t")
         await pilot.pause()
         if mode == "local":
             assert len(made) == 1 and made[0].host[0] == workspace.resolve()
