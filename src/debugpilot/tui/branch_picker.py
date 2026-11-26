@@ -12,17 +12,9 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Label, OptionList
 from textual.widgets.option_list import Option
 
+from debugpilot.core.fuzzy import letters_in_order
+
 NO_MATCH = "No branch matches"
-
-
-def _in_order(query: str, name: str) -> bool:
-    """Whether every letter of the query appears in the name, in order."""
-    position = 0
-    for letter in query:
-        position = name.find(letter, position) + 1
-        if not position:
-            return False
-    return True
 
 
 def matching_branches(query: str, branches: list[str]) -> list[str]:
@@ -39,7 +31,7 @@ def matching_branches(query: str, branches: list[str]) -> list[str]:
             rank = 0
         elif query in folded:
             rank = 1
-        elif _in_order(query, folded):
+        elif letters_in_order(query, folded):
             rank = 2
         else:
             continue
