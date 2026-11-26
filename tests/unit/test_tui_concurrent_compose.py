@@ -350,6 +350,37 @@ async def test_stop_is_refused_for_a_project_being_recreated(tmp_path, monkeypat
         await until(pilot, lambda: not app._stop_tasks)
 
 
+async def test_escape_on_another_project_says_which_run_it_would_stop(tmp_path, monkeypatch):
+    service = ProjectService()
+    app, _docker = create_app(tmp_path, monkeypatch, service)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(app._launch_profiles) and ready(app))
+        await start(app, pilot, service, "profile:Orders", "orders")
+        select_key(app, "profile:Catalog")
+        await until(pilot, lambda: app._selection_key == "profile:Catalog")
+        await pilot.press("escape")
+        await until(pilot, lambda: any("Select Orders" in notice for notice in notices(app)))
+        # Esc never stops a run the user is not looking at.
+        assert not app._compose_tasks["orders"].done()
+        assert service.cancelled == set()
+        select_key(app, "profile:Orders")
+        await until(pilot, lambda: app._selection_key == "profile:Orders")
+        await pilot.press("escape")
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
+        assert service.cancelled == {"orders"}
+
+
+async def test_run_start_line_says_how_to_stop_it(tmp_path, monkeypatch):
+    service = ProjectService()
+    app, _docker = create_app(tmp_path, monkeypatch, service)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await until(pilot, lambda: bool(app._launch_profiles) and ready(app))
+        await start(app, pilot, service, "profile:Orders", "orders")
+        assert "Esc stops it while this project is selected" in buffered(app, "orders")
+        service.gate("orders").set()
+        await until(pilot, lambda: app._compose_tasks["orders"].done())
+
+
 @pytest.mark.parametrize(("key", "action"), [("r", "recreate"), ("R", "rebuild")])
 async def test_recreate_on_a_container_targets_only_its_service(tmp_path, monkeypatch, key, action):
     service = ProjectService()

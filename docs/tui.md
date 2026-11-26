@@ -196,7 +196,7 @@ automatically.
 | `C` | From the project tree, show `/bin/sh` for the selected running container in the logs area. |
 | `H` | With the project tree focused, open host Bash in the explicit local workspace or the selected central profile's validated working directory. |
 | `D` | Close open logs and show details for the selected container. |
-| `Esc` | In the terminal, return focus to the current left table; otherwise close open logs or cancel a pending confirmation. |
+| `Esc` | In the terminal, return focus to the current left table; otherwise close open logs, cancel a pending confirmation, or stop the selected project's running Compose operation (Esc on another project names the project to select). |
 | `O` | Hide/show the entire docked console; when hidden, restore it from the project tree with `O`. |
 | `Ctrl+O` | Edit the central (or explicitly selected local) `launch.json` in the built-in editor. |
 | `Ctrl+L` | From outside a focused shell, open and focus logs for the current selection. |

@@ -48,7 +48,11 @@ SECTIONS: dict[str, tuple[tuple[str, tuple[Shortcut, ...]], ...]] = {
                 ("shift+r",),
             ),
             Shortcut("S", "Stop the container or project, after confirmation", ("s",)),
-            Shortcut("Esc", "Cancel a Compose preview, or clear a kept filter", ("escape",)),
+            Shortcut(
+                "Esc",
+                "Cancel a Compose preview, stop the selected project's run, or clear a kept filter",
+                ("escape",),
+            ),
         )),
         ("Logs", (
             Shortcut("Ctrl+L", "Open the selected container's logs", ("ctrl+l",)),
