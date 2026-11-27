@@ -38,7 +38,9 @@ When shown, the Compose console displays an empty-state hint until a real execut
 produces output.
 Inactive terminal panes occupy no rows. `C` replaces the right-hand logs with the
 selected container's shell without opening the lower console; `T` shows Host Bash below,
-the same key that opens the shell in Code. Only one session is active: switching between
+the same key that opens the shell in Code; its bar names the folder Bash is in and follows each
+`cd`. Bash reports it before each prompt with an invisible OSC 7 sequence, set through
+`PROMPT_COMMAND`; your prompt and rc files stay untouched. Only one session is active: switching between
 C/T closes the previous session first. With Host Bash open, `T` from the project tree
 hides it down to its title row and shows it again; hiding never closes the session. `T`
 does not hide the right-hand container shell.

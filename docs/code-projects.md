@@ -52,7 +52,7 @@ available in the current area. Selecting a profile shows one bottom view: its li
 otherwise the run or debug view you used last for that profile.
 
 **T** opens a Bash shell in the bottom area, in the folder at the root of the file tree, and
-puts the cursor in it; its border names that folder. **T** is also the key for Host Bash in
+puts the cursor in it; its border names the folder it is in and follows each `cd`. **T** is also the key for Host Bash in
 Containers. Each project keeps its own shell: selecting another profile shows that
 profile's view, and coming back shows the shell still running. **Escape** returns focus to the
 profiles, and **T** there goes back to the run or debug view without closing the shell; **T**
