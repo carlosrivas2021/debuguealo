@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/carlosrivas2021/debuguealo/compare/v1.2.0...v1.3.0) (2026-11-27)
+
+
+### Features
+
+* **code:** F finds text and Shift+F finds a file, without Tab modes ([#116](https://github.com/carlosrivas2021/debuguealo/issues/116)) ([652b39e](https://github.com/carlosrivas2021/debuguealo/commit/652b39ea56c6cece628bd69ae3b872afed683e75))
+
 ## [1.2.0](https://github.com/carlosrivas2021/debuguealo/compare/v1.1.1...v1.2.0) (2026-11-26)
 
 
