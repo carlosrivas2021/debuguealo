@@ -126,6 +126,9 @@ class CodeWorkspace(Vertical):
         self._shells: dict[Path, TerminalPane] = {}
         # Roots whose shell the user exited: hidden for every profile until T reopens it.
         self._ended_shells: set[Path] = set()
+        # Shells still starting. Bash starts outside the key handler, so Code keeps
+        # handling keys meanwhile, and quitting cancels a startup that hangs.
+        self._shell_openings: set[asyncio.Task] = set()
         # Branch each profile was launched from; a live session keeps showing it after a checkout.
         self._launch_branches: dict[str, str | None] = {}
         self._run_button = Button("▶ Run", id="code-run")
@@ -366,10 +369,19 @@ class CodeWorkspace(Vertical):
         if shell.active:
             shell.focus()
             return
-        try:
-            await shell.open_host(root)  # Focuses the shell once it runs.
-        except TerminalUnavailable as error:
-            self._state(f"Shell unavailable: {error}")
+        if any(not task.done() for task in self._shell_openings):
+            return  # One startup at a time; T again does not start a second Bash.
+
+        async def open_shell() -> None:
+            try:
+                await shell.open_host(root)  # Focuses the shell once it runs.
+            except TerminalUnavailable as error:
+                if not self._shutting_down:
+                    self._state(f"Shell unavailable: {error}")
+
+        task = asyncio.create_task(open_shell())
+        self._shell_openings.add(task)
+        task.add_done_callback(self._shell_openings.discard)
 
     def _state(self, message):
         self._run_state.update(message)
@@ -961,6 +973,10 @@ class CodeWorkspace(Vertical):
         self._shutting_down = True
         await self._pane.close_all()
         await self._debug.close_all()
+        # A startup still running would start Bash after the close below.
+        for task in list(self._shell_openings):
+            task.cancel()
+        await asyncio.gather(*self._shell_openings, return_exceptions=True)
         for shell in self._shells.values():
             await shell.close_session()
 

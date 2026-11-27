@@ -119,3 +119,50 @@ def test_a_folder_under_home_is_shown_from_the_tilde(monkeypatch, tmp_path):
     assert _display_path(tmp_path / "projects" / "shop") == "~/projects/shop"
     assert _display_path(tmp_path) == "~"
     assert _display_path(tmp_path.parent / "elsewhere") == str(tmp_path.parent / "elsewhere")
+
+
+async def test_quitting_while_a_shell_is_opening_never_leaves_it_running(monkeypatch, tmp_path):
+    import asyncio
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    events: list[str] = []
+
+    class SlowSession(FakeSession):
+        async def open_host(self, cwd, rows, columns):
+            events.append("opening")
+            entered.set()
+            try:
+                await release.wait()  # Bash takes a while to start.
+            except asyncio.CancelledError:
+                events.append("open cancelled")
+                raise
+            events.append("opened")
+            await super().open_host(cwd, rows, columns)
+
+        async def close_session(self):
+            events.append("closed")
+            await super().close_session()
+
+    app, _roots, _made = shell_app(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "debugpilot.tui.terminal_view.TerminalSession",
+        lambda **callbacks: SlowSession(**callbacks),
+    )
+    async def quit_while_opening():
+        async with app.run_test(size=(140, 45)) as pilot:
+            await pilot.click("#area-code")
+            await choose(pilot, app, 0)
+            pressing = asyncio.create_task(pilot.press("t"))
+            await asyncio.wait_for(entered.wait(), 10)
+            # Code keeps handling keys while Bash starts.
+            await asyncio.wait_for(pressing, 5)
+            # Quit while Bash is still starting.
+
+    # Quitting never waits for a startup that hangs.
+    await asyncio.wait_for(quit_while_opening(), 15)
+    release.set()
+    await asyncio.sleep(0.2)  # Let a startup that was not cancelled finish.
+    # Whatever the order, the session ends closed: never a Bash left running.
+    assert "closed" in events
+    assert events[-1] in {"closed", "open cancelled"}
+    assert "opened" not in events or events.index("opened") < len(events) - 1
