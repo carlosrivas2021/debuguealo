@@ -70,6 +70,9 @@ async def test_t_opens_a_shell_at_the_project_root_and_keeps_it_per_project(
         assert shell.border_title == f"Shell · {orders}"
         assert shell.styles.border_top[0] != ""
         assert not app.query_one("#code-terminal").display
+        # After cd, the border follows the folder the shell is in.
+        made[0].emit(f"\x1b]7;file://host{orders / 'api'}\x07")
+        await until(pilot, lambda: shell.border_title == f"Shell · {orders / 'api'}")
         # A live shell types the letter instead of opening another one.
         await pilot.press("t")
         assert made[0].writes == ["t"] and len(made) == 1

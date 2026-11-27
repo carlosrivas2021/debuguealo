@@ -371,6 +371,7 @@ class DebugPilotApp(App):
                     id="host-terminal",
                     escape_hook=self._focus_terminal_selection,
                     exit_hook=self._host_shell_exited,
+                    cwd_hook=self._host_shell_moved,
                 )
                 host.display = False
                 self._host_terminal_pane = self._terminal_pane = host.terminal_pane
@@ -1638,6 +1639,11 @@ class DebugPilotApp(App):
         for pane in (self._host_terminal_pane, self._container_terminal_pane):
             if pane is not None:
                 await pane.close_session()
+
+    def _host_shell_moved(self, folder: Path) -> None:
+        """After a cd, the bar names the folder host Bash is in."""
+        if not self._closing and self._terminal_pane is self._host_terminal_pane:
+            self._terminal_status(f"Host Bash · {folder} · Esc returns to left table")
 
     def _host_shell_exited(self) -> None:
         """`exit` in host Bash closes the dock, as closing the terminal does."""

@@ -36,6 +36,19 @@ def _windows_platform() -> bool:
     return os.name == "nt"
 
 
+# Before each prompt, Bash reports its folder with an invisible OSC 7 sequence (as VS Code,
+# iTerm and WezTerm read it); the terminal view strips it and shows the folder.
+REPORT_FOLDER = "printf '\\033]7;file://%s%s\\007' \"${HOSTNAME:-}\" \"$PWD\""
+
+
+def _host_environment() -> dict[str, str]:
+    """The user's environment, with the folder report run before any prompt command."""
+    env = dict(os.environ)
+    existing = env.get("PROMPT_COMMAND")
+    env["PROMPT_COMMAND"] = REPORT_FOLDER + (f"; {existing}" if existing else "")
+    return env
+
+
 def _host_argv() -> list[str]:
     name = "bash.exe" if _windows_platform() else "bash"
     bash = shutil.which(name)
@@ -125,7 +138,10 @@ class TerminalSession:
     _docker_config: tempfile.TemporaryDirectory | None = field(default=None, init=False, repr=False)
 
     async def open_host(self, cwd: Path, rows: int = 24, columns: int = 80) -> None:
-        await self._open(_host_argv(), cwd, _dimensions(rows, columns))
+        await self._open(
+            _host_argv(), cwd, _dimensions(rows, columns), _host_environment(),
+            docker_config=False,
+        )
 
     async def open_container(
         self, container: ContainerInfo, endpoint: str, cwd: Path,

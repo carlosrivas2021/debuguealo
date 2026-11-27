@@ -174,7 +174,11 @@ async def test_host_environment_is_not_replaced_by_container_isolation(
         await session.open_host(tmp_path)
         kind, argv, kwargs = calls[0]
         assert kind == ("conpty" if windows else "posix")
-        assert kwargs["env"] is None
+        # The user's environment, plus only the prompt hook that reports the folder.
+        env = kwargs["env"]
+        assert {key: value for key, value in env.items() if key != "PROMPT_COMMAND"} == dict(
+            os.environ)
+        assert "]7;file://" in env["PROMPT_COMMAND"] and "$PWD" in env["PROMPT_COMMAND"]
         assert argv[-4:] == [
             str(tmp_path / ("bash.exe" if windows else "bash")),
             "--noprofile",

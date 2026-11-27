@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,6 +79,19 @@ def resize_screen(screen: pyte.Screen, lines: int, columns: int) -> None:
     screen.dirty.update(range(lines))
 
 
+REPORT_START = "\x1b]7;"
+# file://host/path, ended by BEL or ST (ESC \\).
+FOLDER_REPORT = re.compile(r"\x1b\]7;([^\x07\x1b]*)(?:\x07|\x1b\\)")
+MAX_REPORT = 4096
+
+
+def _report_folder(value: str) -> Path | None:
+    if not value.startswith("file://"):
+        return None
+    slash = value.find("/", len("file://"))
+    return Path(value[slash:]) if slash != -1 else None
+
+
 @dataclass(frozen=True)
 class TerminalContext:
     kind: str
@@ -94,11 +108,15 @@ class TerminalPane(Widget):
     # advertising Esc keeps the footer from going blank with no way back.
     BINDINGS = [Binding("escape", "release_focus", "Back to list")]
 
-    def __init__(self, *, escape_hook=None, exit_hook=None, **kwargs) -> None:
+    def __init__(self, *, escape_hook=None, exit_hook=None, cwd_hook=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._escape_hook = escape_hook
         # Called when the shell ends on its own (`exit`), never on an explicit close.
         self._exit_hook = exit_hook
+        # Called with the shell's folder each time it reports a new one (OSC 7).
+        self._cwd_hook = cwd_hook
+        self.cwd: Path | None = None
+        self._report_pending = ""
         self._session: TerminalSession | None = None
         self._terminal_context: TerminalContext | None = None
         self._screen = ScrollbackScreen(80, 24)
@@ -132,6 +150,7 @@ class TerminalPane(Widget):
         await self.close_session()
         self._terminal_context = context
         self._session_closed = False
+        self.cwd, self._report_pending = None, ""
         rows, columns = self._screen_size()
         self._screen = ScrollbackScreen(columns=columns, lines=rows)
         self._scroll = 0
@@ -175,9 +194,30 @@ class TerminalPane(Widget):
             SCREEN_COLUMNS, max(2, self.size.width or 80)
         )
 
+    def _take_folder_reports(self, text: str) -> str:
+        """Remove OSC 7 folder reports from the output and remember the last folder."""
+        text = self._report_pending + text
+        self._report_pending = ""
+        for match in FOLDER_REPORT.finditer(text):
+            folder = _report_folder(match.group(1))
+            if folder is not None and folder != self.cwd:
+                self.cwd = folder
+                if self._cwd_hook is not None:
+                    self._cwd_hook(folder)
+        text = FOLDER_REPORT.sub("", text)
+        # A report split between two reads waits for its end; so does its first bytes.
+        start = text.rfind(REPORT_START)
+        if start == -1:
+            start = next((len(text) - size for size in range(len(REPORT_START) - 1, 0, -1)
+                          if text.endswith(REPORT_START[:size])), -1)
+        if start != -1 and len(text) - start <= MAX_REPORT:
+            text, self._report_pending = text[:start], text[start:]
+        return text
+
     def _accept_output(self, generation: int, text: str) -> None:
         if self._session_closed or generation != self._generation:
             return
+        text = self._take_folder_reports(text)
         kept = getattr(self._screen, "kept", 0)
         self._stream.feed(text[:MAX_FEED_CHARS])
         if self._scroll:

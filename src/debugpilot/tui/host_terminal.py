@@ -8,10 +8,11 @@ from debugpilot.tui.terminal_view import TerminalPane
 
 
 class HostTerminal(Vertical):
-    def __init__(self, *, escape_hook=None, exit_hook=None, **kwargs) -> None:
+    def __init__(self, *, escape_hook=None, exit_hook=None, cwd_hook=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.terminal_pane = TerminalPane(
-            id="terminal-pane", escape_hook=escape_hook, exit_hook=exit_hook
+            id="terminal-pane", escape_hook=escape_hook, exit_hook=exit_hook,
+            cwd_hook=cwd_hook,
         )
 
     def compose(self) -> ComposeResult:

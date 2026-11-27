@@ -295,3 +295,30 @@ async def test_code_output_before_first_layout_survives_the_resize(tmp_path):
         await pilot.pause()
         assert context.screen.lines == 5
         assert pane.render().plain.splitlines()[0].rstrip() == "RUN_ONLY"
+
+
+
+@pytest.mark.asyncio
+async def test_the_shell_reports_its_folder_and_the_report_is_never_drawn(monkeypatch, tmp_path):
+    made: list[FakeSession] = []
+
+    def factory(*, on_output, on_exit=None):
+        session = FakeSession(on_output=on_output, on_exit=on_exit)
+        made.append(session)
+        return session
+
+    monkeypatch.setattr("debugpilot.tui.terminal_view.TerminalSession", factory)
+    folders = []
+    pane = TerminalPane(cwd_hook=folders.append)
+    async with TerminalApp(pane).run_test() as pilot:
+        await pane.open_host(tmp_path)
+        made[0].emit("\x1b]7;file://host/home/me/shop\x07$ ")
+        await pilot.pause()
+        assert folders == [Path("/home/me/shop")] and pane.cwd == Path("/home/me/shop")
+        assert pane.render().plain.startswith("$ ")
+        # A report split between two reads, ended by ST, and a folder with spaces.
+        made[0].emit("x\x1b]7;file://host/home/me/my sh")
+        made[0].emit("op\x1b\\")
+        await pilot.pause()
+        assert folders[-1] == Path("/home/me/my shop")
+        assert "my sh" not in pane.render().plain

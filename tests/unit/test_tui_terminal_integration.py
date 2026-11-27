@@ -345,3 +345,17 @@ async def test_exit_closes_host_bash_and_t_opens_a_new_one(fake_terminal, tmp_pa
         await pilot.press("t")
         await until(pilot, lambda: len(fake_terminal) == 2 and pane.active)
         assert host.display
+
+
+async def test_host_bash_bar_follows_the_folder(fake_terminal, tmp_path):
+    app = app_for(Docker(), tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        table = app.query_one("#launch-profiles", DataTable)
+        await until(pilot, lambda: table.row_count > 0)
+        table.focus()
+        await pilot.press("t")
+        await until(pilot, lambda: len(fake_terminal) == 1)
+        context = app.query_one("#terminal-context", Static)
+        await until(pilot, lambda: f"Host Bash · {tmp_path.resolve()}" in str(context.render()))
+        fake_terminal[0].on_output(f"\x1b]7;file://host{tmp_path / 'src'}\x07")
+        await until(pilot, lambda: f"Host Bash · {tmp_path / 'src'} ·" in str(context.render()))

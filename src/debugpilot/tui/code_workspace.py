@@ -355,6 +355,9 @@ class CodeWorkspace(Vertical):
                 classes="code-shell",
                 escape_hook=lambda: self.query_one("#code-projects", DataTable).focus(),
                 exit_hook=lambda: self._shell_exited(root, shell),
+                # The border follows the folder the shell is in after a cd.
+                cwd_hook=lambda folder: setattr(
+                    shell, "border_title", f"Shell · {_display_path(folder)}"),
             )
             shell.border_title = f"Shell · {_display_path(root)}"
             self._shells[root] = shell
