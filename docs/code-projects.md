@@ -84,15 +84,15 @@ shows Git's message and leaves everything as it was. Switching is refused while 
 the same repository runs or debugs, because its code would change under it. After a switch the
 file tree and the open file are read again.
 
-Press **F** to find something in the project shown in the file tree. A list opens over Code
-with a field at its top, and **Tab** switches between two ways of searching with the same text:
+Two keys search the project shown in the file tree. Each opens a list over Code with a field
+at its top:
 
-- **Files** lists every file by its path. Typing narrows it: names that start with the text
-  come first, then names that contain it, then paths that contain it, then paths that have its
-  letters in order (`omod` finds `orders/models.py`).
-- **Text** lists the lines that contain the text, ignoring case, as `path:line` and the line.
-  It searches once you have typed two characters and stop for a moment, so typing never waits
-  for it. At most 500 lines are listed.
+- **F** finds text: it lists the lines that contain it, ignoring case, as `path:line` and the
+  line. It searches once you have typed two characters and stop for a moment, so typing never
+  waits for it. At most 500 lines are listed.
+- **Shift+F** finds a file: it lists every file by its path. Typing narrows it: names that
+  start with the text come first, then names that contain it, then paths that contain it, then
+  paths that have its letters in order (`omod` finds `orders/models.py`).
 
 **↑**/**↓** move through the list while you type, **Enter** opens the file (at the line, for a
 text match) and puts the cursor in it, and **Escape** closes the list. The file tree opens the
